@@ -10,6 +10,7 @@
 ```
 backend/   FastAPI (Python 3.13, uv) — 계정, 구독 상태, 백업·동기화
 mobile/    Expo (SDK 54, TypeScript, expo-router) — vernissage와 같은 버전 — iOS / Android 앱
+  modules/ 앱 안의 로컬 네이티브 모듈 (photo-meta: 사진 좌표 → 주소, 원본 EXIF의 촬영 시간대)
 docs/      계획 문서
 ```
 
@@ -34,7 +35,7 @@ make migrate   # DB 마이그레이션
 |---|---|
 | `make api` | API 서버 실행 (http://localhost:8010, 문서는 `/docs`) |
 | `make mobile` | Expo 개발 서버 실행 (포트 8082) |
-| `make ios` | iOS 시뮬레이터용 개발 빌드 설치 (네이티브 패키지·`app.json`이 바뀌었을 때) |
+| `make ios` | iOS 시뮬레이터용 개발 빌드 설치 (네이티브 패키지·`app.json`·`mobile/modules`가 바뀌었을 때) |
 | `make icons` | `mobile/assets/source/keepsake_icon.png`로 아이콘·스플래시 재생성 |
 | `make test` | 백엔드 테스트 |
 | `make lint` | 백엔드·scripts ruff + 모바일 타입 체크·린트 |

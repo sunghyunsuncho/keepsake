@@ -17,6 +17,8 @@
 | 구독 만료 후 | 즉시 업로드 중단, 30일 동안 읽기·다운로드만 허용, 이후 클라우드 데이터 삭제 |
 | 개발 순서 | Phase 1은 서버 없이 핵심 루프부터 검증 |
 | 모바일 SDK | Expo SDK 54 (vernissage와 동일). SDK 56 이상은 현재 Xcode 26.1에서 빌드되지 않음 |
+| 고르기 방식 | 날짜를 넘겨 가며 고르지 않는다. 필름 한 롤을 넘겨 보듯, 지난번에 살펴본 다음 사진부터 이어서 보여준다 (날짜로 보기는 보조) |
+| 고르기 확정 | 사진을 누르면 '고른 상태'만 되고, [남기기]를 눌러야 원본을 앱에 복사한다 |
 
 ## 1. 언어 분담
 
@@ -163,7 +165,9 @@ class BillingEvent:   id, raw_payload, received_at, processed_at  # 웹훅 원�
 **모바일 `/mobile`**
 - Expo SDK 54 (vernissage와 동일, 현재 Xcode 26.1에서 빌드 가능한 버전), expo-router, TypeScript
 - `expo-media-library`, `expo-image`, `expo-image-manipulator`, `expo-file-system`, `expo-sqlite`(+ Drizzle 선택), `expo-secure-store`, `expo-notifications`, `expo-apple-authentication`, Google 로그인, `react-native-purchases`
-- TanStack Query, FlashList
+- ZIP 백업: `react-native-zip-archive`, `expo-sharing`, `expo-document-picker`
+- 로컬 네이티브 모듈 `mobile/modules/photo-meta`: 사진 좌표 → 주소(iOS Apple, Android OS Geocoder), 원본 EXIF의 촬영 시간대. 위치 권한 없이 동작
+- FlashList, TanStack Query(Phase 2 서버 API용. 로컬 DB 읽기는 자체 `useDbQuery`)
 - Expo Go 대신 **Development Build (EAS)** 로 개발
 
 **백엔드 `/backend`**
@@ -186,7 +190,7 @@ class BillingEvent:   id, raw_payload, received_at, processed_at  # 웹훅 원�
 
 ### Phase 1 — 핵심 루프, Local 등급 (3~4주)
 1. 사진 권한 (iOS 제한된 접근, Android 14+ 부분 허용 포함)
-2. 날짜별 사진 보기
+2. 아직 살펴보지 않은 사진을 이어서 보기 (고르기), 날짜로 보기
 3. 선택 + 권장 수 안내 (초과해도 막지 않음)
 4. 선택 시 원본 복사 + 리사이즈본 생성 (나중에 업로드할 수 있도록 미리 준비)
 5. 메모, 날짜·장소 기록
@@ -195,6 +199,15 @@ class BillingEvent:   id, raw_payload, received_at, processed_at  # 웹훅 원�
 8. **ZIP 내보내기/가져오기** (Local 사용자의 유일한 백업 수단이므로 완성도 있게)
 - TestFlight / Play 내부 테스트로 소수 사용자 검증
 - **완료 기준:** 로그인·서버 없이 선택 → 기록 → 다시 보기 → 내보내기 → 다른 기기에서 가져오기가 완결됨
+- **현재 상태:** 1~8 구현, iOS 시뮬레이터에서 완료 기준 흐름 확인. 남은 것: Android 개발 빌드(로컬 모듈의 Kotlin 코드 포함)·실기기 확인, TestFlight / Play 내부 테스트 배포
+- **구현 메모:**
+  - 사진 파일은 `<document>/library/photos/{moment_id}/original.{ext}`, `display.jpg`(긴 변 1600px, JPEG 0.8). DB에는 library 기준 상대 경로만 저장한다 (iOS 컨테이너 경로가 바뀔 수 있음).
+  - ZIP 형식은 library 폴더 + `manifest.json`(format `keepsake-export`, version 1). 삭제 기록(tombstone)도 포함하고, 가져올 때 `updated_at` 최신 우선으로 병합한다 (§3.2와 같은 규칙). 정의는 `mobile/src/lib/archive.ts`.
+  - 장소 자동 채우기: 완료 후 사진 좌표를 주소로 바꿔 비어 있는 장소 칸을 채운다 (iOS는 Apple, Android는 OS Geocoder). 사진에 이미 있는 좌표만 쓰므로 위치 권한은 받지 않는다. 좌표가 Apple/Google 지오코딩 서버로 전송되므로 개인정보처리방침에 적는다 (Phase 3).
+  - 촬영지 시간대: 원본 EXIF `OffsetTimeOriginal`을 `taken_tz_offset`(분)으로 저장하고, 없으면 지오코딩 결과의 시간대로 채운다. 날짜·시각은 촬영지 기준으로 보여준다. 둘 다 로컬 네이티브 모듈 `mobile/modules/photo-meta`.
+  - 고르기 = '새로 찍은 사진': `settings.review_cursor`(여기까지 찍은 사진은 이미 봤다) 이후의 사진을 오래된 것부터 날짜별로 이어서 보여준다. 스크롤해서 화면에 절반 이상 보인 사진까지를 '봤다'로 치고, [남기기] 또는 [여기까지 봤어요]를 누를 때 지점을 옮긴다. 미래 시각이 찍힌 사진 때문에 지점이 앞서 나가지 않도록 현재 시각을 넘지 않게 한다. 처음 실행 때 시작 지점(오늘/1주/한 달/날짜)을 고르고, 설정에서 다시 정할 수 있다. 날짜별로 다시 보는 화면은 `/day`.
+  - 알려진 한계: 지점보다 이전 시각으로 나중에 추가된 사진(다른 기기에서 받은 사진, 가져온 사진)은 고르기에 나타나지 않는다. 날짜로 보기에서는 보인다. → Phase 3 '놓친 사진'
+  - `albums`/`album_moments` 테이블은 만들어 두었고, 시간순 사진첩은 moments를 날짜순으로 바로 보여준다. 여행·주제 사진첩은 Phase 4.
 
 ### Phase 2 — Cloud 구독 (4~5주)
 - App Store Connect / Play Console 구독 상품, RevenueCat 설정, 스토어 결제 유예 설정
@@ -209,12 +222,22 @@ class BillingEvent:   id, raw_payload, received_at, processed_at  # 웹훅 원�
 
 ### Phase 3 — 다시 보기 강화 & 출시 (2주)
 - "N년 전 오늘" 재발견 카드 (가끔 조용히)
-- 리마인더 알림 (빈도는 사용자 설정), Local 사용자 대상 내보내기 권유
+- **고르기 리마인더 알림** (`expo-notifications`, 로컬 알림. 서버 불필요)
+  - 설정: 켜기/끄기, 시각(기본 21:00), 빈도(매일 / 이틀마다 / 매주, 기본 이틀마다)
+  - 권한: 처음 [남기기]를 마친 뒤 한 번 "알림으로 알려드릴까요?" 묻고, 이후는 설정에서만 바꾼다
+  - 예약: 앱이 백그라운드로 갈 때·설정을 바꿀 때·[남기기] 후에 기존 예약을 모두 지우고 다음 7회분을 다시 예약한다 (iOS 예약 한도 64개)
+  - 내용: 예약 시점에 `review_cursor` 이후 사진 수(`getPhotosSince(...).totalCount`)를 넣는다. 예) "지난 3일 동안 찍은 사진 24장 중 십 년 뒤에도 보고 싶은 사진이 있나요?" 0장이면 첫 회는 건너뛰고 이후 회차는 일반 문구("최근 찍은 사진 중 남기고 싶은 순간이 있나요?")
+  - 오늘 이미 [남기기]/[여기까지 봤어요]를 했으면 오늘 알림은 건너뛴다
+  - 알림을 누르면 고르기 탭으로 연다. Android는 알림 채널을 만든다
+  - 완료 기준: 실기기에서 예약 → 알림 수신 → 눌러서 고르기 화면 열림, 빈도·시각 변경이 반영됨
+- **놓친 사진**: 고르기 지점보다 이전 시각으로 새로 추가된 사진이 있으면 고르기 위쪽에 "놓친 사진 N장" 묶음으로 보여준다 (MediaLibrary 변경 이벤트 + 마지막 확인 시각과 `modificationTime` 비교. Android는 변경 내역을 주지 않으므로 앱을 열 때 비교)
+- **필름 사진첩 느낌 다듬기**: 사진첩 카드를 인화 사진처럼(흰 여백, 손글씨 느낌의 메모 영역), 월별 묶음을 '롤'로 표현하는 것 검토. 고르기 → 남기기 → 사진첩으로 이어지는 문구를 '남기다'로 통일했으니 화면 디자인도 맞춘다
+- Local 사용자 대상 내보내기 권유 (마지막 내보내기가 30일 넘으면 설정·알림으로 안내)
 - 개인정보처리방침, 이용약관(구독 조건·만료 후 삭제 정책 명시), 스토어 메타데이터, Sentry, 최소 지표
 - 스토어 심사 제출
 
 ### Phase 4 이후 — 검증 결과에 따라
-여행 모드, AI 결정 보조, 검색, 제한적 공유, 화질 기준 하위 유료 등급
+여행 모드(좌표·시간으로 기록을 묶어 여행 사진첩 제안), 지도로 보기, AI 결정 보조, 검색, 제한적 공유, 화질 기준 하위 유료 등급
 
 ## 7. 지표
 
