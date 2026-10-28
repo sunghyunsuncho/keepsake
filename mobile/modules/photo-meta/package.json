@@ -1,0 +1,8 @@
+{
+  "name": "photo-meta",
+  "version": "0.1.0",
+  "description": "Reverse geocoding and EXIF time zone for Keepsake (local module)",
+  "main": "index.ts",
+  "license": "UNLICENSED",
+  "private": true
+}
