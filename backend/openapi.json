@@ -48,10 +48,595 @@
           }
         }
       }
+    },
+    "/auth/sign-in": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Sign In",
+        "operationId": "auth_sign_in",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/account": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Get Account",
+        "operationId": "account_get_account",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Remove Account",
+        "description": "서버 데이터와 R2 객체를 바로 지운다. 기기 데이터는 앱이 그대로 두고 Local로 돌아간다.\n\n스토어 구독은 서버가 해지할 수 없으므로 앱이 해지 방법을 안내한다.",
+        "operationId": "account_remove_account",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/account/refresh-subscription": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Refresh Subscription",
+        "description": "구매·복원 직후 앱이 부른다. webhook보다 먼저 맞추려고 RevenueCat을 직접 조회한다.",
+        "operationId": "account_refresh_subscription",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/account/devices": {
+      "put": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Register Device",
+        "operationId": "account_register_device",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/sync/push": {
+      "post": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "Push",
+        "operationId": "sync_push",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/sync/pull": {
+      "get": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "Pull",
+        "operationId": "sync_pull",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PullResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/uploads": {
+      "post": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "Create Upload",
+        "operationId": "uploads_create_upload",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/uploads/{upload_id}/complete": {
+      "post": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "Complete Upload",
+        "operationId": "uploads_complete_upload",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Upload Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/moments/{moment_id}/photo": {
+      "get": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "Download Photo",
+        "operationId": "uploads_download_photo",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "moment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Moment Id"
+            }
+          },
+          {
+            "name": "variant",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "display",
+                "original"
+              ],
+              "type": "string",
+              "title": "Variant"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/billing/revenuecat": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Revenuecat Webhook",
+        "operationId": "billing_revenuecat_webhook",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AccountResponse": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "data_generation": {
+            "type": "integer",
+            "title": "Data Generation"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "subscription": {
+            "$ref": "#/components/schemas/SubscriptionState"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/StorageUsage"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "data_generation",
+          "email",
+          "subscription",
+          "usage"
+        ],
+        "title": "AccountResponse"
+      },
+      "CreateUploadRequest": {
+        "properties": {
+          "moment_id": {
+            "type": "string",
+            "maxLength": 36,
+            "title": "Moment Id"
+          },
+          "variant": {
+            "type": "string",
+            "enum": [
+              "display",
+              "original"
+            ],
+            "title": "Variant"
+          },
+          "size": {
+            "type": "integer",
+            "maximum": 1073741824.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Size"
+          },
+          "content_type": {
+            "type": "string",
+            "pattern": "^image/[a-zA-Z0-9.+-]+$",
+            "title": "Content Type"
+          },
+          "md5": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{32}$",
+            "title": "Md5"
+          }
+        },
+        "type": "object",
+        "required": [
+          "moment_id",
+          "variant",
+          "size",
+          "content_type",
+          "md5"
+        ],
+        "title": "CreateUploadRequest"
+      },
+      "DeviceRequest": {
+        "properties": {
+          "expo_push_token": {
+            "type": "string",
+            "maxLength": 255,
+            "pattern": "^Expo(nent)?PushToken\\[.+\\]$",
+            "title": "Expo Push Token"
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "ios",
+              "android"
+            ],
+            "title": "Platform"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expo_push_token",
+          "platform"
+        ],
+        "title": "DeviceRequest"
+      },
+      "DownloadResponse": {
+        "properties": {
+          "download_url": {
+            "type": "string",
+            "title": "Download Url"
+          },
+          "content_type": {
+            "type": "string",
+            "title": "Content Type"
+          },
+          "extension": {
+            "type": "string",
+            "title": "Extension"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "download_url",
+          "content_type",
+          "extension",
+          "size",
+          "expires_at"
+        ],
+        "title": "DownloadResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
       "HealthResponse": {
         "properties": {
           "status": {
@@ -65,6 +650,396 @@
           "status"
         ],
         "title": "HealthResponse"
+      },
+      "PullResponse": {
+        "properties": {
+          "moments": {
+            "items": {
+              "$ref": "#/components/schemas/SyncMoment"
+            },
+            "type": "array",
+            "title": "Moments"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/SyncRecordRow"
+            },
+            "type": "array",
+            "title": "Records"
+          },
+          "cursor": {
+            "type": "integer",
+            "title": "Cursor"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More"
+          }
+        },
+        "type": "object",
+        "required": [
+          "moments",
+          "records",
+          "cursor",
+          "has_more"
+        ],
+        "title": "PullResponse"
+      },
+      "PushRequest": {
+        "properties": {
+          "moments": {
+            "items": {
+              "$ref": "#/components/schemas/SyncMoment"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Moments"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/SyncRecordRow"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Records"
+          }
+        },
+        "type": "object",
+        "title": "PushRequest"
+      },
+      "PushResponse": {
+        "properties": {
+          "stale_moment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Stale Moment Ids"
+          },
+          "stale_record_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Stale Record Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stale_moment_ids",
+          "stale_record_ids"
+        ],
+        "title": "PushResponse"
+      },
+      "SessionResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "const": "bearer",
+            "title": "Token Type",
+            "default": "bearer"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "user_id"
+        ],
+        "title": "SessionResponse"
+      },
+      "SignInRequest": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "apple",
+              "google"
+            ],
+            "title": "Provider"
+          },
+          "identity_token": {
+            "type": "string",
+            "maxLength": 8192,
+            "title": "Identity Token"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 320
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "identity_token"
+        ],
+        "title": "SignInRequest"
+      },
+      "StorageUsage": {
+        "properties": {
+          "bytes_total": {
+            "type": "integer",
+            "title": "Bytes Total"
+          },
+          "object_count": {
+            "type": "integer",
+            "title": "Object Count"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "title": "Max Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "bytes_total",
+          "object_count",
+          "max_bytes"
+        ],
+        "title": "StorageUsage"
+      },
+      "SubscriptionState": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "none",
+              "active",
+              "grace",
+              "expired"
+            ],
+            "title": "Status"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "grace_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grace Until"
+          },
+          "can_upload": {
+            "type": "boolean",
+            "title": "Can Upload"
+          },
+          "can_download": {
+            "type": "boolean",
+            "title": "Can Download"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "expires_at",
+          "grace_until",
+          "can_upload",
+          "can_download"
+        ],
+        "title": "SubscriptionState"
+      },
+      "SyncMoment": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 36,
+            "title": "Id"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          },
+          "stored_variants": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "display",
+                "original"
+              ]
+            },
+            "type": "array",
+            "title": "Stored Variants"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "updated_at"
+        ],
+        "title": "SyncMoment"
+      },
+      "SyncRecordRow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Id"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "review_sessions",
+              "albums",
+              "album_moments"
+            ],
+            "title": "Kind"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "updated_at",
+          "kind"
+        ],
+        "title": "SyncRecordRow"
+      },
+      "UploadResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "upload_url": {
+            "type": "string",
+            "title": "Upload Url"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Headers"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "upload_url",
+          "headers",
+          "expires_at"
+        ],
+        "title": "UploadResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
       }
     }
   }

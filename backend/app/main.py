@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
-from app.api import health
+from app.api import account, auth, billing, health, sync, uploads
 
 
 def _operation_id(route: APIRoute) -> str:
@@ -12,3 +12,8 @@ def _operation_id(route: APIRoute) -> str:
 app = FastAPI(title="Keepsake API", version="0.1.0", generate_unique_id_function=_operation_id)
 
 app.include_router(health.router)
+app.include_router(auth.router)
+app.include_router(account.router)
+app.include_router(sync.router)
+app.include_router(uploads.router)
+app.include_router(billing.router)
