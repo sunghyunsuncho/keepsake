@@ -193,7 +193,9 @@ function MomentEditor({ moment }: { moment: Moment }) {
           <ThemedText type="small" themeColor="textSecondary">
             {moment.local_original_path
               ? '원본 사진이 앱 안에 보관되어 있어요.'
-              : '원본 없이 표시용 사진만 보관되어 있어요.'}
+              : moment.original_uploaded
+                ? '원본은 Cloud에 있어요. 설정에서 이 기기로 받을 수 있어요.'
+                : '원본 없이 표시용 사진만 보관되어 있어요.'}
           </ThemedText>
 
           <Button label="기록에서 빼기" variant="danger" onPress={confirmRemove} />

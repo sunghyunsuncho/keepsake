@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
+import { CloudSection } from '@/components/cloud-section';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -200,6 +201,10 @@ export default function SettingsScreen() {
           </View>
           <Button label="ZIP으로 내보내기" disabled={!stats?.count} onPress={runExport} />
           <Button label="ZIP에서 가져오기" variant="secondary" onPress={confirmImport} />
+        </Section>
+
+        <Section title="Cloud">
+          <CloudSection />
         </Section>
 
         <ThemedText type="small" themeColor="textSecondary" style={styles.version}>

@@ -9,10 +9,12 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.atelierlabs.keepsake",
+      "appleTeamId": "3BQ7Y687R9",
       "supportsTablet": false,
       "config": {
         "usesNonExemptEncryption": false
-      }
+      },
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
@@ -36,6 +38,14 @@
         }
       ],
       "expo-sqlite",
+      "expo-secure-store",
+      "expo-apple-authentication",
+      [
+        "expo-notifications",
+        {
+          "color": "#B5651D"
+        }
+      ],
       "@react-native-community/datetimepicker",
       [
         "expo-media-library",
@@ -64,6 +74,12 @@
       "typedRoutes": true,
       "reactCompiler": true
     },
-    "newArchEnabled": true
+    "newArchEnabled": true,
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "12930956-1eea-4867-a793-d68ee6cf87e8"
+      }
+    }
   }
 }
