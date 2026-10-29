@@ -16,6 +16,13 @@ export type Settings = {
    * null이면 아직 어디서부터 볼지 정하지 않은 상태(처음 실행).
    */
   review_cursor: string | null;
+  /** 서버에서 어디까지 받았는지 (서버가 매기는 변경 번호). 기기별 값이라 ZIP에 넣지 않는다. */
+  cloud_pull_cursor: number;
+  /**
+   * 기기의 sync_state가 가리키는 계정과 서버 데이터 세대("user_id:generation").
+   * 바뀌면(다른 계정, 유예 만료로 서버 데이터 삭제) 처음부터 다시 올린다.
+   */
+  cloud_account_key: string | null;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -24,6 +31,8 @@ export const DEFAULT_SETTINGS: Settings = {
   last_exported_at: null,
   pick_grid_columns: 3,
   review_cursor: null,
+  cloud_pull_cursor: 0,
+  cloud_account_key: null,
 };
 
 export const RECOMMENDED_COUNT_RANGE = { min: 1, max: 10 } as const;
@@ -62,6 +71,8 @@ const VALIDATORS: Record<keyof Settings, (value: unknown) => boolean> = {
   last_exported_at: isIsoOrNull,
   pick_grid_columns: (v) => GRID_COLUMN_OPTIONS.includes(v as GridColumns),
   review_cursor: isIsoOrNull,
+  cloud_pull_cursor: (v) => Number.isInteger(v) && (v as number) >= 0,
+  cloud_account_key: (v) => v === null || typeof v === 'string',
 };
 
 export async function setSetting<K extends keyof Settings>(

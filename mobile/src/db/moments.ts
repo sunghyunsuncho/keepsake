@@ -25,7 +25,9 @@ export type Moment = {
   updated_at: string;
   deleted_at: string | null;
   sync_state: SyncState;
+  /** Cloud에 원본/표시용 사진이 올라가 있는지 (0|1) */
   original_uploaded: number;
+  display_uploaded: number;
 };
 
 export type NewMoment = Pick<
@@ -64,7 +66,15 @@ export const MOMENT_COLUMNS = [
   'deleted_at',
   'sync_state',
   'original_uploaded',
+  'display_uploaded',
 ] as const satisfies readonly (keyof Moment)[];
+
+/** 이 기기의 Cloud 동기화 상태. ZIP에는 넣지 않는다 (다른 기기·계정에서는 의미가 없음). */
+export const CLOUD_STATE_COLUMNS = ['sync_state', 'original_uploaded', 'display_uploaded'] as const;
+export const PORTABLE_MOMENT_COLUMNS = MOMENT_COLUMNS.filter(
+  (c): c is Exclude<(typeof MOMENT_COLUMNS)[number], (typeof CLOUD_STATE_COLUMNS)[number]> =>
+    !(CLOUD_STATE_COLUMNS as readonly string[]).includes(c),
+);
 
 export function listMoments(db: SQLiteDatabase) {
   return db.getAllAsync<Moment>(
@@ -152,6 +162,16 @@ export async function insertMoment(db: SQLiteDatabase, moment: NewMoment, review
 }
 
 /**
+ * 고친 시각(SQL 식). 이 기기 시계가 다른 기기보다 조금 늦어도, 방금 받은 값을 고치면 이전 updated_at보다
+ * 뒤가 되게 한다. 그래야 서버와 다른 기기가 'updated_at이 큰 쪽이 이긴다' 규칙으로 이 수정을 받아들인다.
+ * value는 새 시각을 나타내는 SQL 식(`?`, `excluded.updated_at`)이고 한 번만 들어간다.
+ */
+function laterThanBefore(value: string) {
+  // 이전 값을 읽지 못하면(형식이 깨진 경우) ''가 되어 새 시각을 그대로 쓴다.
+  return `MAX(${value}, IFNULL(strftime('%Y-%m-%dT%H:%M:%fZ', updated_at, '+0.001 seconds'), ''))`;
+}
+
+/**
  * 지워진 기록은 고치지 않는다. 상세 화면을 떠날 때 남은 입력을 저장하는데, 그 사이 기록이 지워졌다면
  * updated_at만 올라가 ZIP 병합에서 이 삭제 기록이 더 최신으로 취급될 수 있다.
  */
@@ -160,7 +180,7 @@ export async function updateMoment(db: SQLiteDatabase, id: string, edit: MomentE
   if (entries.length === 0) return;
   const now = new Date().toISOString();
   await db.runAsync(
-    `UPDATE moments SET ${entries.map(([key]) => `${key} = ?`).join(', ')}, updated_at = ?,
+    `UPDATE moments SET ${entries.map(([key]) => `${key} = ?`).join(', ')}, updated_at = ${laterThanBefore('?')},
        sync_state = CASE sync_state WHEN 'synced' THEN 'pending' ELSE sync_state END
      WHERE id = ? AND deleted_at IS NULL`,
     [...entries.map(([, value]) => value as string | null), now, id],
@@ -183,7 +203,7 @@ export async function fillPlaceIfEmpty(
     `UPDATE moments SET
        place_name = COALESCE(place_name, ?),
        taken_tz_offset = COALESCE(taken_tz_offset, ?),
-       updated_at = ?,
+       updated_at = ${laterThanBefore('?')},
        sync_state = CASE sync_state WHEN 'synced' THEN 'pending' ELSE sync_state END
      WHERE id = ? AND deleted_at IS NULL
        AND (place_name IS NULL OR (taken_tz_offset IS NULL AND ? IS NOT NULL))`,
@@ -201,7 +221,7 @@ export async function softDeleteMoment(db: SQLiteDatabase, id: string, reviewDat
   const now = new Date().toISOString();
   await inTransaction(db, async () => {
     await db.runAsync(
-      `UPDATE moments SET deleted_at = ?, updated_at = ?, local_original_path = NULL,
+      `UPDATE moments SET deleted_at = ?, updated_at = ${laterThanBefore('?')}, local_original_path = NULL,
          sync_state = CASE sync_state WHEN 'synced' THEN 'pending' ELSE sync_state END
        WHERE id = ?`,
       now,
@@ -226,7 +246,8 @@ async function recordReview(db: SQLiteDatabase, date: string, now: string) {
     `INSERT INTO review_sessions (id, date, reviewed_at, selected_count, updated_at)
      VALUES (?, ?, ?, ?, ?)
      ON CONFLICT (date) DO UPDATE SET reviewed_at = excluded.reviewed_at,
-       selected_count = excluded.selected_count, updated_at = excluded.updated_at`,
+       selected_count = excluded.selected_count, updated_at = ${laterThanBefore('excluded.updated_at')},
+       sync_state = CASE sync_state WHEN 'synced' THEN 'pending' ELSE sync_state END`,
     randomUUID(),
     date,
     now,

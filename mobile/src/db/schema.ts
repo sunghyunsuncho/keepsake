@@ -75,6 +75,18 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE moments ADD COLUMN taken_tz_offset INTEGER;
   `,
+  // 3: 업로드 재시도 간격 (Cloud)
+  `
+  ALTER TABLE upload_queue ADD COLUMN next_attempt_at TEXT;
+  ALTER TABLE upload_queue ADD COLUMN created_at TEXT;
+  `,
+  // 4: Cloud 동기화. 표시용 사진 업로드 여부와, moments 외 테이블의 동기화 상태.
+  `
+  ALTER TABLE moments ADD COLUMN display_uploaded INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE review_sessions ADD COLUMN sync_state TEXT NOT NULL DEFAULT 'local_only';
+  ALTER TABLE albums ADD COLUMN sync_state TEXT NOT NULL DEFAULT 'local_only';
+  ALTER TABLE album_moments ADD COLUMN sync_state TEXT NOT NULL DEFAULT 'local_only';
+  `,
 ];
 
 export async function migrateDb(db: SQLiteDatabase) {

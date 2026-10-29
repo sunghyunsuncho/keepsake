@@ -12,7 +12,7 @@ import {
 } from 'react-native-zip-archive';
 
 import { notifyChange } from '@/db/changes';
-import { MOMENT_COLUMNS, type Moment } from '@/db/moments';
+import { PORTABLE_MOMENT_COLUMNS, type CLOUD_STATE_COLUMNS, type Moment } from '@/db/moments';
 import { RECOMMENDED_COUNT_RANGE, setSetting } from '@/db/settings';
 import {
   ensureDir,
@@ -36,7 +36,7 @@ export const EXPORT_FORMAT = 'keepsake-export';
 export const EXPORT_VERSION = 1;
 const MANIFEST_NAME = 'manifest.json';
 
-type ExportedMoment = Omit<Moment, 'sync_state' | 'original_uploaded'>;
+type ExportedMoment = Omit<Moment, (typeof CLOUD_STATE_COLUMNS)[number]>;
 type Album = {
   id: string;
   kind: string;
@@ -90,7 +90,7 @@ export async function exportArchive(db: SQLiteDatabase, onProgress: OnProgress):
   ensureDir(libraryDir);
 
   const exportedMoments = await db.getAllAsync<ExportedMoment>(
-    `SELECT ${MOMENT_COLUMNS.filter((c) => c !== 'sync_state' && c !== 'original_uploaded').join(', ')}
+    `SELECT ${PORTABLE_MOMENT_COLUMNS.join(', ')}
      FROM moments ORDER BY taken_at`,
   );
   // 파일이 실제로 있는 것만 경로를 남긴다. 사라진 원본을 가리키지 않도록 한다.
@@ -313,7 +313,7 @@ function placePhoto(relative: string, fromStaging: (relative: string) => File) {
 }
 
 async function upsertMoment(txn: SQLiteDatabase, moment: ExportedMoment) {
-  const columns = MOMENT_COLUMNS.filter((c) => c !== 'sync_state' && c !== 'original_uploaded');
+  const columns = PORTABLE_MOMENT_COLUMNS;
   await txn.runAsync(
     `INSERT INTO moments (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})
      ON CONFLICT (id) DO UPDATE SET ${columns
@@ -326,7 +326,8 @@ async function upsertMoment(txn: SQLiteDatabase, moment: ExportedMoment) {
 }
 
 // 컬럼 이름은 manifest가 아니라 여기 고정된 목록에서만 가져온다 (SQL에 그대로 들어가므로).
-const TABLES = {
+// Cloud 동기화(lib/cloud/sync.ts)도 같은 목록을 쓴다.
+export const RECORD_TABLES = {
   albums: {
     keys: ['id'],
     columns: ['id', 'kind', 'title', 'start_date', 'end_date', 'created_at', 'updated_at', 'deleted_at'],
@@ -342,12 +343,12 @@ const TABLES = {
 } as const;
 
 /** 키가 같은 행이 없거나 들어온 행이 더 최신일 때만 쓴다. */
-async function upsertNewer<Table extends keyof typeof TABLES>(
+async function upsertNewer<Table extends keyof typeof RECORD_TABLES>(
   txn: SQLiteDatabase,
   table: Table,
   row: { updated_at: string },
 ) {
-  const { keys, columns } = TABLES[table];
+  const { keys, columns } = RECORD_TABLES[table];
   const values = row as unknown as Record<string, string | number | null>;
   const existing = await txn.getFirstAsync<{ updated_at: string }>(
     `SELECT updated_at FROM ${table} WHERE ${keys.map((k) => `${k} = ?`).join(' AND ')}`,
