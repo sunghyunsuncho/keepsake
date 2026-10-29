@@ -64,3 +64,34 @@ API 주소(`mobile/.env`의 `EXPO_PUBLIC_API_URL`):
 - 실기기: Mac의 LAN IP (`ipconfig getifaddr en0`)
 
 `.env`는 git에 올라가지 않으므로 EAS 클라우드 빌드에는 포함되지 않는다. preview·production 빌드의 API 주소는 서버를 배포할 때(Phase 2) `eas.json`의 `env`나 EAS 환경 변수로 지정한다.
+
+## Cloud 백업 (Phase 2)
+
+로그인한 Cloud 사용자만 서버를 쓴다. 앱은 로그인 상태에서 앱을 열 때·앞으로 돌아올 때·기록이 바뀐 뒤 동기화한다
+(기록 push → 다른 기기 변경 pull → 사진 업로드 → 표시용 사진 받기). 구독 여부는 서버가 RevenueCat webhook과 REST 조회로만 판단한다.
+
+결제 연결은 출시 직전으로 미뤘다 (docs/PLAN.md Phase 3). 그때까지 서버는 `CLOUD_BILLING_ENABLED=false`로 두고, 로그인한 계정을 구독 중으로 취급한다. 아래 외부 설정 중 1·2번은 그때 한다.
+
+| 위치 | 내용 |
+|---|---|
+| `backend/app/cloud.py` | 구독 규칙 (쓰기·읽기 허용, 만료 → 30일 유예, 데이터 삭제) |
+| `backend/app/api/` | `auth`(Apple/Google 로그인), `account`(상태·기기 등록·계정 삭제), `sync`, `uploads`, `billing`(webhook) |
+| `backend/app/jobs.py` | 주기 작업: 유예 알림 3회, 30일 뒤 삭제, 계정 삭제 마무리, 미완료 업로드 정리 |
+| `mobile/src/lib/cloud/` | 세션, 동기화, 사진 업로드·다운로드, RevenueCat, 로그인, 푸시 토큰 |
+| `mobile/src/app/cloud.tsx` | 소개·가격(로그인 없이) → [구독하기] → 로그인 → 구매 / 구매 복원 |
+
+로컬에서 Cloud 흐름 시험:
+
+```bash
+make up && make migrate && make test     # tests/test_cloud.py가 로컬 Postgres·S3로 전체 흐름을 확인
+cd backend && uv run python -m app.jobs  # 주기 작업 한 번 실행
+```
+
+### 외부 설정 (실제 로그인·결제)
+
+1. **App Store Connect / Play Console**: Cloud 구독 상품(같은 구독 그룹), 결제 유예(Billing Grace Period / 유예 기간) 켜기. Play는 앱을 만들고 AAB를 내부 테스트 트랙에 한 번 올려야 RevenueCat이 패키지를 찾는다.
+2. **RevenueCat**: 두 스토어 앱·상품, entitlement `cloud`, current offering. webhook URL `https://<API>/billing/revenuecat`, Authorization 헤더 `Bearer <REVENUECAT_WEBHOOK_SECRET>`.
+3. **로그인**: Apple 개발자 계정에서 App ID에 Sign in with Apple 켜기. Google Cloud Console에서 OAuth 클라이언트 3개(웹, iOS 번들 ID, Android 패키지+SHA-1 — 로컬·EAS·Play 앱 서명 키 각각).
+4. **환경 변수**: `backend/.env.example`, `mobile/.env.example`의 Cloud 항목. 모바일 값은 EAS 환경 변수로도 넣는다.
+5. **푸시 알림**: `eas init`으로 projectId 연결, `eas credentials`로 APNs 키, Android는 FCM V1 서비스 계정 키 업로드.
+6. **배포**: 서버 배포 후 `make migrate`, 플랫폼 cron으로 `python -m app.jobs` 1시간마다.

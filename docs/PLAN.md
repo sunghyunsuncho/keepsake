@@ -75,11 +75,11 @@ R2 단가: 저장 $0.015/GB·월, 쓰기 $4.50/백만 건, 읽기 $0.36/백만 �
 
 | 상황 | 동작 |
 |---|---|
-| Local → Cloud 구독 | 로그인 → 구매 → 기존 로컬 기록 전체를 계정에 연결 → 기기에 있는 원본과 리사이즈본 업로드 |
+| Local → Cloud 구독 | 소개·가격 확인(로그인 없이) → [구독하기] → 로그인 → 구매 (이미 구독 중인 계정이면 구매 없이 복원) → 기존 로컬 기록 전체를 계정에 연결 → 기기에 있는 원본과 리사이즈본 업로드 |
 | 구독 만료 (스토어 결제 유예까지 끝난 시점) | 즉시 새 업로드·동기화 중단. **30일 동안 읽기와 전체 다운로드만 허용** |
 | 유예 중 알림 | 만료 즉시, 삭제 7일 전, 삭제 1일 전 (푸시 + 이메일) |
 | 유예 중 재구독 | 아무것도 다시 올리지 않고 즉시 복구 |
-| 유예 30일 경과 | 클라우드 데이터(R2 객체 + 서버 기록) 삭제. **기기 데이터는 유지**되고 Local로 전환 |
+| 유예 30일 경과 | 클라우드 데이터(R2 객체 + 서버 기록) 삭제. **기기 데이터는 유지**되고 Local로 전환. 나중에 다시 구독하면 기기의 기록을 처음부터 다시 올린다 |
 | 용량 한도 초과 | 신규 업로드만 중단. 기존 백업은 삭제하지 않음 |
 | 계정 삭제 | 서버 데이터와 R2 객체 즉시 삭제. 기기 데이터는 유지 (Local로 전환) |
 
@@ -105,11 +105,11 @@ R2 단가: 저장 $0.015/GB·월, 쓰기 $4.50/백만 건, 읽기 $0.36/백만 �
 
 R2는 S3 호환 API라 Python에서는 `boto3`로 다룬다. R2는 presigned POST 정책(업로드 크기 제한 조건)을 지원하지 않으므로, **업로드 후 서버가 검증**한다.
 
-1. 앱 → `POST /uploads` `{moment_id, variant: "display"|"original", size, content_type, sha256}`
-2. 서버: 로그인·구독 상태 확인(`active`만 허용, `grace`는 거절), 용량 확인 → `cloud_objects` 행을 `pending`으로 생성 → presigned PUT URL(만료 10분) 반환
-3. 앱 → R2로 직접 PUT
+1. 앱 → `POST /uploads` `{moment_id, variant: "display"|"original", size, content_type, md5}` (MD5는 파일을 JS 메모리에 올리지 않고 네이티브로 계산한다)
+2. 서버: 로그인·구독 상태 확인(`active`만 허용, `grace`는 거절), 용량 확인 → `cloud_objects` 행을 `pending`으로 생성 → `Content-MD5`까지 서명한 presigned PUT URL(만료 10분)과 붙일 헤더 반환
+3. 앱 → R2로 직접 PUT (내용이 MD5와 다르면 R2가 거절)
 4. 앱 → `POST /uploads/{id}/complete`
-5. 서버: R2 `HEAD`로 실제 크기 확인 → 신고한 크기와 다르거나 한도를 넘으면 객체 삭제 후 거절, 정상이면 `stored`로 바꾸고 사용량 반영
+5. 서버: R2 `HEAD`로 실제 크기와 ETag(MD5) 확인 → 신고한 값과 다르면 객체 삭제 후 거절, 정상이면 `stored`로 바꾸고 사용량 반영
 6. 일정 시간 지난 `pending` 행은 정리 작업이 R2 객체와 함께 삭제
 
 다운로드는 `GET /moments/{id}/photo?variant=` → presigned GET URL(짧은 만료). `active`와 `grace` 상태 모두 허용.
@@ -153,7 +153,7 @@ class Moment:         id, user_id, taken_at, lat, lng, place_name, memo,
                       created_at, updated_at, deleted_at
 class Album / AlbumMoment / ReviewSession: 기기 스키마와 동일 + user_id
 class CloudObject:    id, user_id, moment_id, variant ('display'|'original'),
-                      r2_key, size_bytes, sha256, status ('pending'|'stored'|'deleting'),
+                      r2_key, size_bytes, md5, status ('pending'|'stored'|'deleting'),
                       created_at
 class Usage:          user_id, bytes_total, object_count  # 집계 캐시
 class PlanLimit:      plan, max_bytes, allow_original, grace_days (=30)  # 설정값
@@ -209,16 +209,29 @@ class BillingEvent:   id, raw_payload, received_at, processed_at  # 웹훅 원�
   - 알려진 한계: 지점보다 이전 시각으로 나중에 추가된 사진(다른 기기에서 받은 사진, 가져온 사진)은 고르기에 나타나지 않는다. 날짜로 보기에서는 보인다. → Phase 3 '놓친 사진'
   - `albums`/`album_moments` 테이블은 만들어 두었고, 시간순 사진첩은 moments를 날짜순으로 바로 보여준다. 여행·주제 사진첩은 Phase 4.
 
-### Phase 2 — Cloud 구독 (4~5주)
-- App Store Connect / Play Console 구독 상품, RevenueCat 설정, 스토어 결제 유예 설정
+### Phase 2 — Cloud 백업·동기화 (4~5주)
+결제 연결(스토어 상품·RevenueCat 자격 증명)은 기다리는 시간이 길어서 출시 직전(Phase 3의 '결제 연결')으로 미뤘다. 그동안 서버는 `CLOUD_BILLING_ENABLED=false`로 두고, 로그인한 계정을 구독 중으로 취급한다.
 - Apple + Google 로그인 (Google을 넣으면 Apple 로그인 필수)
-- 페이월 → 로그인 → 구매 → 로컬 데이터 계정 연결 흐름, 구매 복원
-- RevenueCat 웹훅 → `Entitlement` 갱신
+- 로그인 → 로컬 데이터 계정 연결 흐름
 - 동기화 API, 업로드 흐름 (§3.1), 업로드 대기열·재시도, 와이파이 전용 옵션
 - 새 기기 복원, 여러 기기 동기화
-- 만료 처리: 업로드 중단 → 30일 읽기 전용 → 알림 3회 → 삭제 작업
+- 만료 처리: 업로드 중단 → 30일 읽기 전용 → 알림 3회 → 삭제 작업 (서버 로직과 테스트까지. 실제 해지 흐름은 결제 연결 후 확인)
 - 계정 삭제 (App Store 필수 요건)
-- **완료 기준:** 샌드박스 계정으로 구독 → 기기 A 백업 → 기기 B 복원 → 해지 → 읽기 전용 → 재구독 즉시 복구, 그리고 별도 계정으로 해지 → 30일 경과(시간 조작) → 삭제까지 확인
+- **완료 기준:** 실기기에서 로그인 → 기기 A 백업 → 기기 B 복원 → 두 기기에서 고친 내용이 서로 반영됨 → 계정 삭제
+- **현재 상태:** 서버·앱 코드 구현 (구독·만료 코드도 포함). 서버 쪽 흐름은 `backend/tests/test_cloud.py`가 로컬 Postgres·S3로 확인한다 (시간 조작은 `jobs.run(now=...)`). iOS 시뮬레이터 두 대와 로컬 서버로 완료 기준 흐름 확인 (2026-10-29): Apple·Google 로그인 → 백업 → 새 기기 복원(기록·표시용 사진) → 메모 수정이 다른 기기에 반영, 같은 기기에서 계정을 바꿔도 계정별로 따로 백업, 다시 로그인하면 사진을 다시 올리지 않음, 계정 삭제 후 서버·R2 데이터 삭제와 기기 데이터 유지. 남은 것: Android 빌드·확인, 실기기 확인, 푸시 자격 증명(APNs·FCM), 서버 배포와 cron
+- **구현 메모:**
+  - Cloud 화면은 가격까지 로그인 없이 보여준다 (RevenueCat 익명 사용자로 상품만 불러온다). 구매·복원은 로그인한 뒤에만 해서 결제가 항상 서버 `user_id`에 묶인다. RevenueCat 키가 없으면(결제 연결 전) 로그인 버튼만 보여준다.
+  - `CLOUD_BILLING_ENABLED=false`면 저장된 구독 상태가 `none`인 계정을 `active`로 보여주고 허용한다 (`app/cloud.py`의 `subscription_status`). 저장 값은 바꾸지 않으므로 true로 바꾸면 바로 결제 규칙으로 돌아간다. `ENV=production`에서 false면 서버가 시작하지 않는다. 앱은 RevenueCat 키가 없으면 구독 관리 버튼과 해지 안내를 숨긴다.
+  - 구독 상태 `none → active → grace(30일 읽기 전용) → expired(삭제됨)`. `BILLING_ISSUE`·`CANCELLATION`은 상태를 바꾸지 않는다 (스토어 결제 유예 중이거나 만료 전이므로). `REVENUECAT_API_KEY`가 있으면 webhook마다·구매 직후(`POST /account/refresh-subscription`)·삭제 직전에 RevenueCat REST로 다시 확인한다.
+  - 사용량·사진·변경 번호를 바꾸는 요청(push, 업로드 시작·완료)은 모두 사용자 행을 먼저 잠근다. 같은 사용자의 요청이 차례로 처리되어 사용량이 어긋나거나 교착이 생기지 않는다.
+  - 기기는 기록을 고칠 때 updated_at을 이전 값보다 항상 뒤로 잡는다. 기기 시계가 조금 늦어도 방금 받은 값을 고친 수정이 서버에서 '옛 값'으로 버려지지 않는다. 서버 시각(마이크로초)은 받을 때 기기 형식(밀리초, `toISOString`)으로 바꿔서 문자열 비교가 맞게 한다.
+  - pull 커서는 기기 시각이 아니라 서버가 매기는 사용자별 변경 번호(`users.sync_seq`)다. 사진 업로드가 끝나도 번호를 올려서 다른 기기가 표시용 사진을 받으러 온다.
+  - 서버는 기기 전용 값(사진 경로, `sync_state`, 업로드 여부)을 저장하지 않는다. 복원한 기기는 표시용 사진을 자동으로 받고, 원본은 설정의 [Cloud에만 있는 원본 받기]로 받는다.
+  - moments 외 테이블(review_sessions, albums, album_moments)은 서버 `sync_records`에 같은 규칙으로 저장한다.
+  - 기록을 지우면 사진은 `deleting` 상태가 되어 사용량에서 바로 빠지고, 주기 작업이 R2에서 지운다.
+  - 계정 삭제는 요청 즉시 R2 prefix와 서버 행을 지운다. 스토어 구독은 서버가 해지할 수 없으므로 앱이 구독 관리로 안내한다.
+  - 기기의 동기화 표시(`sync_state`, 업로드 여부, pull 커서)는 "계정 + 서버 데이터 세대" 하나에 묶인다. 로그아웃·계정 삭제·다른 계정 로그인·유예 만료로 서버 데이터가 지워진 경우(`users.data_generation`이 바뀜)에는 `local_only`로 돌아가서 처음부터 다시 올린다. 이미 Cloud에 있는 사진은 pull이 먼저 '올라감'으로 표시하므로 다시 올리지 않는다.
+  - Google 로그인은 `@react-native-google-signin/google-signin`(네이티브). 토큰의 aud는 웹 클라이언트 ID다.
 
 ### Phase 3 — 다시 보기 강화 & 출시 (2주)
 - "N년 전 오늘" 재발견 카드 (가끔 조용히)
@@ -234,6 +247,14 @@ class BillingEvent:   id, raw_payload, received_at, processed_at  # 웹훅 원�
 - **필름 사진첩 느낌 다듬기**: 사진첩 카드를 인화 사진처럼(흰 여백, 손글씨 느낌의 메모 영역), 월별 묶음을 '롤'로 표현하는 것 검토. 고르기 → 남기기 → 사진첩으로 이어지는 문구를 '남기다'로 통일했으니 화면 디자인도 맞춘다
 - Local 사용자 대상 내보내기 권유 (마지막 내보내기가 30일 넘으면 설정·알림으로 안내)
 - 개인정보처리방침, 이용약관(구독 조건·만료 후 삭제 정책 명시), 스토어 메타데이터, Sentry, 최소 지표
+- **결제 연결** (Phase 2에서 미룬 것. 코드는 이미 있고 설정과 확인만 남았다)
+  - App Store Connect / Play Console 구독 상품, 스토어 결제 유예 설정 (Play는 AAB를 한 번 올려야 RevenueCat이 검증할 수 있다)
+  - AAB를 올린 뒤 Play 앱 서명 키 SHA-1로 Google OAuth Android 클라이언트를 하나 더 만든다 (스토어에서 받은 앱은 Google이 다시 서명하므로 등록하지 않으면 Google 로그인이 실패한다). 로컬 디버그 키와 EAS 키는 등록해 두었다.
+  - RevenueCat: 앱·상품, entitlement `cloud`, current offering, 웹훅(`/billing/revenuecat`), 서비스 계정 권한
+  - 서버 `CLOUD_BILLING_ENABLED=true`, `REVENUECAT_*`, 앱 `EXPO_PUBLIC_REVENUECAT_*_KEY`
+  - 결제 없이 쓰던 테스트 계정은 상태가 `none`이라 결제를 켜면 페이월로 간다 (데이터는 남아 있다)
+  - 유예 알림 이메일 (메일 서비스 선택 후)
+  - 완료 기준: 샌드박스 계정으로 구독 → 백업 → 해지 → 읽기 전용 → 재구독 즉시 복구, 그리고 별도 계정으로 해지 → 30일 경과(시간 조작) → 삭제까지 확인
 - 스토어 심사 제출
 
 ### Phase 4 이후 — 검증 결과에 따라
