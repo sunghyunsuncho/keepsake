@@ -45,6 +45,7 @@
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "openapi-typescript": "^7.13.0",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
   },
   "scripts": {
@@ -52,7 +53,17 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "lint": "expo lint",
+    "postinstall": "patch-package",
     "api:types": "openapi-typescript ../backend/openapi.json -o src/api/schema.d.ts"
   },
-  "private": true
+  "private": true,
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "expo-media-library"
+        ]
+      }
+    }
+  }
 }

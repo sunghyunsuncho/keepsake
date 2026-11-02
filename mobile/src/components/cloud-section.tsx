@@ -78,7 +78,7 @@ export function CloudSection() {
   const confirmDelete = () =>
     Alert.alert(
       '계정을 삭제할까요?',
-      'Cloud에 백업한 사진과 기록이 바로 삭제되고 되돌릴 수 없어요. Local 기록과, 이 기기 사진첩에 원본이 있는 기록은 기기에 남아요.' +
+      'Cloud에 백업한 사진과 기록이 바로 삭제되고 되돌릴 수 없어요. Local 기록과, 이 기기 사진과 연결된 기록은 기기에 남아요.' +
         (purchasesAvailable ? '\n\n구독은 자동으로 해지되지 않으니 스토어의 구독 관리에서 해지해 주세요.' : ''),
       [
         { text: '취소', style: 'cancel' },
@@ -206,7 +206,7 @@ function statusText(status: string, graceUntil: string | null) {
         ? `구독이 끝났어요. ${formatFullDate(graceUntil)}까지 백업한 사진을 내려받을 수 있고, 그 뒤 삭제돼요. 새 기록은 이 기기에만 저장돼요.`
         : '구독이 끝났어요. 30일 동안 백업한 사진을 내려받을 수 있어요. 새 기록은 이 기기에만 저장돼요.';
     case 'expired':
-      return '구독이 끝나 Cloud 데이터가 삭제됐어요. 이 기기 사진첩에 원본이 있는 기록은 Local에 남겼어요.';
+      return '구독이 끝나 Cloud 데이터가 삭제됐어요. 이 기기 사진과 연결된 기록은 Local에 남겼어요.';
     default:
       return '로그인했어요. 구독하면 백업을 시작해요.';
   }

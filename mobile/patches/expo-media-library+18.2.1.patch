@@ -1,0 +1,53 @@
+diff --git a/node_modules/expo-media-library/android/src/main/java/expo/modules/medialibrary/assets/AssetUtils.kt b/node_modules/expo-media-library/android/src/main/java/expo/modules/medialibrary/assets/AssetUtils.kt
+index 917d0cc..ed74b5f 100644
+--- a/node_modules/expo-media-library/android/src/main/java/expo/modules/medialibrary/assets/AssetUtils.kt
++++ b/node_modules/expo-media-library/android/src/main/java/expo/modules/medialibrary/assets/AssetUtils.kt
+@@ -124,7 +124,10 @@ fun putAssetsInfo(
+       putString("mediaType", exportMediaType(mediaType))
+       putLong("width", width.toLong())
+       putLong("height", height.toLong())
+-      putLong("creationTime", cursor.getLong(creationDateIndex))
++      putLong(
++        "creationTime",
++        if (cursor.isNull(creationDateIndex)) cursor.getLong(modificationDateIndex) * 1000 else cursor.getLong(creationDateIndex)
++      )
+       putDouble("modificationTime", cursor.getLong(modificationDateIndex) * 1000.0)
+       putDouble("duration", cursor.getInt(durationIndex) / 1000.0)
+       putString("albumId", cursor.getString(albumIdIndex))
+diff --git a/node_modules/expo-media-library/android/src/main/java/expo/modules/medialibrary/assets/GetAssetsQuery.kt b/node_modules/expo-media-library/android/src/main/java/expo/modules/medialibrary/assets/GetAssetsQuery.kt
+index 0d3748e..6821e7f 100644
+--- a/node_modules/expo-media-library/android/src/main/java/expo/modules/medialibrary/assets/GetAssetsQuery.kt
++++ b/node_modules/expo-media-library/android/src/main/java/expo/modules/medialibrary/assets/GetAssetsQuery.kt
+@@ -26,7 +26,7 @@ internal fun getQueryFromOptions(input: AssetsOptions): GetAssetsQuery {
+   val selection = createSelectionString(input)
+ 
+   val order = if (input.sortBy.isNotEmpty()) {
+-    convertOrderDescriptors(input.sortBy)
++    convertOrderDescriptors(input.sortBy).replace(MediaStore.Images.Media.DATE_TAKEN, EFFECTIVE_DATE_TAKEN)
+   } else {
+     MediaStore.Images.Media.DEFAULT_SORT_ORDER
+   }
+@@ -34,6 +34,10 @@ internal fun getQueryFromOptions(input: AssetsOptions): GetAssetsQuery {
+   return GetAssetsQuery(selection, order, limit, offset)
+ }
+ 
++// EXIF가 없는 사진은 DATE_TAKEN이 비어 있어 날짜 조건에서 빠진다. 수정 시각(초)으로 대신한다.
++private const val EFFECTIVE_DATE_TAKEN =
++  "COALESCE(${MediaStore.Images.Media.DATE_TAKEN}, ${MediaStore.Images.Media.DATE_MODIFIED} * 1000)"
++
+ @Throws(IllegalArgumentException::class)
+ private fun createSelectionString(input: AssetsOptions): String {
+   val selectionBuilder = StringBuilder()
+@@ -56,10 +60,10 @@ private fun createSelectionString(input: AssetsOptions): String {
+   }
+ 
+   input.createdAfter?.let {
+-    selectionBuilder.append(" AND ${MediaStore.Images.Media.DATE_TAKEN} > ${it.toLong()}")
++    selectionBuilder.append(" AND $EFFECTIVE_DATE_TAKEN > ${it.toLong()}")
+   }
+   input.createdBefore?.let {
+-    selectionBuilder.append(" AND ${MediaStore.Images.Media.DATE_TAKEN} < ${it.toLong()}")
++    selectionBuilder.append(" AND $EFFECTIVE_DATE_TAKEN < ${it.toLong()}")
+   }
+ 
+   return selectionBuilder.toString()

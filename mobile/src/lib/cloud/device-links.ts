@@ -72,7 +72,8 @@ export async function pushDeviceLinks(db: SQLiteDatabase, userId: string) {
 export async function restoreDeviceLinks(db: SQLiteDatabase, userId: string) {
   if ((await getSettings(db)).cloud_links_restored) return;
   // 권한을 받기 전이면 확인할 수 없으니 다음 동기화에서 다시 한다.
-  if (!(await MediaLibrary.getPermissionsAsync(false, ['photo'])).granted) return;
+  const { granted, accessPrivileges } = await MediaLibrary.getPermissionsAsync(false, ['photo']);
+  if (!granted) return;
 
   const deviceId = await deviceIdFor(userId);
   let after = '';
@@ -112,6 +113,7 @@ export async function restoreDeviceLinks(db: SQLiteDatabase, userId: string) {
     if (!page.has_more || page.links.length === 0) break;
     after = page.links[page.links.length - 1].moment_id;
   }
-  await setSetting(db, 'cloud_links_restored', true);
+  // 일부 사진만 허용했으면 나중에 허용한 사진을 이을 수 있도록 다음 동기화에서 다시 본다.
+  if (accessPrivileges !== 'limited') await setSetting(db, 'cloud_links_restored', true);
   if (restored > 0) notifyChange();
 }
