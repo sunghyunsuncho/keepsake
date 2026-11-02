@@ -125,7 +125,7 @@ def expire_grace(db: Session, now: datetime) -> None:
 
 
 def recheck_lapsed_subscriptions(db: Session, now: datetime) -> None:
-    """만료 webhook을 놓쳐도 끝난 구독이 active로 남지 않게 한다. 스토어 결제 유예 중이면 유지된다."""
+    """만료 webhook을 놓친 구독을 다시 조회한다. 스토어 결제 유예 중이면 active로 남는다."""
     lapsed = db.scalars(
         select(Entitlement).where(Entitlement.status == "active", Entitlement.expires_at < now)
     ).all()
