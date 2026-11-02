@@ -31,7 +31,10 @@ import { getSettings, setSetting, type Settings } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { dayKeyOf, usePhotoSelection, type SavedItem } from '@/hooks/use-photo-selection';
 import { formatDay, formatTime, toDateKey, todayKey } from '@/lib/dates';
+import { photosLeftBehind, setCleanupPhotos } from '@/lib/cleanup';
 import { getPhotosSince, subscribeLibraryChanges, usePhotoAccess } from '@/lib/photos';
+import { checkMissedPhotos, clearMissedPhotos, loadMissedPhotos } from '@/lib/missed-photos';
+import { markReviewed, offerReminders } from '@/lib/reminders';
 
 export default function PickScreen() {
   const db = useSQLiteContext();
@@ -146,7 +149,10 @@ function StartPoint() {
 }
 
 type DayRow = { type: 'day'; key: string; dateKey: string; assets: Asset[] };
-type Row = DayRow | { type: 'photo'; key: string; asset: Asset };
+type Row =
+  | DayRow
+  | { type: 'missed'; key: string; assets: Asset[] }
+  | { type: 'photo'; key: string; asset: Asset };
 
 type Roll = { assets: Asset[]; endCursor?: string; hasNextPage: boolean; totalCount: number };
 
@@ -171,6 +177,8 @@ function Inbox({
   const [libraryVersion, setLibraryVersion] = useState(0);
   const [seenUntil, setSeenUntil] = useState(cursorMs);
   const [justSaved, setJustSaved] = useState<SavedItem[]>([]);
+  // 방금 살펴보고 남기지 않은 사진. 지점을 옮기면 목록에서 사라지므로 옮기기 전에 잡아 둔다.
+  const [leftBehind, setLeftBehind] = useState<Asset[]>([]);
   const loadingMore = useRef(false);
   // 다시 읽기를 시작할 때마다 올린다. 늦게 끝난 이전 요청(다시 읽기·다음 쪽)이 결과를 덮지 않게 한다.
   const generation = useRef(0);
@@ -200,6 +208,22 @@ function Inbox({
       );
   }, [cursorMs, libraryVersion, limited]);
 
+  // 지점보다 이전 시각으로 나중에 들어온 사진은 위쪽에 '놓친 사진'으로 따로 보여준다.
+  useEffect(() => {
+    checkMissedPhotos(db, { limited });
+  }, [db, cursor, libraryVersion, limited]);
+  const missedKey = settings.missed_photo_ids.join(',');
+  const [missed, setMissed] = useState<Asset[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    loadMissedPhotos(missedKey ? missedKey.split(',') : [])
+      .then((result) => !cancelled && setMissed(result))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [missedKey, libraryVersion]);
+
   const loadMore = async () => {
     const current = rollRef.current;
     if (!current?.hasNextPage || loadingMore.current) return;
@@ -222,7 +246,9 @@ function Inbox({
   };
 
   const assets = useMemo(() => roll?.assets ?? [], [roll]);
-  const assetIds = useMemo(() => assets.map((a) => a.id), [assets]);
+  // 화면에 있는 모든 사진 (놓친 사진 + 새로 찍은 사진). 고른 사진을 찾을 때 쓴다.
+  const shown = useMemo(() => [...missed, ...assets], [missed, assets]);
+  const assetIds = useMemo(() => shown.map((a) => a.id), [shown]);
   const { data: saved = new Map<string, string>() } = useDbQuery(
     () => momentIdsByAsset(db, assetIds),
     [db, assetIds],
@@ -237,6 +263,10 @@ function Inbox({
 
   const rows = useMemo(() => {
     const result: Row[] = [];
+    if (missed.length > 0) {
+      result.push({ type: 'missed', key: 'missed', assets: missed });
+      for (const asset of missed) result.push({ type: 'photo', key: asset.id, asset });
+    }
     let day = null as DayRow | null;
     for (const asset of assets) {
       const dateKey = dayKeyOf(asset);
@@ -248,7 +278,7 @@ function Inbox({
       result.push({ type: 'photo', key: asset.id, asset });
     }
     return result;
-  }, [assets]);
+  }, [assets, missed]);
 
   // 화면에 보인 사진 중 가장 늦게 찍은 시각 = 여기까지 봤다.
   const onViewableItemsChanged = useCallback(
@@ -264,20 +294,49 @@ function Inbox({
     [],
   );
 
-  const moveCursor = (seen: number) => {
+  const moveCursor = async (seen: number) => {
     // 촬영 시각이 미래로 잘못 찍힌 사진 때문에 지점이 앞서 나가면, 지금 찍는 사진이 숨겨진다.
     const until = Math.min(seen, Date.now());
-    if (until > cursorMs) setSetting(db, 'review_cursor', new Date(until).toISOString());
+    if (until > cursorMs) await setSetting(db, 'review_cursor', new Date(until).toISOString());
+    // 놓친 사진은 맨 위에 있으니 함께 본 것으로 친다.
+    if (settings.missed_photo_ids.length > 0) await clearMissedPhotos(db);
   };
 
+  // 아직 정리하지 않은 사진이 있으면 이어 붙인다. 바꿔 버리면 앞서 살펴본 사진은 정리할 기회가 없어진다.
+  const addLeftBehind = (next: Asset[]) =>
+    setLeftBehind((prev) => {
+      const known = new Set(prev.map((a) => a.id));
+      return [...prev, ...next.filter((a) => !known.has(a.id))];
+    });
+
   const complete = async () => {
-    const pickedTimes = selection.draft
-      .map((id) => assets.find((a) => a.id === id)?.creationTime ?? 0)
-      .filter(Boolean);
-    const items = await selection.complete(assets);
+    const picked = shown.filter((a) => selection.draft.includes(a.id));
+    const items = await selection.complete(shown);
+    // 고른 사진이 그 사이 모두 지워졌으면 선택만 비운다. 지점을 옮기거나 정리를 권하지 않는다.
+    if (picked.length === 0) return;
     setJustSaved((prev) => [...items, ...prev]);
     // 실패해서 선택에 남은 사진이 있으면, 그 사진이 사라지지 않도록 지점을 옮기지 않는다.
-    if (items.length === pickedTimes.length) moveCursor(Math.max(seenUntil, ...pickedTimes));
+    if (items.length === picked.length) {
+      const seen = Math.max(seenUntil, ...picked.map((a) => a.creationTime));
+      addLeftBehind(
+        photosLeftBehind(
+          shown,
+          [...saved.keys(), ...picked.map((a) => a.id)],
+          Math.min(seen, Date.now()),
+        ),
+      );
+      await moveCursor(seen);
+    }
+    if (items.length > 0) {
+      await markReviewed(db);
+      offerReminders(db);
+    }
+  };
+
+  const markSeen = async () => {
+    addLeftBehind(photosLeftBehind(shown, saved.keys(), Math.min(seenUntil, Date.now())));
+    await moveCursor(seenUntil);
+    await markReviewed(db);
   };
 
   const header = (
@@ -285,7 +344,7 @@ function Inbox({
       <View style={styles.flex}>
         <ThemedText style={styles.title}>새로 찍은 사진</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
-          {roll && roll.totalCount > 0
+          {roll && roll.assets.length > 0
             ? `${formatDay(dayKeyOf(roll.assets[0]))}부터 ${roll.totalCount}장`
             : ' '}
         </ThemedText>
@@ -313,7 +372,7 @@ function Inbox({
       {header}
       {limited && <LimitedAccessBanner onChanged={() => setLibraryVersion((v) => v + 1)} />}
 
-      {assets.length === 0 ? (
+      {assets.length === 0 && missed.length === 0 ? (
         <AllCaughtUp cursor={cursorMs} />
       ) : (
         <>
@@ -329,8 +388,10 @@ function Inbox({
             keyExtractor={(row) => row.key}
             getItemType={(row) => row.type}
             overrideItemLayout={(layout, row) => {
-              if (row.type === 'day') layout.span = columns;
+              if (row.type !== 'photo') layout.span = columns;
             }}
+            // 놓친 사진이 맨 위에 늘어날 때, 위쪽을 보고 있었다면 가려지지 않게 위로 올린다.
+            maintainVisibleContentPosition={{ autoscrollToTopThreshold: TOP_THRESHOLD }}
             extraData={{ saved, draft: selection.draft }}
             contentContainerStyle={{ padding: GRID_GAP / 2, paddingBottom: Spacing.four }}
             onEndReached={loadMore}
@@ -338,7 +399,9 @@ function Inbox({
             viewabilityConfig={VIEWABILITY}
             onViewableItemsChanged={onViewableItemsChanged}
             renderItem={({ item }) =>
-              item.type === 'day' ? (
+              item.type === 'missed' ? (
+                <MissedHeader count={item.assets.length} />
+              ) : item.type === 'day' ? (
                 <DayHeader
                   dateKey={item.dateKey}
                   count={item.assets.length}
@@ -376,6 +439,22 @@ function Inbox({
         />
       )}
 
+      {leftBehind.length > 0 && selection.draft.length === 0 && !selection.saving && (
+        <BottomBar
+          title={`남기지 않은 사진 ${leftBehind.length}장`}
+          subtitle="살펴보고 지우면 휴대폰이 가벼워져요"
+          secondary={{ label: '그냥 둘게요', onPress: () => setLeftBehind([]) }}
+          action={{
+            label: '정리하기',
+            onPress: () => {
+              setCleanupPhotos(leftBehind);
+              setLeftBehind([]);
+              router.push('/cleanup');
+            },
+          }}
+        />
+      )}
+
       {selection.draft.length > 0 || selection.saving ? (
         <BottomBar
           title={
@@ -387,11 +466,14 @@ function Inbox({
           secondary={{ label: '선택 해제', onPress: selection.clear }}
           action={{ label: '남기기', onPress: complete, loading: !!selection.saving }}
         />
-      ) : seenUntil > cursorMs ? (
+      ) : seenUntil > cursorMs || missed.length > 0 ? (
         <BottomBar
-          title={`${seenLabel} 사진까지`}
-          subtitle="다음엔 그 뒤부터 보여드려요"
-          action={{ label: '여기까지 봤어요', onPress: () => moveCursor(seenUntil) }}
+          title={seenUntil > cursorMs ? `${seenLabel} 사진까지` : `놓친 사진 ${missed.length}장`}
+          subtitle={seenUntil > cursorMs ? '다음엔 그 뒤부터 보여드려요' : '다음엔 보여드리지 않아요'}
+          action={{
+            label: '여기까지 봤어요',
+            onPress: markSeen,
+          }}
         />
       ) : null}
     </View>
@@ -407,6 +489,8 @@ async function fetchRoll(since: Date, minCount: number): Promise<Roll> {
   }
   return roll;
 }
+
+const TOP_THRESHOLD = 120;
 
 // 사진이 절반 이상 보이면 '봤다'로 친다.
 const VIEWABILITY = { itemVisiblePercentThreshold: 50 };
@@ -435,6 +519,19 @@ function DayHeader({
         </ThemedText>
       </View>
       <DayDots saved={saved} picked={picked} recommended={recommended} />
+    </View>
+  );
+}
+
+function MissedHeader({ count }: { count: number }) {
+  return (
+    <View style={styles.dayHeader}>
+      <View style={styles.flex}>
+        <ThemedText type="smallBold">놓친 사진 {count}장</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          예전에 찍었지만 나중에 보관함에 들어온 사진이에요
+        </ThemedText>
+      </View>
     </View>
   );
 }

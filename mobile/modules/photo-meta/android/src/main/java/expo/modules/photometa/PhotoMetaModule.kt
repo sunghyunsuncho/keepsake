@@ -6,6 +6,8 @@ import android.net.Uri
 import android.os.Build
 import androidx.exifinterface.media.ExifInterface
 import expo.modules.kotlin.Promise
+import expo.modules.kotlin.activityresult.AppContextActivityResultLauncher
+import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.util.Locale
@@ -13,8 +15,19 @@ import java.util.Locale
 // 사진에 들어 있는 좌표·촬영 시간대를 읽는다.
 // Android Geocoder 자체는 위치 권한이 필요 없다 (기기 위치가 아니라 주어진 좌표를 변환한다).
 class PhotoMetaModule : Module() {
+  private lateinit var trashLauncher: AppContextActivityResultLauncher<TrashContractInput, Boolean>
+
   override fun definition() = ModuleDefinition {
     Name("PhotoMeta")
+
+    RegisterActivityContracts {
+      trashLauncher = registerForActivityResult(TrashContract(this@PhotoMetaModule))
+    }
+
+    // 사진을 기기 휴지통으로 옮긴다 (Android 11+). 사용자가 확인 창에서 취소하면 false.
+    AsyncFunction("trashPhotos") Coroutine { assetIds: List<String> ->
+      return@Coroutine trashLauncher.launch(TrashContractInput(assetIds))
+    }
 
     // 좌표 → 주소. 결과가 없거나 실패하면 null.
     // Android Geocoder는 시간대를 주지 않으므로 timeZoneOffsetMinutes는 없다. atMs는 iOS와 시그니처를 맞추기 위한 것.

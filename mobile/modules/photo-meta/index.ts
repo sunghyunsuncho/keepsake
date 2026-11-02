@@ -26,6 +26,7 @@ type PhotoMetaNative = {
     atMs: number,
   ): Promise<GeocodedPlace | null>;
   readCaptureOffset(uri: string): number | null;
+  trashPhotos(assetIds: string[]): Promise<boolean>;
 };
 
 const PhotoMeta = requireNativeModule<PhotoMetaNative>('PhotoMeta');
@@ -37,4 +38,9 @@ export function reverseGeocode(latitude: number, longitude: number, localeId: st
 /** 원본 파일 EXIF의 촬영 시간대 (UTC 기준 분). 없으면 null. */
 export function readCaptureOffset(fileUri: string) {
   return PhotoMeta.readCaptureOffset(fileUri);
+}
+
+/** 사진을 기기 휴지통으로 옮긴다 (Android 11+ 전용). 확인 창에서 취소하면 false. */
+export function trashPhotos(assetIds: string[]) {
+  return PhotoMeta.trashPhotos(assetIds);
 }
