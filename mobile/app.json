@@ -50,7 +50,7 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "남기고 싶은 사진을 고르기 위해 사진 보관함에 접근합니다.",
+          "photosPermission": "남기고 싶은 사진을 고르고, 원할 때 남기지 않은 사진을 정리하고, Cloud에 보관한 사진을 다시 저장하기 위해 사진 보관함에 접근합니다.",
           "savePhotosPermission": false,
           "isAccessMediaLocationEnabled": true,
           "preventAutomaticLimitedAccessAlert": true,
@@ -59,8 +59,6 @@
           ]
         }
       ],
-      "expo-document-picker",
-      "react-native-zip-archive",
       [
         "expo-build-properties",
         {

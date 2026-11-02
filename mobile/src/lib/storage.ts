@@ -1,51 +1,21 @@
-import { Directory, File, Paths } from 'expo-file-system';
+import { Directory, Paths } from 'expo-file-system';
 
-// 앱이 보관하는 사진 파일 위치.
+// 앱은 사진을 따로 보관하지 않는다 (docs/PLAN.md §0 '사진 보관'). 여기 있는 것은 모두 캐시라
+// OS가 지워도 다시 만들거나 받을 수 있다.
 //
-//   <document>/library/photos/{moment_id}/original.{ext}
-//   <document>/library/photos/{moment_id}/display.jpg
-//
-// iOS는 앱을 업데이트하면 컨테이너 절대 경로가 바뀔 수 있으므로 DB에는 library 기준
-// 상대 경로("photos/{id}/display.jpg")만 저장하고, 쓸 때 resolveLibraryFile()로 푼다.
-// ZIP 내보내기는 library 폴더를 그대로 압축하므로 ZIP 안의 경로도 이 상대 경로와 같다.
-export const libraryDir = new Directory(Paths.document, 'library');
+//   <cache>/cloud-display/{moment_id}.jpg   Cloud에서 받은 표시용 사진 (기기 사진첩에 원본이 없을 때)
+//   <cache>/upload/                          Cloud에 올리는 동안만 두는 임시 파일
 
-export function photoDirPath(momentId: string) {
-  return `photos/${momentId}`;
-}
-
-export function photoDir(momentId: string) {
-  return new Directory(libraryDir, photoDirPath(momentId));
-}
-
-export function resolveLibraryFile(relativePath: string) {
-  return new File(libraryDir, relativePath);
-}
-
-export function libraryUri(relativePath: string | null | undefined) {
-  return relativePath ? resolveLibraryFile(relativePath).uri : undefined;
-}
-
-export function ensureDir(dir: Directory) {
-  dir.create({ intermediates: true, idempotent: true });
-}
-
-export function deletePhotoDir(momentId: string) {
-  const dir = photoDir(momentId);
-  if (dir.exists) dir.delete();
-}
-
-/** 임시 작업 폴더. 내보내기·가져오기 중간 파일을 둔다. */
-export function freshCacheDir(name: string) {
+export function cacheDir(name: string) {
   const dir = new Directory(Paths.cache, name);
-  if (dir.exists) dir.delete();
-  ensureDir(dir);
+  dir.create({ intermediates: true, idempotent: true });
   return dir;
 }
 
-/** react-native-zip-archive는 `file://` 없는, 디코딩된 경로를 받는다. */
-export function toNativePath(uri: string) {
-  return decodeURIComponent(uri.replace(/^file:\/\//, ''));
+/** Cloud에서 받아 둔 표시용 사진을 지운다. 서버 데이터가 지워진 뒤 기기에 남기지 않기 위해서다. */
+export function clearCloudDisplayCache() {
+  const dir = new Directory(Paths.cache, 'cloud-display');
+  if (dir.exists) dir.delete();
 }
 
 export function formatBytes(bytes: number) {

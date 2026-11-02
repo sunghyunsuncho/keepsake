@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Image } from 'expo-image';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
@@ -16,8 +15,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AlbumChooserRow } from '@/components/album-chooser';
 import { Button } from '@/components/button';
 import { DateSheet } from '@/components/date-sheet';
+import { MomentPhoto } from '@/components/moment-photo';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -26,7 +27,6 @@ import { getMoment, updateMoment, type Moment, type MomentEdit } from '@/db/mome
 import { useTheme } from '@/hooks/use-theme';
 import { fillPlaceFromPhoto, removeMoment } from '@/lib/capture';
 import { formatFullDate, formatTime, localDateKey } from '@/lib/dates';
-import { libraryUri } from '@/lib/storage';
 
 export default function MomentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -92,7 +92,6 @@ function MomentEditor({ moment }: { moment: Moment }) {
   }, [moment.place_name]);
 
   const aspectRatio = moment.width && moment.height ? moment.width / moment.height : 1;
-  const displayUri = libraryUri(moment.local_display_path);
 
   const fillFromPhoto = async () => {
     setLocating(true);
@@ -104,7 +103,7 @@ function MomentEditor({ moment }: { moment: Moment }) {
   };
 
   const confirmRemove = () => {
-    Alert.alert('기록에서 뺄까요?', '사진첩에서 사라지고, 남긴 메모와 장소도 지워져요.', [
+    Alert.alert('기록에서 뺄까요?', '모든 앨범에서 사라지고, 남긴 메모와 장소도 지워져요. 기기 사진첩의 사진은 그대로예요.', [
       { text: '취소', style: 'cancel' },
       {
         text: '빼기',
@@ -129,10 +128,10 @@ function MomentEditor({ moment }: { moment: Moment }) {
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets>
         <Pressable onPress={() => setViewing(true)} accessibilityLabel="사진 크게 보기">
-          <Image
-            source={{ uri: displayUri }}
+          <MomentPhoto
+            moment={moment}
             style={{ width, height: Math.min(width / aspectRatio, width * 1.25) }}
-            contentFit="cover"
+            explainMissing
           />
         </Pressable>
 
@@ -176,6 +175,8 @@ function MomentEditor({ moment }: { moment: Moment }) {
             )}
           </View>
 
+          <AlbumChooserRow momentId={moment.id} />
+
           <TextInput
             value={memo}
             onChangeText={(text) => {
@@ -191,11 +192,9 @@ function MomentEditor({ moment }: { moment: Moment }) {
           />
 
           <ThemedText type="small" themeColor="textSecondary">
-            {moment.local_original_path
-              ? '원본 사진이 앱 안에 보관되어 있어요.'
-              : moment.original_uploaded
-                ? '원본은 Cloud에 있어요. 설정에서 이 기기로 받을 수 있어요.'
-                : '원본 없이 표시용 사진만 보관되어 있어요.'}
+            {moment.original_uploaded
+              ? '원본이 Cloud에 보관되어 있어요. 기기 사진첩에서 지워도 남아요.'
+              : '사진은 기기 사진첩의 원본을 그대로 보여줘요. 기기 사진첩에서 지우면 여기서도 보이지 않아요.'}
           </ThemedText>
 
           <Button label="기록에서 빼기" variant="danger" onPress={confirmRemove} />
@@ -217,7 +216,7 @@ function MomentEditor({ moment }: { moment: Moment }) {
 
       <PhotoViewer
         visible={viewing}
-        uri={libraryUri(moment.local_original_path) ?? displayUri}
+        moment={moment}
         onClose={() => setViewing(false)}
       />
     </ThemedView>
@@ -226,11 +225,11 @@ function MomentEditor({ moment }: { moment: Moment }) {
 
 function PhotoViewer({
   visible,
-  uri,
+  moment,
   onClose,
 }: {
   visible: boolean;
-  uri: string | undefined;
+  moment: Moment;
   onClose: () => void;
 }) {
   // Modal 안에서는 SafeAreaView가 상단 여백을 받지 못해 닫기 버튼이 상태 표시줄에 겹친다.
@@ -239,7 +238,9 @@ function PhotoViewer({
   return (
     <Modal visible={visible} animationType="fade" onRequestClose={onClose} supportedOrientations={['portrait']}>
       <View style={styles.viewer}>
-        <Image source={{ uri }} style={styles.flex} contentFit="contain" />
+        {visible && (
+          <MomentPhoto moment={moment} variant="original" style={styles.flex} contentFit="contain" explainMissing />
+        )}
         <Pressable
           onPress={onClose}
           hitSlop={16}

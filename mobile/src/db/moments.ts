@@ -8,9 +8,12 @@ export type SyncState = 'local_only' | 'pending' | 'synced';
 
 export type Moment = {
   id: string;
+  /** 기기 사진첩 사진 id. 기기마다 다르므로 동기화하지 않는다. 다른 기기에서 받은 기록은 null. */
   source_asset_id: string | null;
-  local_original_path: string | null;
-  local_display_path: string;
+  /** 기기 사진첩 사진을 그릴 주소 (iOS ph://, Android file://) */
+  source_uri: string | null;
+  /** 기기 사진첩에서 원본을 찾지 못함 (0|1). 지워진 사진 */
+  source_missing: number;
   original_filename: string | null;
   width: number | null;
   height: number | null;
@@ -28,14 +31,15 @@ export type Moment = {
   /** Cloud에 원본/표시용 사진이 올라가 있는지 (0|1) */
   original_uploaded: number;
   display_uploaded: number;
+  /** 사진첩 연결을 서버에 보냈는지 (0|1) */
+  source_link_synced: number;
 };
 
 export type NewMoment = Pick<
   Moment,
   | 'id'
   | 'source_asset_id'
-  | 'local_original_path'
-  | 'local_display_path'
+  | 'source_uri'
   | 'original_filename'
   | 'width'
   | 'height'
@@ -50,8 +54,8 @@ export type MomentEdit = Partial<Pick<Moment, 'memo' | 'place_name' | 'taken_at'
 export const MOMENT_COLUMNS = [
   'id',
   'source_asset_id',
-  'local_original_path',
-  'local_display_path',
+  'source_uri',
+  'source_missing',
   'original_filename',
   'width',
   'height',
@@ -69,11 +73,18 @@ export const MOMENT_COLUMNS = [
   'display_uploaded',
 ] as const satisfies readonly (keyof Moment)[];
 
-/** 이 기기의 Cloud 동기화 상태. ZIP에는 넣지 않는다 (다른 기기·계정에서는 의미가 없음). */
-export const CLOUD_STATE_COLUMNS = ['sync_state', 'original_uploaded', 'display_uploaded'] as const;
-export const PORTABLE_MOMENT_COLUMNS = MOMENT_COLUMNS.filter(
-  (c): c is Exclude<(typeof MOMENT_COLUMNS)[number], (typeof CLOUD_STATE_COLUMNS)[number]> =>
-    !(CLOUD_STATE_COLUMNS as readonly string[]).includes(c),
+/** 이 기기에서만 의미가 있는 값 (사진첩 연결, Cloud 동기화 상태). 서버로 보내지 않는다. */
+export const DEVICE_ONLY_COLUMNS = [
+  'source_asset_id',
+  'source_uri',
+  'source_missing',
+  'sync_state',
+  'original_uploaded',
+  'display_uploaded',
+] as const;
+export const SYNCED_MOMENT_COLUMNS = MOMENT_COLUMNS.filter(
+  (c): c is Exclude<(typeof MOMENT_COLUMNS)[number], (typeof DEVICE_ONLY_COLUMNS)[number]> =>
+    !(DEVICE_ONLY_COLUMNS as readonly string[]).includes(c),
 );
 
 export function listMoments(db: SQLiteDatabase) {
@@ -109,7 +120,7 @@ export async function momentIdsByAsset(db: SQLiteDatabase, assetIds: string[]) {
  * 이 함수로 들어오는 트랜잭션을 하나씩 차례로 실행한다.
  */
 let transactionQueue: Promise<unknown> = Promise.resolve();
-function inTransaction(db: SQLiteDatabase, task: () => Promise<void>) {
+export function inTransaction(db: SQLiteDatabase, task: () => Promise<void>) {
   const run = transactionQueue.then(() => db.withTransactionAsync(task));
   transactionQueue = run.catch(() => {});
   return run;
@@ -138,14 +149,13 @@ export async function insertMoment(db: SQLiteDatabase, moment: NewMoment, review
   const now = new Date().toISOString();
   await inTransaction(db, async () => {
     await db.runAsync(
-      `INSERT INTO moments (id, source_asset_id, local_original_path, local_display_path,
+      `INSERT INTO moments (id, source_asset_id, source_uri,
          original_filename, width, height, taken_at, taken_tz_offset, lat, lng,
          created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       moment.id,
       moment.source_asset_id,
-      moment.local_original_path,
-      moment.local_display_path,
+      moment.source_uri,
       moment.original_filename,
       moment.width,
       moment.height,
@@ -166,14 +176,14 @@ export async function insertMoment(db: SQLiteDatabase, moment: NewMoment, review
  * 뒤가 되게 한다. 그래야 서버와 다른 기기가 'updated_at이 큰 쪽이 이긴다' 규칙으로 이 수정을 받아들인다.
  * value는 새 시각을 나타내는 SQL 식(`?`, `excluded.updated_at`)이고 한 번만 들어간다.
  */
-function laterThanBefore(value: string) {
+export function laterThanBefore(value: string) {
   // 이전 값을 읽지 못하면(형식이 깨진 경우) ''가 되어 새 시각을 그대로 쓴다.
   return `MAX(${value}, IFNULL(strftime('%Y-%m-%dT%H:%M:%fZ', updated_at, '+0.001 seconds'), ''))`;
 }
 
 /**
  * 지워진 기록은 고치지 않는다. 상세 화면을 떠날 때 남은 입력을 저장하는데, 그 사이 기록이 지워졌다면
- * updated_at만 올라가 ZIP 병합에서 이 삭제 기록이 더 최신으로 취급될 수 있다.
+ * updated_at만 올라가 동기화에서 이 삭제 기록이 더 최신으로 취급될 수 있다.
  */
 export async function updateMoment(db: SQLiteDatabase, id: string, edit: MomentEdit) {
   const entries = Object.entries(edit).filter(([, value]) => value !== undefined);
@@ -221,7 +231,7 @@ export async function softDeleteMoment(db: SQLiteDatabase, id: string, reviewDat
   const now = new Date().toISOString();
   await inTransaction(db, async () => {
     await db.runAsync(
-      `UPDATE moments SET deleted_at = ?, updated_at = ${laterThanBefore('?')}, local_original_path = NULL,
+      `UPDATE moments SET deleted_at = ?, updated_at = ${laterThanBefore('?')},
          sync_state = CASE sync_state WHEN 'synced' THEN 'pending' ELSE sync_state END
        WHERE id = ?`,
       now,
@@ -266,3 +276,24 @@ export async function libraryStats(db: SQLiteDatabase): Promise<LibraryStats> {
   const days = new Set(rows.map((r) => localDateKey(r.taken_at, r.taken_tz_offset)));
   return { count: rows.length, days: days.size };
 }
+
+/**
+ * 사진첩 연결 상태를 고친다 (사진을 그리다 원본이 없거나 주소가 없을 때). 이 기기 전용 값이라
+ * updated_at·sync_state는 건드리지 않는다.
+ */
+export async function setMomentSource(
+  db: SQLiteDatabase,
+  id: string,
+  source: { uri?: string | null; missing: boolean },
+) {
+  await db.runAsync(
+    `UPDATE moments SET source_missing = ?${source.uri !== undefined ? ', source_uri = ?' : ''} WHERE id = ?`,
+    source.uri !== undefined ? [source.missing ? 1 : 0, source.uri, id] : [source.missing ? 1 : 0, id],
+  );
+  // 목록의 사진마다 한꺼번에 불릴 수 있어(이전 버전 기록, 사진을 많이 지운 뒤) 알림을 한 번으로 모은다.
+  clearTimeout(sourceChangeTimer);
+  sourceChangeTimer = setTimeout(notifyChange, SOURCE_CHANGE_DELAY_MS);
+}
+
+const SOURCE_CHANGE_DELAY_MS = 300;
+let sourceChangeTimer: ReturnType<typeof setTimeout> | undefined;

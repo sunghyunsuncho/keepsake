@@ -60,15 +60,23 @@ export function presentLimitedPicker() {
  * (특히 Android) 앱이 다시 활성화될 때도 호출한다.
  */
 export function subscribeLibraryChanges(listener: () => void) {
-  const library = MediaLibrary.addListener(() => listener());
+  // iCloud 동기화나 사진 여러 장 저장·삭제 중에는 이벤트가 연달아 온다. 그때마다 목록을 다시 읽지 않게 모은다.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const library = MediaLibrary.addListener(() => {
+    clearTimeout(timer);
+    timer = setTimeout(listener, LIBRARY_CHANGE_DELAY_MS);
+  });
   const appState = AppState.addEventListener('change', (state) => {
     if (state === 'active') listener();
   });
   return () => {
+    clearTimeout(timer);
     library.remove();
     appState.remove();
   };
 }
+
+const LIBRARY_CHANGE_DELAY_MS = 500;
 
 /**
  * 고르기 화면의 '아직 안 본 사진': since(이 시각까지는 이미 봤다) 이후에 찍은 사진을
@@ -89,6 +97,18 @@ export async function getPhotosSince(since: Date, after?: string) {
     hasNextPage: page.hasNextPage,
     totalCount: page.totalCount,
   };
+}
+
+/** since 이후에 찍은 사진 수. 사진 접근 권한이 없으면 null. */
+export async function countPhotosSince(since: Date) {
+  const { granted } = await MediaLibrary.getPermissionsAsync(false, GRANULAR);
+  if (!granted) return null;
+  const page = await MediaLibrary.getAssetsAsync({
+    mediaType: MediaLibrary.MediaType.photo,
+    createdAfter: since.getTime() + 1,
+    first: 1,
+  });
+  return page.totalCount;
 }
 
 const INBOX_PAGE_SIZE = 200;

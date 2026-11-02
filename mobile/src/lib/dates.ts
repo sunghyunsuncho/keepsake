@@ -102,7 +102,3 @@ export function formatMonth(key: string) {
   const date = parseDateKey(key);
   return `${date.getFullYear()}년 ${date.getMonth() + 1}월`;
 }
-
-export function daysSince(iso: string) {
-  return Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000));
-}

@@ -1,6 +1,13 @@
+import { Directory, Paths } from 'expo-file-system';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 export const DATABASE_NAME = 'keepsake.db';
+
+/** 계정 Cloud의 기기 사본. 계정마다 파일이 따로 있어 기록이 섞이지 않는다 (db/spaces.ts). */
+export function accountDatabaseName(userId: string) {
+  return `keepsake-account-${userId}.db`;
+}
+export const ACCOUNT_DATABASE_PATTERN = /^keepsake-account-[^/]+\.db$/;
 
 // 스키마를 바꾸면 MIGRATIONS에 항목을 추가한다. 이미 배포된 항목은 수정하지 않는다.
 // 동기화 규칙(docs/PLAN.md §3.2): ID는 클라이언트 UUID, 모든 행에 updated_at, 삭제는 deleted_at.
@@ -87,10 +94,28 @@ const MIGRATIONS: string[] = [
   ALTER TABLE albums ADD COLUMN sync_state TEXT NOT NULL DEFAULT 'local_only';
   ALTER TABLE album_moments ADD COLUMN sync_state TEXT NOT NULL DEFAULT 'local_only';
   `,
+  // 5: 사진을 앱에 복사하지 않고 기기 사진첩 원본을 가리킨다 (docs/PLAN.md §0 '사진 보관').
+  // source_uri: 사진첩 사진을 그릴 주소. source_missing: 사진첩에서 원본을 찾지 못함 (지워진 사진).
+  // 둘 다 source_asset_id처럼 이 기기에서만 의미가 있어 동기화하지 않는다.
+  `
+  ALTER TABLE moments DROP COLUMN local_original_path;
+  ALTER TABLE moments DROP COLUMN local_display_path;
+  ALTER TABLE moments ADD COLUMN source_uri TEXT;
+  ALTER TABLE moments ADD COLUMN source_missing INTEGER NOT NULL DEFAULT 0;
+  `,
+  // 6: 계정 공간. source_link_synced: 사진첩 연결을 서버에 보냈는지. local_imports: 이 계정에 물어본 Local 기록.
+  `
+  ALTER TABLE moments ADD COLUMN source_link_synced INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE local_imports (
+    local_moment_id TEXT PRIMARY KEY NOT NULL,
+    decision TEXT NOT NULL,
+    decided_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export async function migrateDb(db: SQLiteDatabase) {
-  // busy_timeout: 가져오기처럼 별도 연결에서 쓰는 동안 기본 연결의 쓰기가 바로 실패하지 않고 기다리게 한다.
+  // busy_timeout: 다른 연결이 쓰는 동안 기본 연결의 쓰기가 바로 실패하지 않고 기다리게 한다.
   await db.execAsync(`PRAGMA journal_mode = 'wal'; PRAGMA busy_timeout = 5000;`);
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   const current = row?.user_version ?? 0;
@@ -101,5 +126,14 @@ export async function migrateDb(db: SQLiteDatabase) {
       // PRAGMA는 바인딩 파라미터를 받지 않는다. version은 내부 정수라 안전하다.
       await txn.execAsync(`PRAGMA user_version = ${version + 1}`);
     });
+  }
+  // 4까지 앱 안에 두던 사진 사본(<document>/library). 5부터 쓰지 않는다.
+  if (current < 5) {
+    try {
+      const legacy = new Directory(Paths.document, 'library');
+      if (legacy.exists) legacy.delete();
+    } catch {
+      // 지우지 못해도 앱은 열려야 한다. 쓰지 않는 파일이 남을 뿐이다.
+    }
   }
 }

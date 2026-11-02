@@ -175,7 +175,7 @@ export default function DayScreen() {
               ? `남기는 중… ${selection.saving.done}/${selection.saving.total}`
               : `${selection.draft.length}장 골랐어요`
           }
-          subtitle="남기면 원본을 앱에 따로 보관해요"
+          subtitle="남기면 사진첩 탭에서 다시 볼 수 있어요"
           secondary={{ label: '선택 해제', onPress: selection.clear }}
           action={{ label: '남기기', onPress: complete, loading: !!selection.saving }}
         />

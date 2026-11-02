@@ -10,8 +10,8 @@ import { useTheme } from '@/hooks/use-theme';
 type Props = {
   visible: boolean;
   value: Date;
-  /** 'datetime'이면 날짜와 시각을 함께 고른다. */
-  mode: 'date' | 'datetime';
+  /** 'datetime'이면 날짜와 시각을 함께 고른다. 'time'은 시각만 고른다. */
+  mode: 'date' | 'datetime' | 'time';
   maximumDate?: Date;
   /** 촬영지 시간대(UTC 기준 분). 주면 그 시간대의 날짜·시각으로 보여주고 고르게 한다. */
   timeZoneOffsetInMinutes?: number;
@@ -40,6 +40,16 @@ function AndroidDateDialog({
     if (!visible) return;
     // Android 구현은 timeZoneOffsetInMinutes를 받지만(DateTimePickerAndroid.android.js) 타입 정의에 빠져 있다.
     const timeZone = { timeZoneOffsetInMinutes } as object;
+    if (mode === 'time') {
+      DateTimePickerAndroid.open({
+        value,
+        mode: 'time',
+        is24Hour: true,
+        ...timeZone,
+        onChange: (event, time) => (event.type === 'set' && time ? onConfirm(time) : onCancel()),
+      });
+      return;
+    }
     DateTimePickerAndroid.open({
       value,
       mode: 'date',
@@ -103,7 +113,8 @@ function IosDateSheet({
         <DateTimePicker
           value={draft}
           mode={mode}
-          display="inline"
+          // 시각만 고를 때 inline은 시계 버튼만 보여서 돌림판을 쓴다.
+          display={mode === 'time' ? 'spinner' : 'inline'}
           locale="ko-KR"
           maximumDate={maximumDate}
           timeZoneOffsetInMinutes={timeZoneOffsetInMinutes}

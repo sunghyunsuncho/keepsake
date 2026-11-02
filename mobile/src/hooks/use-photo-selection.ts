@@ -9,7 +9,7 @@ import { toDateKey } from '@/lib/dates';
 export type SavedItem = { assetId: string; momentId: string; uri: string };
 
 /**
- * 사진을 누르면 '고른 상태'만 표시한다(파일 복사 없음). 완료해야 원본을 앱 안에 복사하고 기록을 만든다.
+ * 사진을 누르면 '고른 상태'만 표시한다(파일 복사 없음). 완료해야 기록을 만든다.
  * 이미 남긴 사진(saved에 있는 사진)을 누르면 확인한 뒤 기록에서 뺀다.
  */
 export function usePhotoSelection(db: SQLiteDatabase, saved: Map<string, string>) {
@@ -20,12 +20,13 @@ export function usePhotoSelection(db: SQLiteDatabase, saved: Map<string, string>
   const inFlight = useRef(false);
 
   const toggle = (asset: Asset) => {
-    if (saving) return;
+    // 목록의 칸은 이전 렌더의 함수를 들고 있을 수 있어 saving 상태 대신 ref로 확인한다.
+    if (inFlight.current) return;
     const momentId = saved.get(asset.id);
     if (momentId) {
       Alert.alert(
         '기록에서 뺄까요?',
-        '앱에 남긴 사진 사본과 적어 둔 메모·장소가 지워져요. 사진 보관함의 원본은 그대로예요.',
+        '모든 앨범에서 사라지고, 남긴 메모와 장소도 지워져요. 기기 사진첩의 사진은 그대로예요.',
         [
           { text: '취소', style: 'cancel' },
           {
