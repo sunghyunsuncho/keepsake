@@ -249,6 +249,9 @@ class BillingEvent:   id, raw_payload, received_at, processed_at  # 웹훅 원�
   - 기록을 지우면 사진은 `deleting` 상태가 되어 사용량에서 바로 빠지고, 주기 작업이 R2에서 지운다.
   - 계정 삭제는 요청 즉시 R2 prefix와 서버 행을 지운다. 스토어 구독은 서버가 해지할 수 없으므로 앱이 구독 관리로 안내한다.
   - 기기의 동기화 표시(`sync_state`, 업로드 여부, pull 커서)는 계정 공간 DB에 있다. 서버 데이터가 지워지면(`users.data_generation`이 바뀜) 이 기기 사진의 기록을 Local로 옮기고 공간을 비운다. 로그아웃은 공간을 그대로 두므로 다시 로그인하면 이어서 쓴다.
+  - 서버에 저장된 사진은 덮어쓰지 않는다 (`POST /uploads`가 409, 앱은 올린 것으로 처리). 끝나지 못한 재업로드가 같은 키의 백업을 지우는 일을 막는다.
+  - 유예 삭제 직전에 구독 상태를 조회하고, 조회에 실패하면 지우지 않는다. 만료 시각이 지난 active 구독은 주기 작업이 다시 조회한다. 유예 30일은 만료를 알아챈 시점부터 보장한다.
+  - 계정 삭제는 R2와 RevenueCat 고객 정보를 지운 뒤 계정 행을 지운다. 중간에 실패해도 앱에는 성공으로 알리고 `deleted_at`으로 막은 채 주기 작업이 다시 한다. 삭제 전에 받은 업로드 URL로 늦게 올라온 객체는 `storage_cleanups`로 한 번 더 지운다. 앱은 401 `account unavailable`을 받으면 기기 기록을 Local로 옮긴다. 결제 이벤트 원본은 5년 뒤 지운다.
   - Google 로그인은 `@react-native-google-signin/google-signin`(네이티브). 토큰의 aud는 웹 클라이언트 ID다.
 
 ### Phase 3 — 다시 보기 강화 & 출시 (2주)
