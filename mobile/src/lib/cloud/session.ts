@@ -4,6 +4,7 @@ import { useSyncExternalStore } from 'react';
 
 import { API_URL } from '@/api/client';
 import type { components, paths } from '@/api/schema';
+import { retireAccountSpace } from '@/db/spaces';
 
 // Cloud 로그인 상태. 서버가 발급한 토큰은 Keychain/Keystore에만 둔다.
 // Local 사용자는 로그인하지 않으므로 세션이 없는 상태가 기본이다 (docs/PLAN.md §0).
@@ -79,6 +80,10 @@ const auth: Middleware = {
   async onResponse({ request, response }) {
     // 이전 계정의 토큰으로 보낸 요청이 늦게 401을 받아도, 그 사이 새로 로그인한 세션은 지우지 않는다.
     if (response.status === 401 && session && request.headers.get('Authorization') === `Bearer ${session.accessToken}`) {
+      // 계정이 지워졌으면(다른 기기, 응답을 받지 못한 삭제 요청) 이 기기 사진의 기록을 Local에 남긴다.
+      const { userId } = session;
+      const body = (await response.clone().json().catch(() => null)) as { detail?: unknown } | null;
+      if (body?.detail === 'account unavailable') await retireAccountSpace(userId).catch(() => {});
       await saveSession(null);
     }
     return response;

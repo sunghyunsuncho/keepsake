@@ -11,6 +11,7 @@ import { setMomentSource, type Moment } from '@/db/moments';
 import { useTheme } from '@/hooks/use-theme';
 import { cloudDisplayUri, cloudOriginalUrl } from '@/lib/cloud/photos';
 import { useCloudSession } from '@/lib/cloud/session';
+import { hasLimitedPhotoAccess } from '@/lib/photos';
 
 type PhotoMoment = Pick<
   Moment,
@@ -115,9 +116,11 @@ export function MomentPhoto({ moment, variant = 'display', style, contentFit = '
 function refreshSource(db: SQLiteDatabase, moment: PhotoMoment) {
   if (!moment.source_asset_id) return;
   MediaLibrary.getAssetInfoAsync(moment.source_asset_id, { shouldDownloadFromNetwork: false })
-    .then((asset) => {
+    .then(async (asset) => {
       if (!asset) {
-        if (!moment.source_missing) return setMomentSource(db, moment.id, { missing: true });
+        if (!moment.source_missing && !(await hasLimitedPhotoAccess())) {
+          return setMomentSource(db, moment.id, { missing: true });
+        }
       } else if (asset.uri !== moment.source_uri || moment.source_missing) {
         return setMomentSource(db, moment.id, { uri: asset.uri, missing: false });
       }

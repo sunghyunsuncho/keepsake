@@ -7,6 +7,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { notifyChange } from '@/db/changes';
 import { setMomentSource } from '@/db/moments';
 import { CloudError, cloudApi, unwrap } from '@/lib/cloud/session';
+import { hasLimitedPhotoAccess } from '@/lib/photos';
 import { cacheDir } from '@/lib/storage';
 
 // 사진 업로드·다운로드 (docs/PLAN.md §3.1). 사진 바이트는 서버를 거치지 않고 R2와 직접 오간다.
@@ -101,6 +102,7 @@ async function uploadOne(db: SQLiteDatabase, { id, variant }: PendingUpload) {
     shouldDownloadFromNetwork: true,
   });
   if (!info) {
+    if (await hasLimitedPhotoAccess()) throw new Error('허용하지 않은 사진이에요');
     await setMomentSource(db, id, { missing: true });
     return false;
   }
@@ -142,11 +144,12 @@ async function uploadFile(id: string, variant: Variant, file: File) {
   const md5 = info.exists ? info.md5 : undefined;
   if (!md5) throw new Error('사진 파일을 읽을 수 없어요');
 
-  const upload = unwrap(
-    await cloudApi.POST('/uploads', {
-      body: { moment_id: id, variant, size: file.size, content_type: contentType, md5 },
-    }),
-  );
+  const created = await cloudApi.POST('/uploads', {
+    body: { moment_id: id, variant, size: file.size, content_type: contentType, md5 },
+  });
+  // 다른 기기가 이미 올렸다. 서버의 사진을 그대로 쓴다.
+  if (created.response.status === 409) return;
+  const upload = unwrap(created);
   const put = await uploadAsync(upload.upload_url, file.uri, {
     httpMethod: 'PUT',
     uploadType: FileSystemUploadType.BINARY_CONTENT,

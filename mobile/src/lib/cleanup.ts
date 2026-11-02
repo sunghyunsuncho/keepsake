@@ -44,7 +44,7 @@ export function photosLeftBehind(
 
 /** 정리 화면에 보여줄 사진. 고르기 화면 이후에 달라졌을 수 있어 남긴 사진을 다시 확인하고, 즐겨찾기도 뺀다. */
 export async function loadCleanupPhotos() {
-  const saved = await assetsKeptOnDevice(pending.map((asset) => asset.id));
+  const saved = await assetsKeptOnDevice(pending);
   const candidates = pending.filter((asset) => !saved.has(asset.id));
   if (Platform.OS !== 'ios') return candidates; // Android는 즐겨찾기 여부를 주지 않는다.
 
@@ -74,7 +74,7 @@ async function isFavorite(asset: MediaLibrary.Asset) {
  * 사용자가 OS 확인 창에서 취소하면 예외가 난다.
  */
 export async function deleteLeftBehindPhotos(assets: MediaLibrary.Asset[]) {
-  const saved = await assetsKeptOnDevice(assets.map((asset) => asset.id));
+  const saved = await assetsKeptOnDevice(assets);
   const targets = assets.filter((asset) => !saved.has(asset.id));
   if (targets.length === 0) return 0;
   if (canTrash) {

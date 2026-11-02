@@ -17,6 +17,12 @@ function toAccess(response: MediaLibrary.PermissionResponse): PhotoAccess {
   return response.accessPrivileges === 'limited' ? 'limited' : 'all';
 }
 
+/** 일부 사진만 허용한 상태면 사진을 찾지 못해도 지워졌다고 볼 수 없다. */
+export async function hasLimitedPhotoAccess() {
+  const { accessPrivileges } = await MediaLibrary.getPermissionsAsync(false, GRANULAR);
+  return accessPrivileges === 'limited';
+}
+
 /**
  * 사진 접근 상태. 설정 앱에서 권한을 바꾸고 돌아오는 경우를 위해 앱이 다시 활성화될 때도
  * 확인한다. `canAskAgain`이 false면 시스템 대화상자가 더 이상 뜨지 않으므로 설정으로 안내한다.

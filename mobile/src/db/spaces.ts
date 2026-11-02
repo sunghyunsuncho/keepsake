@@ -46,20 +46,42 @@ function accountDatabaseFiles() {
     .filter((name) => ACCOUNT_DATABASE_PATTERN.test(name));
 }
 
-/** 이 기기의 어떤 공간이든 기록이 가리키는 사진 id. 사진 정리가 이 사진들을 지우면 안 된다. */
-export async function assetsKeptOnDevice(assetIds: string[]) {
+/**
+ * 이 기기의 어떤 공간이든 기록으로 남긴 사진 id. 사진 정리가 이 사진들을 지우면 안 된다.
+ * 다른 기기에서 받은 기록은 이 기기 사진과 연결돼 있지 않아도 iCloud로 같은 사진일 수 있어 파일 이름으로도 찾는다.
+ * 이름만 같은 다른 사진이 빠져도 지우자고 권하지 않을 뿐이라 시각까지 맞춰 보지 않는다.
+ */
+export async function assetsKeptOnDevice(assets: { id: string; filename: string }[]) {
   const localDb = await getLocalDb();
-  const kept = await existingAssets(localDb, assetIds);
+  const kept = await keptIn(localDb, assets);
   const retired = (await getSettings(localDb)).retired_spaces.map(accountDatabaseName);
   for (const name of accountDatabaseFiles()) {
     if (retired.includes(name)) continue;
     const db = await openDatabaseAsync(name, { useNewConnection: true });
     try {
-      (await existingAssets(db, assetIds)).forEach((id) => kept.add(id));
+      (await keptIn(db, assets)).forEach((id) => kept.add(id));
     } finally {
       await db.closeAsync();
     }
   }
+  return kept;
+}
+
+async function keptIn(db: SQLiteDatabase, assets: { id: string; filename: string }[]) {
+  const kept = await existingAssets(db, assets.map((asset) => asset.id));
+  const names = new Set<string>();
+  for (let i = 0; i < assets.length; i += 500) {
+    const chunk = assets.slice(i, i + 500).map((asset) => asset.filename);
+    const rows = await db.getAllAsync<{ original_filename: string }>(
+      `SELECT original_filename FROM moments
+       WHERE deleted_at IS NULL AND original_filename IN (${chunk.map(() => '?').join(',')})`,
+      chunk,
+    );
+    rows.forEach((row) => names.add(row.original_filename));
+  }
+  assets.forEach((asset) => {
+    if (names.has(asset.filename)) kept.add(asset.id);
+  });
   return kept;
 }
 
@@ -80,13 +102,14 @@ async function existingAssets(db: SQLiteDatabase, assetIds: string[]) {
 /**
  * 계정 공간의 기록 중 이 기기 사진을 가리키는 것을 Local로 옮긴다. Cloud가 지워져도 이 기기의 기록은 남긴다는 약속이다.
  * 같은 사진의 기록이 Local에 이미 있으면 옮기지 않는다. 다른 기기에서 받은 기록은 사진이 없어 옮기지 않는다.
+ * 사진을 찾지 못한 기록도 옮긴다. 메모와 장소는 사진이 없어도 남겨야 한다.
  */
 export async function keepLinkedMomentsInLocal(accountDb: SQLiteDatabase) {
   const localDb = await getLocalDb();
   const rows = await accountDb.getAllAsync<Record<string, string | number | null>>(
-    `SELECT source_asset_id, source_uri, original_filename, width, height, taken_at, taken_tz_offset,
+    `SELECT source_asset_id, source_uri, source_missing, original_filename, width, height, taken_at, taken_tz_offset,
        lat, lng, place_name, memo, created_at, updated_at
-     FROM moments WHERE deleted_at IS NULL AND source_asset_id IS NOT NULL AND source_missing = 0`,
+     FROM moments WHERE deleted_at IS NULL AND source_asset_id IS NOT NULL`,
   );
   if (rows.length === 0) return;
   const existing = await existingAssets(localDb, rows.map((row) => String(row.source_asset_id)));
@@ -100,10 +123,22 @@ export async function keepLinkedMomentsInLocal(accountDb: SQLiteDatabase) {
   }
 }
 
+const retiring = new Map<string, Promise<void>>();
+
 /**
  * 서버 데이터가 지워진 계정 공간을 정리한다. 남길 기록을 옮기고, 파일은 닫힌 뒤 purgeRetiredSpaces가 지운다.
  */
-export async function retireAccountSpace(userId: string) {
+export function retireAccountSpace(userId: string) {
+  // 여러 요청이 함께 계정 삭제를 알아채도 기록을 한 번만 옮긴다.
+  let running = retiring.get(userId);
+  if (!running) {
+    running = moveAndRetire(userId).finally(() => retiring.delete(userId));
+    retiring.set(userId, running);
+  }
+  return running;
+}
+
+async function moveAndRetire(userId: string) {
   const name = accountDatabaseName(userId);
   if (!accountDatabaseFiles().includes(name)) return;
   const localDb = await getLocalDb();
