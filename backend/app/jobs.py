@@ -8,19 +8,22 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.cloud import delete_account, purge_cloud_data, refresh_from_revenuecat
+from app.cloud import delete_account, lock_user, purge_cloud_data, refresh_from_revenuecat
 from app.config import get_settings
 from app.db import SessionLocal
-from app.models.cloud import CloudObject, Device, Entitlement, User
+from app.models.cloud import BillingEvent, CloudObject, Device, Entitlement, StorageCleanup, User
 from app.monitoring import init_sentry
-from app.storage import delete_object
+from app.storage import delete_object, delete_prefix
 
 log = logging.getLogger(__name__)
 
+# 업로드 URL(10분)이 끝난 뒤에 지워야 늦게 올라온 객체가 남지 않는다.
 STALE_UPLOAD_AFTER = timedelta(minutes=15)
+# 대금결제 기록 보관 기간 (개인정보처리방침 §3)
+BILLING_EVENT_RETENTION = timedelta(days=365 * 5)
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 
 # 유예 알림 단계 (docs/PLAN.md §2.4): 만료 즉시, 삭제 7일 전, 삭제 1일 전.
@@ -100,7 +103,15 @@ def expire_grace(db: Session, now: datetime) -> None:
                 log.error("skipped purge, subscription lookup failed: %s", user_id)
                 db.rollback()
                 continue
-            if entitlement.status != "grace":
+            db.commit()
+            # 조회하는 사이 재구독했을 수 있어, 상태를 잠그고 다시 읽어 확인한 뒤 지운다.
+            lock_user(db, user_id)
+            db.refresh(entitlement, with_for_update=True)
+            if (
+                entitlement.status != "grace"
+                or entitlement.grace_until is None
+                or entitlement.grace_until > now
+            ):
                 db.commit()
                 continue
             purge_cloud_data(db, user_id)
@@ -113,6 +124,16 @@ def expire_grace(db: Session, now: datetime) -> None:
             db.rollback()
 
 
+def recheck_lapsed_subscriptions(db: Session, now: datetime) -> None:
+    """만료 webhook을 놓쳐도 끝난 구독이 active로 남지 않게 한다. 스토어 결제 유예 중이면 유지된다."""
+    lapsed = db.scalars(
+        select(Entitlement).where(Entitlement.status == "active", Entitlement.expires_at < now)
+    ).all()
+    for entitlement in lapsed:
+        refresh_from_revenuecat(db, entitlement)
+        db.commit()
+
+
 def finish_account_deletions(db: Session) -> None:
     for user in db.scalars(select(User).where(User.deleted_at.is_not(None))).all():
         user_id = user.id
@@ -123,14 +144,24 @@ def finish_account_deletions(db: Session) -> None:
             db.rollback()
 
 
+def sweep_storage_cleanups(db: Session, now: datetime) -> None:
+    rows = db.scalars(select(StorageCleanup).where(StorageCleanup.not_before <= now)).all()
+    for cleanup in rows:
+        delete_prefix(cleanup.prefix)
+        db.delete(cleanup)
+        db.commit()
+
+
+def prune_billing_events(db: Session, now: datetime) -> None:
+    db.execute(delete(BillingEvent).where(BillingEvent.received_at < now - BILLING_EVENT_RETENTION))
+    db.commit()
+
+
 def clean_objects(db: Session, now: datetime) -> None:
     rows = db.scalars(
         select(CloudObject).where(
-            (CloudObject.status == "deleting")
-            | (
-                (CloudObject.status == "pending")
-                & (CloudObject.created_at < now - STALE_UPLOAD_AFTER)
-            )
+            CloudObject.status.in_(("deleting", "pending")),
+            CloudObject.created_at < now - STALE_UPLOAD_AFTER,
         )
     ).all()
     for obj in rows:
@@ -144,9 +175,12 @@ def run(db: Session, now: datetime | None = None, notify: Notifier = send_push) 
     # 각 단계는 따로 실패해도 다음 단계가 돌도록 나눈다.
     for step in (
         lambda: finish_account_deletions(db),
+        lambda: sweep_storage_cleanups(db, now),
+        lambda: recheck_lapsed_subscriptions(db, now),
         lambda: notify_grace(db, now, notify),
         lambda: expire_grace(db, now),
         lambda: clean_objects(db, now),
+        lambda: prune_billing_events(db, now),
     ):
         try:
             step()

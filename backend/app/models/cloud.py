@@ -176,3 +176,11 @@ class BillingEvent(Base):
     raw_payload: Mapped[str] = mapped_column(Text)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class StorageCleanup(Base):
+    """계정을 지운 뒤 다시 지울 R2 prefix. 삭제 전에 받은 업로드 URL로 늦게 올라온 객체를 지운다."""
+
+    __tablename__ = "storage_cleanups"
+    prefix: Mapped[str] = mapped_column(String(64), primary_key=True)
+    not_before: Mapped[datetime] = mapped_column(DateTime(timezone=True))

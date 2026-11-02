@@ -23,8 +23,8 @@ from app.config import get_settings
 from app.db import get_db
 from app.main import app
 from app.models import Base
-from app.models.cloud import Entitlement, User
-from app.storage import r2_client, user_prefix
+from app.models.cloud import Entitlement, StorageCleanup, User
+from app.storage import delete_prefix, r2_client, user_prefix
 
 WEBHOOK_SECRET = "test-webhook-secret"
 
@@ -411,6 +411,8 @@ def test_deleting_a_moment_releases_its_photos(client, db):
 
     assert client.get("/account", headers=headers).json()["usage"]["bytes_total"] == 0
     jobs.clean_objects(db, datetime.now(UTC))
+    assert prefix_keys(user_id) != []  # 업로드 URL이 끝날 때까지 기다린다
+    jobs.clean_objects(db, datetime.now(UTC) + jobs.STALE_UPLOAD_AFTER + timedelta(seconds=1))
     assert prefix_keys(user_id) == []
 
 
@@ -545,3 +547,111 @@ def test_failed_subscription_lookup_does_not_purge(client, db, monkeypatch):
 
     db.expire_all()
     assert db.get(Entitlement, user_id).status == "grace"
+
+
+def test_upload_does_not_replace_stored_photo(client, db):
+    user_id, headers = sign_in(client)
+    webhook(client, user_id, "INITIAL_PURCHASE")
+    moment_id = str(uuid4())
+    client.post(
+        "/sync/push", headers=headers, json={"moments": [moment(moment_id, "2026-10-01T00:00:00Z")]}
+    )
+    upload_id = upload(client, headers, moment_id, "display", b"photo")
+    client.post(f"/uploads/{upload_id}/complete", headers=headers)
+
+    response = client.post(
+        "/uploads",
+        headers=headers,
+        json={
+            "moment_id": moment_id,
+            "variant": "display",
+            "size": 5,
+            "content_type": "image/jpeg",
+            "md5": hashlib.md5(b"photo").hexdigest(),
+        },
+    )
+
+    assert response.status_code == 409
+    jobs.clean_objects(db, datetime.now(UTC) + timedelta(hours=1))
+    assert len(prefix_keys(user_id)) == 1
+    assert (
+        client.get(
+            f"/moments/{moment_id}/photo", headers=headers, params={"variant": "display"}
+        ).status_code
+        == 200
+    )
+
+
+def test_late_expiration_still_gets_full_grace(client, db):
+    user_id, _headers = sign_in(client)
+    webhook(client, user_id, "INITIAL_PURCHASE")
+    expired_at = datetime.now(UTC) - timedelta(days=40)
+    webhook(client, user_id, "EXPIRATION", expiration_at_ms=int(expired_at.timestamp() * 1000))
+
+    db.expire_all()
+    grace_until = db.get(Entitlement, user_id).grace_until
+    assert grace_until > datetime.now(UTC) + timedelta(days=29)
+
+
+def test_lapsed_active_subscription_is_rechecked(client, db, monkeypatch):
+    user_id, _headers = sign_in(client)
+    webhook(client, user_id, "INITIAL_PURCHASE")
+    entitlement = db.get(Entitlement, user_id)
+    entitlement.expires_at = datetime.now(UTC) - timedelta(days=1)
+    db.commit()
+    checked: list[str] = []
+    monkeypatch.setattr(
+        jobs, "refresh_from_revenuecat", lambda _db, e: checked.append(e.user_id) or True
+    )
+
+    jobs.recheck_lapsed_subscriptions(db, datetime.now(UTC))
+
+    assert user_id in checked
+
+
+def test_account_deletion_sweeps_late_uploads(client, db):
+    user_id, headers = sign_in(client)
+
+    assert client.delete("/account", headers=headers).status_code == 204
+
+    db.expire_all()
+    assert db.get(User, user_id) is None
+    r2_client().put_object(
+        Bucket=get_settings().r2_bucket, Key=f"{user_prefix(user_id)}m/late/display.jpg", Body=b"x"
+    )
+    jobs.sweep_storage_cleanups(db, datetime.now(UTC))
+    assert prefix_keys(user_id) != []
+    jobs.sweep_storage_cleanups(db, datetime.now(UTC) + timedelta(minutes=11))
+    assert prefix_keys(user_id) == []
+    assert db.get(StorageCleanup, user_prefix(user_id)) is None
+
+
+def test_account_deletion_is_retried_when_storage_fails(client, db, monkeypatch):
+    user_id, headers = sign_in(client)
+    monkeypatch.setattr(
+        "app.cloud.delete_prefix", lambda _prefix: (_ for _ in ()).throw(RuntimeError("R2 down"))
+    )
+
+    assert client.delete("/account", headers=headers).status_code == 204
+
+    db.expire_all()
+    assert db.get(User, user_id).deleted_at is not None
+    assert client.get("/account", headers=headers).status_code == 401
+    monkeypatch.undo()
+
+
+def test_delete_prefix_reports_partial_failure(monkeypatch):
+    class Client:
+        def get_paginator(self, _name):
+            return self
+
+        def paginate(self, **_kwargs):
+            return [{"Contents": [{"Key": "u/x/a"}]}]
+
+        def delete_objects(self, **_kwargs):
+            return {"Errors": [{"Key": "u/x/a"}]}
+
+    monkeypatch.setattr("app.storage.r2_client", lambda: Client())
+
+    with pytest.raises(RuntimeError):
+        delete_prefix("u/x/")

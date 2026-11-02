@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from typing import Literal
 
@@ -14,6 +15,8 @@ from app.cloud import (
 )
 from app.config import get_settings
 from app.models.cloud import Device, Entitlement, Usage, User
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/account", tags=["account"])
 
@@ -100,4 +103,9 @@ def remove_account(user: CurrentUser, db: DbSession) -> None:
 
     스토어 구독은 서버가 해지할 수 없으므로 앱이 해지 방법을 안내한다.
     """
-    delete_account(db, user)
+    try:
+        delete_account(db, user)
+    except Exception:
+        # 이미 삭제 요청으로 표시했다. 남은 정리는 주기 작업이 다시 하므로 앱에는 성공으로 알린다.
+        log.exception("account deletion will be retried: %s", user.id)
+        db.rollback()

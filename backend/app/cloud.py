@@ -8,8 +8,16 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models.cloud import CloudObject, Entitlement, Moment, SyncRecord, Usage, User
-from app.storage import delete_prefix, user_prefix
+from app.models.cloud import (
+    CloudObject,
+    Entitlement,
+    Moment,
+    StorageCleanup,
+    SyncRecord,
+    Usage,
+    User,
+)
+from app.storage import UPLOAD_URL_TTL, delete_prefix, user_prefix
 
 log = logging.getLogger(__name__)
 
@@ -59,7 +67,9 @@ def start_grace(entitlement: Entitlement, expired_at: datetime | None) -> None:
     """구독 만료. 이미 grace/expired면 기한을 늦추지 않는다 (만료 이벤트가 여러 번 올 수 있음)."""
     if entitlement.status != "active":
         return
-    base = expired_at or datetime.now(UTC)
+    # 만료를 늦게 알아도 30일은 보장한다. 지난 시각으로 계산하면 알림 없이 바로 지워진다.
+    now = datetime.now(UTC)
+    base = max(expired_at, now) if expired_at else now
     entitlement.status = "grace"
     entitlement.expires_at = expired_at
     entitlement.grace_until = base + timedelta(days=get_settings().cloud_grace_days)
@@ -107,6 +117,20 @@ def refresh_from_revenuecat(db: Session, entitlement: Entitlement) -> bool:
     return True
 
 
+def delete_revenuecat_customer(user_id: str) -> None:
+    """RevenueCat의 고객 정보를 지운다. 실패하면 예외를 내서 정리 작업이 다시 시도하게 한다."""
+    settings = get_settings()
+    if not settings.revenuecat_api_key:
+        return
+    response = httpx.delete(
+        f"{REVENUECAT_API}/subscribers/{user_id}",
+        headers={"Authorization": f"Bearer {settings.revenuecat_api_key}"},
+        timeout=10,
+    )
+    if response.status_code != 404:
+        response.raise_for_status()
+
+
 def purge_cloud_data(db: Session, user_id: str) -> None:
     """R2 객체와 서버 기록(moments, sync_records, cloud_objects)을 지운다. 계정·구독 행은 남긴다."""
     user = lock_user(db, user_id)
@@ -121,13 +145,18 @@ def purge_cloud_data(db: Session, user_id: str) -> None:
 
 
 def delete_account(db: Session, user: User) -> None:
-    """계정 삭제. R2를 먼저 지우고 계정 행을 지운다 (FK cascade로 나머지 행도 지워진다).
+    """계정 삭제. R2와 RevenueCat을 먼저 지우고 계정 행을 지운다 (나머지 행은 FK cascade).
 
-    R2 삭제가 실패하면 deleted_at만 남겨서 로그인·업로드를 막고, 정리 작업이 다시 시도한다.
+    중간에 실패하면 deleted_at만 남겨서 로그인·업로드를 막고, 정리 작업이 다시 시도한다.
     """
+    lock_user(db, user.id)
     user.deleted_at = user.deleted_at or datetime.now(UTC)
     db.commit()
-    delete_prefix(user_prefix(user.id))
+    prefix = user_prefix(user.id)
+    delete_prefix(prefix)
+    delete_revenuecat_customer(user.id)
+    # 삭제 전에 받은 업로드 URL이 끝날 때쯤 한 번 더 지운다.
+    db.merge(StorageCleanup(prefix=prefix, not_before=datetime.now(UTC) + UPLOAD_URL_TTL))
     db.delete(user)
     db.commit()
 

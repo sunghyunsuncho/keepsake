@@ -78,6 +78,9 @@ class Settings(BaseSettings):
         # 없으면 유예 만료 삭제 직전에 재구독 여부를 확인하지 못한다.
         if self.env == "production" and not self.revenuecat_api_key:
             missing.append("revenuecat_api_key")
+        # 없으면 만료 webhook을 모두 거절해서 구독이 끝나도 알 수 없다.
+        if self.env == "production" and not self.revenuecat_webhook_secret:
+            missing.append("revenuecat_webhook_secret")
         if missing:
             raise ValueError(f"ENV={self.env} requires explicit settings: {', '.join(missing)}")
         return self

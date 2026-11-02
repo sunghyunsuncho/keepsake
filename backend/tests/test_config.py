@@ -36,6 +36,7 @@ def test_non_local_env_accepts_explicit_values():
         env="production",
         cloud_billing_enabled=True,
         revenuecat_api_key="sk_test",
+        revenuecat_webhook_secret="whsec",
         **EXPLICIT,
     )
 
@@ -49,7 +50,7 @@ def test_production_requires_billing():
 
 
 def test_production_requires_revenuecat_key():
-    with pytest.raises(ValidationError, match="revenuecat_api_key"):
+    with pytest.raises(ValidationError, match="revenuecat_api_key.*revenuecat_webhook_secret"):
         Settings(_env_file=None, env="production", cloud_billing_enabled=True, **EXPLICIT)
 
 

@@ -1,9 +1,12 @@
+from datetime import timedelta
 from functools import lru_cache
 
 import boto3
 from botocore.client import Config
 
 from app.config import get_settings
+
+UPLOAD_URL_TTL = timedelta(minutes=10)
 
 
 @lru_cache
@@ -39,4 +42,7 @@ def delete_prefix(prefix: str) -> None:
     for page in client.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix):
         keys = [{"Key": item["Key"]} for item in page.get("Contents", [])]
         if keys:
-            client.delete_objects(Bucket=bucket, Delete={"Objects": keys, "Quiet": True})
+            result = client.delete_objects(Bucket=bucket, Delete={"Objects": keys, "Quiet": True})
+            # 일부만 실패해도 HTTP 200이 온다. 예외를 내야 호출한 쪽이 기록을 남기고 다시 시도한다.
+            if result.get("Errors"):
+                raise RuntimeError(f"failed to delete {len(result['Errors'])} objects")
