@@ -252,6 +252,8 @@ class BillingEvent:   id, raw_payload, received_at, processed_at  # 웹훅 원�
   - 서버에 저장된 사진은 덮어쓰지 않는다 (`POST /uploads`가 409, 앱은 올린 것으로 처리). 끝나지 못한 재업로드가 같은 키의 백업을 지우는 일을 막는다.
   - 유예 삭제 직전에 구독 상태를 조회하고, 조회에 실패하면 지우지 않는다. 만료 시각이 지난 active 구독은 주기 작업이 다시 조회한다. 유예 30일은 만료를 알아챈 시점부터 보장한다.
   - 계정 삭제는 R2와 RevenueCat 고객 정보를 지운 뒤 계정 행을 지운다. 중간에 실패해도 앱에는 성공으로 알리고 `deleted_at`으로 막은 채 주기 작업이 다시 한다. 삭제 전에 받은 업로드 URL로 늦게 올라온 객체는 `storage_cleanups`로 한 번 더 지운다. 앱은 401 `account unavailable`을 받으면 기기 기록을 Local로 옮긴다. 결제 이벤트 원본은 5년 뒤 지운다.
+  - 라이브러리 패치 (`mobile/patches`, `postinstall`): `expo-sqlite`는 공간을 바꿀 때 진행 중인 쿼리가 닫힌 연결에 닿아 앱이 죽어서(SIGSEGV) 이전 연결을 닫지 않는다. `expo-media-library`는 촬영일이 없는 Android 사진이 날짜 조건에서 빠져서 수정 시각으로 대신한다 (소스에서 빌드하도록 `package.json`에 지정).
+  - 사진 연결 복원: 일부 사진만 허용한 상태면 완료로 표시하지 않고 동기화 때마다 다시 시도한다. iOS는 앱을 지워도 키체인의 세션이 남아 재설치 후 로그인 없이 이어진다.
   - Google 로그인은 `@react-native-google-signin/google-signin`(네이티브). 토큰의 aud는 웹 클라이언트 ID다.
 
 ### Phase 3 — 다시 보기 강화 & 출시 (2주)
