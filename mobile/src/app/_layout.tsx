@@ -11,8 +11,11 @@ import { ReviewReminders } from '@/components/review-reminders';
 import { migrateDb } from '@/db/schema';
 import { getLocalDb } from '@/db/spaces';
 import { useActiveDatabaseName } from '@/lib/cloud/space';
+import { initMonitoring, wrapRoot } from '@/lib/monitoring';
 
-export default function RootLayout() {
+initMonitoring();
+
+function RootLayout() {
   const colorScheme = useColorScheme();
   const databaseName = useActiveDatabaseName();
   const [localReady, setLocalReady] = useState(false);
@@ -59,6 +62,8 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+export default wrapRoot(RootLayout);
 
 function Loading() {
   return (

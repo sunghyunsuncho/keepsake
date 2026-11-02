@@ -2,6 +2,7 @@
   "expo": {
     "name": "Keepsake",
     "slug": "keepsake",
+    "owner": "atelier-labs",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -35,6 +36,13 @@
           "backgroundColor": "#F4F1EC",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 160
+        }
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "atelier-labs",
+          "project": "keepsake-mobile"
         }
       ],
       "expo-sqlite",
