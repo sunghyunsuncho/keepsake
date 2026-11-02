@@ -11,7 +11,7 @@ import { getSettings, setSetting } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { formatFullDate, formatTime } from '@/lib/dates';
 import { deleteAccount, signOut, syncCloud, useCloudState } from '@/lib/cloud/engine';
-import { countMissingOriginals, downloadOriginals } from '@/lib/cloud/photos';
+import { countMissingOriginals, PhotoSaveError, saveOriginalsToLibrary } from '@/lib/cloud/photos';
 import { MANAGE_SUBSCRIPTION_URL, purchasesAvailable } from '@/lib/cloud/purchases';
 import { useCloudSession } from '@/lib/cloud/session';
 import { formatBytes } from '@/lib/storage';
@@ -31,7 +31,8 @@ export function CloudSection() {
     return (
       <View style={styles.section}>
         <ThemedText type="small" themeColor="textSecondary">
-          Cloud를 구독하면 원본과 메모를 백업하고, 새 기기에서 로그인만으로 되돌릴 수 있어요.
+          Cloud를 구독하면 직접 남긴 사진의 원본만 따로 보관해요. 백업이 끝난 사진은 기기 사진첩에서 지워도
+          남으니 휴대폰을 비워도 되고, 새 기기에서는 로그인만으로 되돌릴 수 있어요.
         </ThemedText>
         <Button label="Cloud 알아보기" variant="secondary" onPress={() => router.push('/cloud')} />
       </View>
@@ -45,26 +46,31 @@ export function CloudSection() {
     if (downloading) return;
     setDownloading({ done: 0, total: missingOriginals ?? 0 });
     try {
-      const result = await downloadOriginals(db, (done, total) => setDownloading({ done, total }));
+      const result = await saveOriginalsToLibrary(db, (done, total) => setDownloading({ done, total }));
       Alert.alert(
-        '원본을 받았어요',
-        result.failed > 0 ? `${result.failed}장은 받지 못했어요. 다시 시도해 주세요.` : '모든 원본이 이 기기에 있어요.',
+        '기기 사진첩에 저장했어요',
+        result.failed > 0
+          ? `${result.failed}장은 저장하지 못했어요. 다시 시도해 주세요.`
+          : 'Cloud에만 있던 원본을 모두 기기 사진첩에 저장했어요.',
       );
-    } catch {
-      Alert.alert('원본을 받지 못했어요', '잠시 후 다시 시도해 주세요.');
+    } catch (e) {
+      Alert.alert(
+        '사진을 저장하지 못했어요',
+        e instanceof PhotoSaveError ? e.message : '잠시 후 다시 시도해 주세요.',
+      );
     } finally {
       setDownloading(null);
     }
   };
 
   const confirmSignOut = () =>
-    Alert.alert('로그아웃할까요?', '이 기기의 기록과 사진은 그대로 남아요. 백업은 멈춰요.', [
+    Alert.alert('로그아웃할까요?', 'Local 기록으로 돌아가요. 이 계정의 기록은 다시 로그인하면 볼 수 있어요.', [
       { text: '취소', style: 'cancel' },
       {
         text: '로그아웃',
         onPress: async () => {
           setBusy(true);
-          await signOut(db).finally(() => setBusy(false));
+          await signOut().finally(() => setBusy(false));
         },
       },
     ]);
@@ -72,7 +78,7 @@ export function CloudSection() {
   const confirmDelete = () =>
     Alert.alert(
       '계정을 삭제할까요?',
-      'Cloud에 백업한 사진과 기록이 바로 삭제되고 되돌릴 수 없어요. 이 기기의 기록은 그대로 남아요.' +
+      'Cloud에 백업한 사진과 기록이 바로 삭제되고 되돌릴 수 없어요. Local 기록과, 이 기기 사진첩에 원본이 있는 기록은 기기에 남아요.' +
         (purchasesAvailable ? '\n\n구독은 자동으로 해지되지 않으니 스토어의 구독 관리에서 해지해 주세요.' : ''),
       [
         { text: '취소', style: 'cancel' },
@@ -82,7 +88,7 @@ export function CloudSection() {
           onPress: async () => {
             setBusy(true);
             try {
-              await deleteAccount(db);
+              await deleteAccount();
               if (purchasesAvailable) {
                 Alert.alert('계정을 삭제했어요', '구독 해지를 잊지 마세요.', [
                   { text: '나중에' },
@@ -147,8 +153,8 @@ export function CloudSection() {
         <Button
           label={
             downloading
-              ? `원본 받는 중 ${downloading.done}/${downloading.total}`
-              : `Cloud에만 있는 원본 받기 (${missingOriginals}장)`
+              ? `기기 사진첩에 저장하는 중 ${downloading.done}/${downloading.total}`
+              : `Cloud에만 있는 원본을 기기 사진첩에 저장 (${missingOriginals}장)`
           }
           variant={subscription.status === 'grace' ? 'primary' : 'secondary'}
           disabled={downloading !== null}
@@ -169,6 +175,11 @@ export function CloudSection() {
               }}
             />
           </View>
+          <Button
+            label="기기 기록 올리기"
+            variant="secondary"
+            onPress={() => router.push({ pathname: '/cloud-import', params: { all: '1' } })}
+          />
           <Button label="지금 동기화" variant="secondary" loading={running} onPress={() => syncCloud(db)} />
           {purchasesAvailable && (
             <Button
@@ -192,10 +203,10 @@ function statusText(status: string, graceUntil: string | null) {
       return 'Cloud 백업을 사용하고 있어요.';
     case 'grace':
       return graceUntil
-        ? `구독이 끝났어요. ${formatFullDate(graceUntil)}까지 백업한 사진을 내려받을 수 있고, 그 뒤 삭제돼요.`
-        : '구독이 끝났어요. 30일 동안 백업한 사진을 내려받을 수 있어요.';
+        ? `구독이 끝났어요. ${formatFullDate(graceUntil)}까지 백업한 사진을 내려받을 수 있고, 그 뒤 삭제돼요. 새 기록은 이 기기에만 저장돼요.`
+        : '구독이 끝났어요. 30일 동안 백업한 사진을 내려받을 수 있어요. 새 기록은 이 기기에만 저장돼요.';
     case 'expired':
-      return '구독이 끝나 Cloud 데이터가 삭제됐어요. 이 기기의 기록은 그대로 있어요.';
+      return '구독이 끝나 Cloud 데이터가 삭제됐어요. 이 기기 사진첩에 원본이 있는 기록은 Local에 남겼어요.';
     default:
       return '로그인했어요. 구독하면 백업을 시작해요.';
   }

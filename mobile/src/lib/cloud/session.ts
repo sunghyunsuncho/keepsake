@@ -21,9 +21,10 @@ function emit() {
 
 export async function loadSession(): Promise<CloudSession | null> {
   if (session !== undefined) return session;
-  const raw = await SecureStore.getItemAsync(SESSION_KEY);
+  // 저장소를 읽지 못해도(복원된 기기의 키 불일치 등) 앱은 Local로 열려야 한다.
+  const raw = await SecureStore.getItemAsync(SESSION_KEY).catch(() => null);
   session = parseSession(raw);
-  if (raw && !session) await SecureStore.deleteItemAsync(SESSION_KEY);
+  if (raw && !session) await SecureStore.deleteItemAsync(SESSION_KEY).catch(() => {});
   emit();
   return session;
 }

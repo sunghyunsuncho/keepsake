@@ -3,7 +3,9 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { useSyncExternalStore } from 'react';
 
 import { getSettings, setSetting } from '@/db/settings';
-import { countPendingUploads, downloadMissingDisplays, uploadPending } from '@/lib/cloud/photos';
+import { isAccountDb, keepAccountSpace, purgeRetiredSpaces, retireAccountSpace } from '@/db/spaces';
+import { pushDeviceLinks, restoreDeviceLinks } from '@/lib/cloud/device-links';
+import { countPendingUploads, uploadPending } from '@/lib/cloud/photos';
 import { clearPurchasesUser, setPurchasesUser } from '@/lib/cloud/purchases';
 import { registerPushToken } from '@/lib/cloud/push';
 import {
@@ -15,9 +17,12 @@ import {
   unwrap,
 } from '@/lib/cloud/session';
 import { signOutProviders } from '@/lib/cloud/sign-in';
-import { hasLocalChanges, pullChanges, pushChanges, resetCloudState } from '@/lib/cloud/sync';
+import { setCloudSpace } from '@/lib/cloud/space';
+import { hasLocalChanges, pullChanges, pushChanges, resetAccountSpace } from '@/lib/cloud/sync';
 
-// Cloud 동기화 한 바퀴: 구독 상태 확인 → 바뀐 기록 push → 다른 기기 변경 pull → 사진 업로드 → 사진 받기.
+// Cloud 동기화 한 바퀴: 구독 상태 확인 → 바뀐 기록 push → 다른 기기 변경 pull → 사진 업로드.
+// 계정 공간의 DB만 서버와 맞춘다. Local DB는 사용자가 골라서 복사할 때(cloud/imports.ts)만 Cloud에 들어간다.
+// 사진 받기는 볼 때 한 장씩 한다 (components/moment-photo.tsx).
 // 화면은 cloudState만 보여주고, 허용 여부는 서버가 준 subscription 값을 그대로 따른다.
 
 export type CloudState = {
@@ -58,6 +63,10 @@ let current: Promise<void> | null = null;
 // (동기화 자체가 pull 지점을 저장하며 변경 알림을 내므로, 'local'로 다시 돌면 할 일 없이 끝난다.)
 let again: 'none' | 'local' | 'full' = 'none';
 let stopRequested = false;
+// 로그아웃·계정 삭제 중에는 새 동기화를 시작하지 않는다.
+let paused = false;
+// 공간이 바뀌면 이전 DB는 닫힌다. 다시 돌 때는 마지막에 요청한 DB를 쓴다.
+let latestDb: SQLiteDatabase | null = null;
 let pushTokenChecked = false;
 
 /**
@@ -65,7 +74,9 @@ let pushTokenChecked = false;
  * onlyIfLocalChanges: 데이터가 바뀔 때마다 부르는 경우. 보낼 것이 없으면 네트워크를 쓰지 않는다.
  */
 export function syncCloud(db: SQLiteDatabase, options: { onlyIfLocalChanges?: boolean } = {}) {
+  if (paused) return Promise.resolve();
   const mode = options.onlyIfLocalChanges ? 'local' : 'full';
+  latestDb = db;
   if (current) {
     if (again !== 'full') again = mode;
     return current;
@@ -75,7 +86,7 @@ export function syncCloud(db: SQLiteDatabase, options: { onlyIfLocalChanges?: bo
     try {
       while (next !== 'none' && !stopRequested) {
         again = 'none';
-        await runOnce(db, next === 'local');
+        await runOnce(latestDb ?? db, next === 'local');
         next = again;
       }
     } finally {
@@ -93,6 +104,8 @@ async function runOnce(db: SQLiteDatabase, onlyIfLocalChanges: boolean) {
     if (state.account) update({ account: null, problem: null });
     return;
   }
+  const onAccountSpace = isAccountDb(db, session.userId);
+  if (onlyIfLocalChanges && !onAccountSpace) return;
   if (onlyIfLocalChanges && !(await hasLocalChanges(db))) {
     update({ pendingUploads: await countPendingUploads(db) });
     return;
@@ -107,15 +120,29 @@ async function runOnce(db: SQLiteDatabase, onlyIfLocalChanges: boolean) {
     // 결제 SDK 문제로 백업이 멈추지 않게 한다 (사용자 연결은 다음 동기화나 구매 전에 다시 한다).
     await setPurchasesUser(session.userId).catch(() => {});
     const account = unwrap(await cloudApi.GET('/account'));
-    update({ account });
-    // 기기의 '보냄' 표시와 pull 지점은 한 계정의 한 세대 기준이다. 다른 계정으로 로그인했거나
-    // (세션 만료 뒤 다른 계정으로 들어온 경우 포함) 서버가 유예 만료로 데이터를 지웠으면 처음부터 다시 맞춘다.
+    update({ account, problem: null });
+    const { subscription } = account;
+    // 읽을 수 없는 계정(구독 전, 만료)은 Local을 쓴다. 공간을 바꾸면 CloudSync가 새 DB로 다시 부른다.
+    if (!subscription.can_download) {
+      if (onAccountSpace) await setCloudSpace(null);
+      else if (subscription.status === 'expired') {
+        await retireAccountSpace(session.userId);
+        await purgeRetiredSpaces();
+      }
+      return;
+    }
+    if (!onAccountSpace) {
+      await setCloudSpace(session.userId);
+      return;
+    }
+    await keepAccountSpace(session.userId);
+    // 서버가 유예 만료로 데이터를 지웠으면 이 공간의 기록도 더는 Cloud에 없다.
     const accountKey = `${account.user_id}:${account.data_generation}`;
-    if ((await getSettings(db)).cloud_account_key !== accountKey) {
-      await resetCloudState(db);
+    const savedKey = (await getSettings(db)).cloud_account_key;
+    if (savedKey !== accountKey) {
+      if (savedKey !== null) await resetAccountSpace(db);
       await setSetting(db, 'cloud_account_key', accountKey);
     }
-    const { subscription } = account;
     if (!pushTokenChecked && subscription.status !== 'none') {
       // 토큰은 바뀔 수 있으므로 앱을 실행할 때마다 한 번 알린다 (권한은 구독 직후에만 묻는다).
       pushTokenChecked = true;
@@ -128,8 +155,13 @@ async function runOnce(db: SQLiteDatabase, onlyIfLocalChanges: boolean) {
     if (subscription.can_upload) pushed = await pushChanges(db);
     // 사진을 올리기 전에 받는다: 이미 Cloud에 있는 사진(다시 로그인한 계정, 다른 기기가 올린 사진)은
     // pull이 '올라감'으로 표시하므로 다시 올리지 않는다.
-    const pulled = subscription.can_download ? await pullChanges(db) : 0;
+    if (subscription.can_download) {
+      await pullChanges(db);
+      // 연결은 없어도 사진을 Cloud에서 볼 수 있으므로, 실패해도 백업을 멈추지 않고 다음에 다시 한다.
+      await restoreDeviceLinks(db, session.userId).catch(() => {});
+    }
     if (subscription.can_upload) {
+      await pushDeviceLinks(db, session.userId).catch(() => {});
       const settings = await getSettings(db);
       const cellular = network.type === Network.NetworkStateType.CELLULAR;
       if (settings.wifi_only_upload && cellular) {
@@ -144,18 +176,14 @@ async function runOnce(db: SQLiteDatabase, onlyIfLocalChanges: boolean) {
         }
       }
     }
-    // 빠진 표시용 사진 찾기는 모든 기록의 파일을 확인하므로, 기록을 고칠 때마다 도는 동기화에서는
-    // 새로 받은 기록이 있을 때만 한다.
-    if (subscription.can_download && (pulled > 0 || !onlyIfLocalChanges)) {
-      await downloadMissingDisplays(db, () => stopRequested);
-    }
     // 보낸 기록(삭제 포함)이나 올린 사진이 있으면 사용량이 바뀌었으므로 다시 받는다.
     const refreshed = pushed > 0 || uploaded > 0 ? unwrap(await cloudApi.GET('/account')) : account;
     update({ account: refreshed, problem, lastSyncedAt: new Date().toISOString() });
   } catch (e) {
     update({ problem: describe(e) });
   } finally {
-    update({ running: false, pendingUploads: await countPendingUploads(db) });
+    // 공간이 바뀌어 DB가 닫혔으면 다음 동기화에서 다시 센다.
+    update({ running: false, pendingUploads: await countPendingUploads(db).catch(() => 0) });
   }
 }
 
@@ -170,7 +198,7 @@ function describe(e: unknown) {
 
 /**
  * 로그인 직후: RevenueCat 사용자를 맞추고 화면에 쓸 계정 상태를 받는다.
- * 기기의 기록을 이 계정에 올리는 동기화는 세션이 생기면 CloudSync가 시작한다.
+ * 계정 공간으로 옮기고 동기화를 시작하는 일은 세션이 생기면 CloudSync가 한다.
  */
 export async function afterSignIn(userId: string) {
   // 실패해도 로그인은 끝났다. 구매는 사용자가 연결되지 않았으면 스스로 거절한다.
@@ -198,21 +226,34 @@ async function stopSync() {
   await current;
 }
 
-/** 로그아웃. 기기의 기록과 사진은 그대로 두고 Local로 돌아간다. */
-export async function signOut(db: SQLiteDatabase) {
-  // 세션을 먼저 지워서 그 사이 새 동기화가 시작되지 않게 하고, 도는 중인 것은 끝날 때까지 기다린다.
-  await saveSession(null);
-  await stopSync();
-  await clearPurchasesUser();
-  await signOutProviders();
-  await resetCloudState(db);
-  pushTokenChecked = false;
-  update({ account: null, problem: null, pendingUploads: 0, lastSyncedAt: null });
+/** 로그아웃. Local로 돌아간다. 계정 공간은 기기에 남아 다시 로그인하면 이어서 쓴다. */
+export async function signOut() {
+  // 도는 동기화를 먼저 끝낸다. 세션을 지우면 쓰던 DB가 닫힌다.
+  paused = true;
+  try {
+    await stopSync();
+    await clearPurchasesUser();
+    await signOutProviders();
+    await setCloudSpace(null);
+    await saveSession(null);
+    pushTokenChecked = false;
+    update({ account: null, problem: null, pendingUploads: 0, lastSyncedAt: null });
+  } finally {
+    paused = false;
+  }
 }
 
-/** 계정 삭제 (App Store 필수). 서버와 R2의 데이터를 지우고 Local로 돌아간다. */
-export async function deleteAccount(db: SQLiteDatabase) {
-  await stopSync();
-  unwrap(await cloudApi.DELETE('/account'));
-  await signOut(db);
+/** 계정 삭제 (App Store 필수). 서버와 R2의 데이터를 지우고, 이 기기 사진의 기록은 Local에 남긴다. */
+export async function deleteAccount() {
+  paused = true;
+  try {
+    await stopSync();
+    const session = await loadSession();
+    unwrap(await cloudApi.DELETE('/account'));
+    // 서버에서는 이미 지워졌다. 기기 정리에 실패해도 삭제 실패로 알리지 않는다.
+    if (session) await retireAccountSpace(session.userId).catch(() => {});
+  } finally {
+    paused = false;
+  }
+  await signOut();
 }

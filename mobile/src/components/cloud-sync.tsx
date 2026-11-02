@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
 import { subscribeChanges } from '@/db/changes';
+import { purgeRetiredSpaces } from '@/db/spaces';
 import { syncCloud } from '@/lib/cloud/engine';
 import { useCloudSession } from '@/lib/cloud/session';
 
@@ -13,6 +14,11 @@ export function CloudSync() {
   const db = useSQLiteContext();
   const session = useCloudSession();
   const signedIn = Boolean(session);
+
+  useEffect(() => {
+    // 공간이 바뀌면 이전 DB가 닫힌 뒤이므로, 정리하기로 한 계정 공간 파일을 지울 수 있다.
+    purgeRetiredSpaces().catch(() => {});
+  }, [db]);
 
   useEffect(() => {
     if (!signedIn) return;
