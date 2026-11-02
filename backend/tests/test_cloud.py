@@ -531,3 +531,17 @@ def test_webhook_rejects_wrong_secret(client):
         headers={"Authorization": "Bearer wrong"},
     )
     assert response.status_code == 401
+
+
+def test_failed_subscription_lookup_does_not_purge(client, db, monkeypatch):
+    user_id, _headers = sign_in(client)
+    webhook(client, user_id, "INITIAL_PURCHASE")
+    expired_at = datetime.now(UTC)
+    webhook(client, user_id, "EXPIRATION", expiration_at_ms=int(expired_at.timestamp() * 1000))
+    monkeypatch.setattr(get_settings(), "revenuecat_api_key", "sk_test")
+    monkeypatch.setattr(jobs, "refresh_from_revenuecat", lambda _db, _entitlement: False)
+
+    jobs.expire_grace(db, expired_at + timedelta(days=31))
+
+    db.expire_all()
+    assert db.get(Entitlement, user_id).status == "grace"

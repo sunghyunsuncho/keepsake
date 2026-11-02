@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
 from app.api import account, auth, billing, health, sync, uploads
+from app.monitoring import init_sentry
+
+init_sentry()
 
 
 def _operation_id(route: APIRoute) -> str:

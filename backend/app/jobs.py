@@ -15,6 +15,7 @@ from app.cloud import delete_account, purge_cloud_data, refresh_from_revenuecat
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models.cloud import CloudObject, Device, Entitlement, User
+from app.monitoring import init_sentry
 from app.storage import delete_object
 
 log = logging.getLogger(__name__)
@@ -93,7 +94,12 @@ def expire_grace(db: Session, now: datetime) -> None:
         user_id = entitlement.user_id
         try:
             # 실수로 지우지 않도록 삭제 직전에 재구독 여부를 다시 확인한다 (§8 리스크).
-            refresh_from_revenuecat(db, entitlement)
+            refreshed = refresh_from_revenuecat(db, entitlement)
+            if not refreshed and get_settings().revenuecat_api_key:
+                # 재구독 여부를 모르면 지우지 않는다. 다음 실행 때 다시 확인한다.
+                log.error("skipped purge, subscription lookup failed: %s", user_id)
+                db.rollback()
+                continue
             if entitlement.status != "grace":
                 db.commit()
                 continue
@@ -151,5 +157,6 @@ def run(db: Session, now: datetime | None = None, notify: Notifier = send_push) 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    init_sentry()
     with SessionLocal() as session:
         run(session)

@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Self
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 실행 위치(repo 루트, alembic, scripts)와 상관없이 backend/.env를 읽는다.
@@ -14,6 +14,9 @@ _REQUIRED_OUTSIDE_LOCAL = (
     "r2_endpoint_url",
     "r2_access_key_id",
     "r2_secret_access_key",
+    "r2_bucket",
+    "apple_client_id",
+    "google_client_id",
 )
 
 
@@ -47,17 +50,34 @@ class Settings(BaseSettings):
     google_client_id: str | None = None
     # Expo 푸시 서비스에서 '보안 푸시'를 켰을 때만 필요하다.
     expo_access_token: str | None = None
+    # 없으면 Sentry로 보내지 않는다. 커밋 값은 Railway가 넣어 준다.
+    sentry_dsn: str | None = None
+    railway_git_commit_sha: str | None = None
+
+    @field_validator("database_url")
+    @classmethod
+    def _use_psycopg_driver(cls, value: str) -> str:
+        # Railway가 주는 postgresql:// 주소는 설치하지 않은 psycopg2를 찾는다.
+        scheme, separator, rest = value.partition("://")
+        return f"postgresql+psycopg://{rest}" if scheme in ("postgres", "postgresql") else value
 
     @model_validator(mode="after")
     def _require_real_values_outside_local(self) -> Self:
         if self.env == "local":
             return self
         defaults = {name: field.default for name, field in type(self).model_fields.items()}
-        missing = [n for n in _REQUIRED_OUTSIDE_LOCAL if getattr(self, n) == defaults[n]]
+        missing = [
+            n
+            for n in _REQUIRED_OUTSIDE_LOCAL
+            if not getattr(self, n) or getattr(self, n) == defaults[n]
+        ]
         if self.jwt_secret == type(self).model_fields["jwt_secret"].default:
             missing.append("jwt_secret")
         if self.env == "production" and not self.cloud_billing_enabled:
             missing.append("cloud_billing_enabled=true")
+        # 없으면 유예 만료 삭제 직전에 재구독 여부를 확인하지 못한다.
+        if self.env == "production" and not self.revenuecat_api_key:
+            missing.append("revenuecat_api_key")
         if missing:
             raise ValueError(f"ENV={self.env} requires explicit settings: {', '.join(missing)}")
         return self
