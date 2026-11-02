@@ -8,21 +8,27 @@ import json
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from app.api.deps import CurrentUser, DbSession, require_read, require_write
 from app.cloud import lock_user, stored_variants
-from app.models.cloud import CloudObject, Moment, SyncRecord, Usage
+from app.models.cloud import CloudObject, DeviceLink, Moment, SyncRecord, Usage
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 
 PULL_LIMIT = 500
+LINK_PAGE_LIMIT = 500
 
-# 기기마다 다른 값(파일 경로, 동기화 표시)은 서버에 두지 않는다.
+# 기기마다 다른 값(사진첩 연결, 동기화 표시)은 기록에 넣지 않는다. 다른 기기로 내려가기 때문이다.
+# 사진첩 연결은 기기별로 따로 받는다 (/sync/device-links).
+# local_*_path는 사진을 앱에 복사하던 이전 버전 앱이 보낸다.
 DEVICE_ONLY_FIELDS = frozenset(
     {
+        "source_asset_id",
+        "source_uri",
+        "source_missing",
         "local_original_path",
         "local_display_path",
         "sync_state",
@@ -71,6 +77,21 @@ class PullResponse(BaseModel):
     moments: list[SyncMoment]
     records: list[SyncRecordRow]
     cursor: int
+    has_more: bool
+
+
+class DeviceLinkRow(BaseModel):
+    moment_id: str = Field(max_length=36)
+    asset_id: str = Field(max_length=255)
+
+
+class PutDeviceLinksRequest(BaseModel):
+    device_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    links: list[DeviceLinkRow] = Field(max_length=LINK_PAGE_LIMIT)
+
+
+class DeviceLinksResponse(BaseModel):
+    links: list[DeviceLinkRow]
     has_more: bool
 
 
@@ -153,6 +174,11 @@ def push(payload: PushRequest, user: CurrentUser, db: DbSession) -> PushResponse
 
     if deleted_moments:
         _release_photos(db, user.id, deleted_moments)
+        db.execute(
+            delete(DeviceLink).where(
+                DeviceLink.user_id == user.id, DeviceLink.moment_id.in_(deleted_moments)
+            )
+        )
     locked.sync_seq = seq
     db.commit()
     return PushResponse(stale_moment_ids=stale_moments, stale_record_ids=stale_records)
@@ -220,4 +246,65 @@ def pull(
         ],
         cursor=next_cursor,
         has_more=has_more,
+    )
+
+
+@router.put("/device-links", status_code=status.HTTP_204_NO_CONTENT)
+def put_device_links(payload: PutDeviceLinksRequest, user: CurrentUser, db: DbSession) -> None:
+    require_write(db, user)
+    # 서버에 없거나 지워진 기록의 연결은 받지 않는다.
+    active = set(
+        db.scalars(
+            select(Moment.id).where(
+                Moment.user_id == user.id,
+                Moment.id.in_([link.moment_id for link in payload.links]),
+                Moment.deleted_at.is_(None),
+            )
+        )
+    )
+    seen: set[str] = set()
+    for link in payload.links:
+        if link.moment_id not in active or link.moment_id in seen:
+            continue
+        seen.add(link.moment_id)
+        existing = db.get(DeviceLink, (user.id, payload.device_id, link.moment_id))
+        if existing is None:
+            db.add(
+                DeviceLink(
+                    user_id=user.id,
+                    device_id=payload.device_id,
+                    moment_id=link.moment_id,
+                    asset_id=link.asset_id,
+                )
+            )
+        else:
+            existing.asset_id = link.asset_id
+    db.commit()
+
+
+@router.get("/device-links", response_model=DeviceLinksResponse)
+def get_device_links(
+    user: CurrentUser,
+    db: DbSession,
+    device_id: Annotated[str, Query(pattern=r"^[0-9a-f]{64}$")],
+    after: Annotated[str, Query(max_length=36)] = "",
+) -> DeviceLinksResponse:
+    """요청한 기기의 연결만 돌려준다. moment_id 순으로 나눠 받는다."""
+    require_read(db, user)
+    rows = db.scalars(
+        select(DeviceLink)
+        .where(
+            DeviceLink.user_id == user.id,
+            DeviceLink.device_id == device_id,
+            DeviceLink.moment_id > after,
+        )
+        .order_by(DeviceLink.moment_id)
+        .limit(LINK_PAGE_LIMIT + 1)
+    ).all()
+    return DeviceLinksResponse(
+        links=[
+            DeviceLinkRow(moment_id=row.moment_id, asset_id=row.asset_id)
+            for row in rows[:LINK_PAGE_LIMIT]
+        ],
+        has_more=len(rows) > LINK_PAGE_LIMIT,
     )

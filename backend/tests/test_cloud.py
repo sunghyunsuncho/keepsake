@@ -118,6 +118,7 @@ def moment(moment_id: str, updated_at: str, **data) -> dict:
             "id": moment_id,
             "memo": "",
             "local_display_path": f"photos/{moment_id}/display.jpg",
+            "source_asset_id": "ABC/L0/001",
             "sync_state": "pending",
             **data,
         },
@@ -259,6 +260,7 @@ def test_backup_and_restore_on_another_device(client):
     assert restored["stored_variants"] == ["display"]
     # 기기마다 다른 값은 서버에 남기지 않는다.
     assert "local_display_path" not in restored["data"]
+    assert "source_asset_id" not in restored["data"]
     assert "sync_state" not in restored["data"]
     assert pulled["records"][0]["kind"] == "review_sessions"
     assert pulled["has_more"] is False
@@ -307,6 +309,55 @@ def test_pull_pages_through_changes(client, monkeypatch):
         cursor, has_more = page["cursor"], page["has_more"]
 
     assert received == ids
+
+
+def test_device_links_stay_with_their_device_and_account(client):
+    _, one = sign_in(client)
+    _, two = sign_in(client)
+    device_a, device_b = "a" * 64, "b" * 64
+    for headers in (one, two):
+        webhook_user = client.get("/account", headers=headers).json()["user_id"]
+        webhook(client, webhook_user, "INITIAL_PURCHASE")
+    moment_id = str(uuid4())
+    client.post(
+        "/sync/push",
+        headers=one,
+        json={"moments": [moment(moment_id, "2026-10-01T00:00:00+00:00")]},
+    ).raise_for_status()
+
+    links = [
+        {"moment_id": moment_id, "asset_id": "asset-1"},
+        {"moment_id": str(uuid4()), "asset_id": "unknown-moment"},
+    ]
+    client.put(
+        "/sync/device-links", headers=one, json={"device_id": device_a, "links": links}
+    ).raise_for_status()
+
+    def links_of(headers: dict, device_id: str) -> list[dict]:
+        response = client.get(
+            "/sync/device-links", headers=headers, params={"device_id": device_id}
+        )
+        response.raise_for_status()
+        return response.json()["links"]
+
+    assert links_of(one, device_a) == [{"moment_id": moment_id, "asset_id": "asset-1"}]
+    assert links_of(one, device_b) == []
+    assert links_of(two, device_a) == []
+
+    # 기록을 지우면 연결도 지운다.
+    client.post(
+        "/sync/push",
+        headers=one,
+        json={
+            "moments": [
+                {
+                    **moment(moment_id, "2026-10-02T00:00:00+00:00"),
+                    "deleted_at": "2026-10-02T00:00:00+00:00",
+                }
+            ]
+        },
+    ).raise_for_status()
+    assert links_of(one, device_a) == []
 
 
 def test_upload_rejects_size_mismatch(client):

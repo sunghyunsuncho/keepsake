@@ -74,7 +74,7 @@ export interface paths {
         post?: never;
         /**
          * Remove Account
-         * @description 서버 데이터와 R2 객체를 바로 지운다. 기기 데이터는 앱이 그대로 두고 Local로 돌아간다.
+         * @description 서버 데이터와 R2 객체를 바로 지운다. 앱은 기기 사진의 기록을 Local에 남기고 돌아간다.
          *
          *     스토어 구독은 서버가 해지할 수 없으므로 앱이 해지 방법을 안내한다.
          */
@@ -148,6 +148,27 @@ export interface paths {
         /** Pull */
         get: operations["sync_pull"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/device-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Device Links
+         * @description 요청한 기기의 연결만 돌려준다. moment_id 순으로 나눠 받는다.
+         */
+        get: operations["sync_get_device_links"];
+        /** Put Device Links */
+        put: operations["sync_put_device_links"];
         post?: never;
         delete?: never;
         options?: never;
@@ -254,6 +275,20 @@ export interface components {
             /** Md5 */
             md5: string;
         };
+        /** DeviceLinkRow */
+        DeviceLinkRow: {
+            /** Moment Id */
+            moment_id: string;
+            /** Asset Id */
+            asset_id: string;
+        };
+        /** DeviceLinksResponse */
+        DeviceLinksResponse: {
+            /** Links */
+            links: components["schemas"]["DeviceLinkRow"][];
+            /** Has More */
+            has_more: boolean;
+        };
         /** DeviceRequest */
         DeviceRequest: {
             /** Expo Push Token */
@@ -317,6 +352,13 @@ export interface components {
             stale_moment_ids: string[];
             /** Stale Record Ids */
             stale_record_ids: string[];
+        };
+        /** PutDeviceLinksRequest */
+        PutDeviceLinksRequest: {
+            /** Device Id */
+            device_id: string;
+            /** Links */
+            links: components["schemas"]["DeviceLinkRow"][];
         };
         /** SessionResponse */
         SessionResponse: {
@@ -659,6 +701,69 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PullResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_get_device_links: {
+        parameters: {
+            query: {
+                device_id: string;
+                after?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceLinksResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_put_device_links: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutDeviceLinksRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

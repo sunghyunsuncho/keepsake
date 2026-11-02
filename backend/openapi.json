@@ -120,7 +120,7 @@
           "account"
         ],
         "summary": "Remove Account",
-        "description": "서버 데이터와 R2 객체를 바로 지운다. 기기 데이터는 앱이 그대로 두고 Local로 돌아간다.\n\n스토어 구독은 서버가 해지할 수 없으므로 앱이 해지 방법을 안내한다.",
+        "description": "서버 데이터와 R2 객체를 바로 지운다. 앱은 기기 사진의 기록을 Local에 남기고 돌아간다.\n\n스토어 구독은 서버가 해지할 수 없으므로 앱이 해지 방법을 안내한다.",
         "operationId": "account_remove_account",
         "responses": {
           "204": {
@@ -278,6 +278,103 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PullResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sync/device-links": {
+      "put": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "Put Device Links",
+        "operationId": "sync_put_device_links",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutDeviceLinksRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "Get Device Links",
+        "description": "요청한 기기의 연결만 돌려준다. moment_id 순으로 나눠 받는다.",
+        "operationId": "sync_get_device_links",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Device Id"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 36,
+              "default": "",
+              "title": "After"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceLinksResponse"
                 }
               }
             }
@@ -566,6 +663,47 @@
         ],
         "title": "CreateUploadRequest"
       },
+      "DeviceLinkRow": {
+        "properties": {
+          "moment_id": {
+            "type": "string",
+            "maxLength": 36,
+            "title": "Moment Id"
+          },
+          "asset_id": {
+            "type": "string",
+            "maxLength": 255,
+            "title": "Asset Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "moment_id",
+          "asset_id"
+        ],
+        "title": "DeviceLinkRow"
+      },
+      "DeviceLinksResponse": {
+        "properties": {
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceLinkRow"
+            },
+            "type": "array",
+            "title": "Links"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More"
+          }
+        },
+        "type": "object",
+        "required": [
+          "links",
+          "has_more"
+        ],
+        "title": "DeviceLinksResponse"
+      },
       "DeviceRequest": {
         "properties": {
           "expo_push_token": {
@@ -730,6 +868,29 @@
           "stale_record_ids"
         ],
         "title": "PushResponse"
+      },
+      "PutDeviceLinksRequest": {
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Device Id"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceLinkRow"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Links"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id",
+          "links"
+        ],
+        "title": "PutDeviceLinksRequest"
       },
       "SessionResponse": {
         "properties": {

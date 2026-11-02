@@ -30,8 +30,8 @@ class User(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 동기화 변경 번호. push 때 사용자 행을 잠그고 올려서, pull 커서가 기기 시계와 무관해진다.
     sync_seq: Mapped[int] = mapped_column(BigInteger, default=0)
-    # 클라우드 데이터를 지울 때마다(유예 만료) 올린다. 기기는 값이 바뀌면 '보냄' 표시를 지우고
-    # 처음부터 다시 올린다. 그대로 두면 재구독해도 기기는 이미 올렸다고 여긴다.
+    # 클라우드 데이터를 지울 때마다(유예 만료) 올린다. 기기는 값이 바뀌면 계정 공간을 비우고 시작한다.
+    # 그대로 두면 재구독해도 기기는 이미 올렸다고 여긴다.
     data_generation: Mapped[int] = mapped_column(Integer, default=0)
 
 
@@ -99,6 +99,30 @@ class SyncRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     seq: Mapped[int] = mapped_column(BigInteger)
+
+
+class DeviceLink(Base):
+    """기록과 그 기기 사진첩 사진의 연결. 재설치한 같은 기기에서 원본을 다시 찾을 때만 쓴다.
+
+    사진 id는 기기마다 다르므로 계정·기기별로 두고, 다른 기기에는 내려주지 않는다.
+    """
+
+    __tablename__ = "device_links"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["user_id", "moment_id"], ["moments.user_id", "moments.id"], ondelete="CASCADE"
+        ),
+        # 기록을 지울 때 cascade가 기기와 상관없이 찾는다.
+        Index("ix_device_links_user_moment", "user_id", "moment_id"),
+    )
+    user_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    # 앱이 기기 고유값과 user_id를 해시해서 만든다. 계정이 다르면 같은 기기여도 값이 다르다.
+    device_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    moment_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    asset_id: Mapped[str] = mapped_column(String(255))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class CloudObject(Base):

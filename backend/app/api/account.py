@@ -35,7 +35,7 @@ class StorageUsage(BaseModel):
 
 class AccountResponse(BaseModel):
     user_id: str
-    # 클라우드 데이터를 지울 때마다 바뀐다. 기기는 값이 바뀌면 처음부터 다시 올린다.
+    # 클라우드 데이터를 지울 때마다 바뀐다. 기기는 값이 바뀌면 계정 공간을 비운다.
     data_generation: int
     email: str | None
     subscription: SubscriptionState
@@ -96,7 +96,7 @@ def register_device(payload: DeviceRequest, user: CurrentUser, db: DbSession) ->
 
 @router.delete("", status_code=status.HTTP_204_NO_CONTENT)
 def remove_account(user: CurrentUser, db: DbSession) -> None:
-    """서버 데이터와 R2 객체를 바로 지운다. 기기 데이터는 앱이 그대로 두고 Local로 돌아간다.
+    """서버 데이터와 R2 객체를 바로 지운다. 앱은 기기 사진의 기록을 Local에 남기고 돌아간다.
 
     스토어 구독은 서버가 해지할 수 없으므로 앱이 해지 방법을 안내한다.
     """
