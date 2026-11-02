@@ -96,4 +96,5 @@ cd backend && uv run python -m app.jobs  # 주기 작업 한 번 실행
 3. **로그인**: Apple 개발자 계정에서 App ID에 Sign in with Apple 켜기. Google Cloud Console에서 OAuth 클라이언트 3개(웹, iOS 번들 ID, Android 패키지+SHA-1 — 로컬·EAS·Play 앱 서명 키 각각).
 4. **환경 변수**: `backend/.env.example`, `mobile/.env.example`의 Cloud 항목. 모바일 값은 EAS 환경 변수로도 넣는다.
 5. **푸시 알림**: `eas init`으로 projectId 연결, `eas credentials`로 APNs 키, Android는 FCM V1 서비스 계정 키 업로드.
-6. **배포**: 서버 배포 후 `make migrate`, 플랫폼 cron으로 `python -m app.jobs` 1시간마다.
+6. **배포 (Railway)**: Root Directory `backend`로 `backend/Dockerfile`을 빌드한다. API 서비스는 Pre-deploy `alembic upgrade head`, 헬스 체크 `/health/ready`. Jobs 서비스는 Start `python -m app.jobs`, Cron `0 * * * *`. `DATABASE_URL`은 `postgresql+psycopg://`로 시작해야 한다.
+7. **Sentry**: 서버 `SENTRY_DSN`, 앱 `EXPO_PUBLIC_SENTRY_DSN`, EAS `preview`·`production` 환경의 시크릿 `SENTRY_AUTH_TOKEN`(소스맵 업로드. 없으면 Release 빌드가 실패한다).

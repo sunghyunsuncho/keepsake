@@ -191,7 +191,7 @@ class BillingEvent:   id, raw_payload, received_at, processed_at  # 웹훅 원�
 - Python 3.13, FastAPI, Pydantic v2, SQLAlchemy 2.0, Alembic, PostgreSQL
 - `boto3` (R2 endpoint), `uv`, `pytest`, `ruff`
 - 로컬: docker-compose (postgres + RustFS로 R2 대체. MinIO 공식 이미지는 배포 중단)
-- 배포: Fly.io / Railway / Render 중 택1. 주기 작업은 플랫폼 cron 또는 APScheduler
+- 배포: Railway (API·Postgres·주기 작업 cron). 사진은 Cloudflare R2
 
 ## 6. 단계별 로드맵
 
@@ -281,7 +281,7 @@ class BillingEvent:   id, raw_payload, received_at, processed_at  # 웹훅 원�
   - **현재 상태 (2026-10-30):** 폴라로이드·일회용 카메라·필름 밀착 세 시안을 비교해 폴라로이드로 정했다. 은은하게, 바탕색과 기기 글꼴은 그대로, 연도·월 그리드도 그대로 두고 앨범의 일·이야기 단계에만 적용했다 (`mobile/src/components/gallery.tsx`). 이야기는 정사각형 사진 + 흰 테두리 + 아래 여백에 메모·시각·장소·날짜, 카드는 ±0.5° 기울임. 일 단계는 작은 폴라로이드. 인화지는 다크 모드에서도 흰색이고 그 위 글자색은 고정이다
 - ~~Local 사용자 대상 내보내기 권유~~ → ZIP 내보내기를 없애면서 함께 뺐다 (2026-10-30, §0 'Local 범위')
 - 개인정보처리방침, 이용약관(구독 조건·만료 후 삭제 정책 명시), 스토어 메타데이터, Sentry, 최소 지표
-  - **현재 상태:** 초안 작성 (`docs/legal/privacy-policy.md`, `docs/legal/terms.md`, `docs/store/listing.md`). 운영자 정보·가격·서버 업체는 `{{ }}`로 비워 두었다. 법률 검토, 게시할 웹 주소, 구매 화면의 약관·개인정보처리방침 링크, Play용 웹 삭제 요청 페이지가 남았다. Sentry·지표는 아직 붙이지 않았다
+  - **현재 상태:** 초안 작성 (`docs/legal/privacy-policy.md`, `docs/legal/terms.md`, `docs/store/listing.md`). 운영자 정보·가격·서버 업체는 `{{ }}`로 비워 두었다. 법률 검토, 게시할 웹 주소, 구매 화면의 약관·개인정보처리방침 링크, Play용 웹 삭제 요청 페이지가 남았다. Sentry는 코드를 연결했다 (DSN을 넣으면 켜진다). 지표는 아직 붙이지 않았다
 - **결제 연결** (Phase 2에서 미룬 것. 코드는 이미 있고 설정과 확인만 남았다)
   - App Store Connect / Play Console 구독 상품, 스토어 결제 유예 설정 (Play는 AAB를 한 번 올려야 RevenueCat이 검증할 수 있다)
   - AAB를 올린 뒤 Play 앱 서명 키 SHA-1로 Google OAuth Android 클라이언트를 하나 더 만든다 (스토어에서 받은 앱은 Google이 다시 서명하므로 등록하지 않으면 Google 로그인이 실패한다). 로컬 디버그 키와 EAS 키는 등록해 두었다.
