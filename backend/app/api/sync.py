@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select, update
 
 from app.api.deps import CurrentUser, DbSession, require_read, require_write
-from app.cloud import lock_user, stored_variants
+from app.cloud import lock_active_user, stored_variants
 from app.models.cloud import CloudObject, DeviceLink, Moment, SyncRecord, Usage
 
 router = APIRouter(prefix="/sync", tags=["sync"])
@@ -112,7 +112,7 @@ def _encode(row: SyncRow) -> str:
 def push(payload: PushRequest, user: CurrentUser, db: DbSession) -> PushResponse:
     require_write(db, user)
     # 사용자 행을 잠가서 같은 사용자의 push가 동시에 와도 seq가 커밋 순서대로 매겨지게 한다.
-    locked = lock_user(db, user.id)
+    locked = lock_active_user(db, user.id)
     seq = locked.sync_seq
     stale_moments: list[str] = []
     stale_records: list[str] = []
@@ -252,6 +252,7 @@ def pull(
 @router.put("/device-links", status_code=status.HTTP_204_NO_CONTENT)
 def put_device_links(payload: PutDeviceLinksRequest, user: CurrentUser, db: DbSession) -> None:
     require_write(db, user)
+    lock_active_user(db, user.id)
     # 서버에 없거나 지워진 기록의 연결은 받지 않는다.
     active = set(
         db.scalars(

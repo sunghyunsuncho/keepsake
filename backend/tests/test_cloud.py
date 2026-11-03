@@ -11,20 +11,22 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import httpx
+import jwt
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from app import jobs
 from app.api import auth, sync
+from app.cloud import delete_revenuecat_customer, lock_user, refresh_from_revenuecat
 from app.config import get_settings
 from app.db import get_db
 from app.main import app
 from app.models import Base
-from app.models.cloud import Entitlement, StorageCleanup, User
-from app.storage import delete_prefix, r2_client, user_prefix
+from app.models.cloud import CloudObject, Entitlement, StorageCleanup, User
+from app.storage import UPLOAD_SETTLE_AFTER, delete_prefix, r2_client, user_prefix
 
 WEBHOOK_SECRET = "test-webhook-secret"
 
@@ -55,7 +57,7 @@ def engine():
 
 @pytest.fixture
 def db(engine) -> Iterator[Session]:
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
     def override() -> Iterator[Session]:
         with factory() as session:
@@ -360,7 +362,7 @@ def test_device_links_stay_with_their_device_and_account(client):
     assert links_of(one, device_a) == []
 
 
-def test_upload_rejects_size_mismatch(client):
+def test_upload_rejects_size_mismatch(client, db):
     user_id, headers = sign_in(client)
     webhook(client, user_id, "INITIAL_PURCHASE")
     moment_id = str(uuid4())
@@ -373,6 +375,10 @@ def test_upload_rejects_size_mismatch(client):
     response = client.post(f"/uploads/{created['id']}/complete", headers=headers)
 
     assert response.status_code == 400
+    key = prefix_keys(user_id)[0]
+    db.expire_all()
+    assert db.get(StorageCleanup, key) is not None  # URL이 끝난 뒤 지운다
+    jobs.sweep_storage_cleanups(db, datetime.now(UTC) + UPLOAD_SETTLE_AFTER + timedelta(seconds=1))
     assert prefix_keys(user_id) == []
 
 
@@ -411,8 +417,11 @@ def test_deleting_a_moment_releases_its_photos(client, db):
 
     assert client.get("/account", headers=headers).json()["usage"]["bytes_total"] == 0
     jobs.clean_objects(db, datetime.now(UTC))
+    jobs.sweep_storage_cleanups(db, datetime.now(UTC))
     assert prefix_keys(user_id) != []  # 업로드 URL이 끝날 때까지 기다린다
-    jobs.clean_objects(db, datetime.now(UTC) + jobs.STALE_UPLOAD_AFTER + timedelta(seconds=1))
+    later = datetime.now(UTC) + UPLOAD_SETTLE_AFTER + timedelta(seconds=1)
+    jobs.clean_objects(db, later)
+    jobs.sweep_storage_cleanups(db, later)
     assert prefix_keys(user_id) == []
 
 
@@ -535,20 +544,6 @@ def test_webhook_rejects_wrong_secret(client):
     assert response.status_code == 401
 
 
-def test_failed_subscription_lookup_does_not_purge(client, db, monkeypatch):
-    user_id, _headers = sign_in(client)
-    webhook(client, user_id, "INITIAL_PURCHASE")
-    expired_at = datetime.now(UTC)
-    webhook(client, user_id, "EXPIRATION", expiration_at_ms=int(expired_at.timestamp() * 1000))
-    monkeypatch.setattr(get_settings(), "revenuecat_api_key", "sk_test")
-    monkeypatch.setattr(jobs, "refresh_from_revenuecat", lambda _db, _entitlement: False)
-
-    jobs.expire_grace(db, expired_at + timedelta(days=31))
-
-    db.expire_all()
-    assert db.get(Entitlement, user_id).status == "grace"
-
-
 def test_upload_does_not_replace_stored_photo(client, db):
     user_id, headers = sign_in(client)
     webhook(client, user_id, "INITIAL_PURCHASE")
@@ -593,22 +588,6 @@ def test_late_expiration_still_gets_full_grace(client, db):
     assert grace_until > datetime.now(UTC) + timedelta(days=29)
 
 
-def test_lapsed_active_subscription_is_rechecked(client, db, monkeypatch):
-    user_id, _headers = sign_in(client)
-    webhook(client, user_id, "INITIAL_PURCHASE")
-    entitlement = db.get(Entitlement, user_id)
-    entitlement.expires_at = datetime.now(UTC) - timedelta(days=1)
-    db.commit()
-    checked: list[str] = []
-    monkeypatch.setattr(
-        jobs, "refresh_from_revenuecat", lambda _db, e: checked.append(e.user_id) or True
-    )
-
-    jobs.recheck_lapsed_subscriptions(db, datetime.now(UTC))
-
-    assert user_id in checked
-
-
 def test_account_deletion_sweeps_late_uploads(client, db):
     user_id, headers = sign_in(client)
 
@@ -621,23 +600,273 @@ def test_account_deletion_sweeps_late_uploads(client, db):
     )
     jobs.sweep_storage_cleanups(db, datetime.now(UTC))
     assert prefix_keys(user_id) != []
-    jobs.sweep_storage_cleanups(db, datetime.now(UTC) + timedelta(minutes=11))
+    jobs.sweep_storage_cleanups(db, datetime.now(UTC) + UPLOAD_SETTLE_AFTER + timedelta(seconds=1))
     assert prefix_keys(user_id) == []
     assert db.get(StorageCleanup, user_prefix(user_id)) is None
 
 
 def test_account_deletion_is_retried_when_storage_fails(client, db, monkeypatch):
     user_id, headers = sign_in(client)
-    monkeypatch.setattr(
-        "app.cloud.delete_prefix", lambda _prefix: (_ for _ in ()).throw(RuntimeError("R2 down"))
-    )
-
-    assert client.delete("/account", headers=headers).status_code == 204
+    with monkeypatch.context() as broken:
+        broken.setattr(
+            "app.cloud.delete_prefix", lambda _prefix: (_ for _ in ()).throw(RuntimeError("R2"))
+        )
+        assert client.delete("/account", headers=headers).status_code == 204
 
     db.expire_all()
     assert db.get(User, user_id).deleted_at is not None
     assert client.get("/account", headers=headers).status_code == 401
-    monkeypatch.undo()
+
+    jobs.finish_account_deletions(db)
+
+    db.expire_all()
+    assert db.get(User, user_id) is None
+
+
+def test_account_deletion_reports_failure_when_mark_fails(client, monkeypatch):
+    _user_id, headers = sign_in(client)
+    monkeypatch.setattr(
+        "app.api.account.mark_account_deleted",
+        lambda _db, _user: (_ for _ in ()).throw(RuntimeError("DB")),
+    )
+
+    with pytest.raises(RuntimeError):
+        client.delete("/account", headers=headers)
+
+
+def test_lock_user_returns_values_committed_by_other_requests(client, db, engine):
+    user_id, _headers = sign_in(client)
+    user = db.get(User, user_id)
+    seq = user.sync_seq
+    db.rollback()
+    with Session(engine) as other:
+        other.get(User, user_id).sync_seq = seq + 5
+        other.commit()
+
+    assert lock_user(db, user_id).sync_seq == seq + 5
+    db.rollback()
+
+
+def test_upload_stops_when_account_deletion_started_after_auth(client, engine, monkeypatch):
+    user_id, headers = sign_in(client)
+    webhook(client, user_id, "INITIAL_PURCHASE")
+    moment_id = str(uuid4())
+    client.post(
+        "/sync/push", headers=headers, json={"moments": [moment(moment_id, "2026-10-01T00:00:00Z")]}
+    )
+    real_lock = lock_user
+
+    def lock_after_deletion(session, target):
+        with Session(engine) as other:
+            other.get(User, target).deleted_at = datetime.now(UTC)
+            other.commit()
+        return real_lock(session, target)
+
+    monkeypatch.setattr("app.cloud.lock_user", lock_after_deletion)
+    response = client.post(
+        "/uploads",
+        headers=headers,
+        json={
+            "moment_id": moment_id,
+            "variant": "display",
+            "size": 5,
+            "content_type": "image/jpeg",
+            "md5": hashlib.md5(b"photo").hexdigest(),
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "account unavailable"
+
+
+@pytest.mark.parametrize(
+    ("status_code", "raises"), [(200, False), (404, False), (403, False), (429, True), (500, True)]
+)
+def test_revenuecat_customer_deletion(monkeypatch, status_code, raises):
+    monkeypatch.setattr(get_settings(), "revenuecat_api_key", "sk_test")
+    request = httpx.Request("DELETE", "https://api.revenuecat.com/v1/subscribers/u")
+    monkeypatch.setattr(
+        httpx, "delete", lambda *_a, **_k: httpx.Response(status_code, request=request)
+    )
+
+    if raises:
+        with pytest.raises(httpx.HTTPStatusError):
+            delete_revenuecat_customer("u")
+    else:
+        delete_revenuecat_customer("u")
+
+
+def expired_user_with_photo(client):
+    user_id, headers = sign_in(client)
+    webhook(client, user_id, "INITIAL_PURCHASE")
+    moment_id = str(uuid4())
+    client.post(
+        "/sync/push", headers=headers, json={"moments": [moment(moment_id, "2026-10-01T00:00:00Z")]}
+    )
+    client.post(
+        f"/uploads/{upload(client, headers, moment_id, 'display', b'photo')}/complete",
+        headers=headers,
+    )
+    expired_at = datetime.now(UTC)
+    webhook(client, user_id, "EXPIRATION", expiration_at_ms=int(expired_at.timestamp() * 1000))
+    return user_id, expired_at
+
+
+def give_final_notice(db, user_id, at):
+    entitlement = db.get(Entitlement, user_id)
+    entitlement.notified_stage = "d1"
+    entitlement.notified_at = at
+    db.commit()
+
+
+def test_failed_subscription_lookup_does_not_purge(client, db, monkeypatch):
+    user_id, expired_at = expired_user_with_photo(client)
+    monkeypatch.setattr(get_settings(), "revenuecat_api_key", "sk_test")
+    monkeypatch.setattr(jobs, "refresh_from_revenuecat", lambda _db, _entitlement: False)
+    give_final_notice(db, user_id, expired_at)
+
+    jobs.expire_grace(db, expired_at + timedelta(days=31))
+
+    db.expire_all()
+    assert db.get(Entitlement, user_id).status == "grace"
+    assert prefix_keys(user_id) != []
+
+
+def test_resubscribe_during_lookup_is_not_purged(client, db, engine, monkeypatch):
+    user_id, expired_at = expired_user_with_photo(client)
+
+    def resubscribed_meanwhile(_db, _entitlement):
+        with Session(engine) as other:
+            other.get(Entitlement, user_id).status = "active"
+            other.commit()
+        return True
+
+    monkeypatch.setattr(jobs, "refresh_from_revenuecat", resubscribed_meanwhile)
+    give_final_notice(db, user_id, expired_at)
+
+    jobs.expire_grace(db, expired_at + timedelta(days=31))
+
+    db.expire_all()
+    assert db.get(Entitlement, user_id).status == "active"
+    assert prefix_keys(user_id) != []
+
+
+def test_lapsed_subscription_recheck_moves_to_grace_after_margin(client, db, monkeypatch):
+    user_id, _headers = sign_in(client)
+    webhook(client, user_id, "INITIAL_PURCHASE")
+    entitlement = db.get(Entitlement, user_id)
+    now = datetime.now(UTC)
+    entitlement.expires_at = now - timedelta(hours=1)
+    db.commit()
+    monkeypatch.setattr(get_settings(), "revenuecat_api_key", "sk_test")
+    request = httpx.Request("GET", "https://api.revenuecat.com/v1/subscribers/u")
+    monkeypatch.setattr(
+        httpx,
+        "get",
+        lambda *_a, **_k: httpx.Response(
+            200, request=request, json={"subscriber": {"entitlements": {}}}
+        ),
+    )
+
+    jobs.recheck_lapsed_subscriptions(db, now)
+    db.expire_all()
+    assert db.get(Entitlement, user_id).status == "active"  # 갱신이 늦을 수 있어 기다린다
+
+    jobs.recheck_lapsed_subscriptions(db, now + timedelta(days=2))
+    db.expire_all()
+    entitlement = db.get(Entitlement, user_id)
+    assert entitlement.status == "grace"
+    assert entitlement.grace_until > now + timedelta(days=29)
+
+
+def test_lapsed_recheck_stops_when_revenuecat_is_down(client, db, monkeypatch):
+    now = datetime.now(UTC)
+    for _ in range(jobs.MAX_LOOKUP_FAILURES + 2):
+        user_id, _headers = sign_in(client)
+        webhook(client, user_id, "INITIAL_PURCHASE")
+        db.get(Entitlement, user_id).expires_at = now - timedelta(days=30)
+    db.commit()
+    monkeypatch.setattr(get_settings(), "revenuecat_api_key", "sk_test")
+    calls: list[str] = []
+
+    def down(_db, entitlement):
+        calls.append(entitlement.user_id)
+        return False
+
+    monkeypatch.setattr(jobs, "refresh_from_revenuecat", down)
+
+    jobs.recheck_lapsed_subscriptions(db, now)
+
+    assert len(calls) == jobs.MAX_LOOKUP_FAILURES
+
+
+def test_sweep_continues_after_a_failed_prefix(db, monkeypatch):
+    due = datetime.now(UTC) - timedelta(minutes=1)
+    db.add(StorageCleanup(prefix="u/broken/", not_before=due))
+    db.add(StorageCleanup(prefix="u/fine/", not_before=due))
+    db.commit()
+
+    def fake_delete(prefix):
+        if prefix == "u/broken/":
+            raise RuntimeError("R2")
+
+    monkeypatch.setattr(jobs, "delete_prefix", fake_delete)
+
+    jobs.sweep_storage_cleanups(db, datetime.now(UTC))
+
+    db.expire_all()
+    assert db.get(StorageCleanup, "u/broken/") is not None
+    assert db.get(StorageCleanup, "u/fine/") is None
+
+
+def test_retrying_pending_upload_uses_new_key_and_cleans_old_later(client, db):
+    user_id, headers = sign_in(client)
+    webhook(client, user_id, "INITIAL_PURCHASE")
+    moment_id = str(uuid4())
+    client.post(
+        "/sync/push", headers=headers, json={"moments": [moment(moment_id, "2026-10-01T00:00:00Z")]}
+    )
+    body = {
+        "moment_id": moment_id,
+        "variant": "display",
+        "size": 5,
+        "content_type": "image/jpeg",
+        "md5": hashlib.md5(b"photo").hexdigest(),
+    }
+    first = client.post("/uploads", headers=headers, json=body).json()
+    old_key = db.get(CloudObject, first["id"]).r2_key
+    db.rollback()
+
+    client.post("/uploads", headers=headers, json=body)
+
+    db.expire_all()
+    assert db.get(CloudObject, first["id"]).r2_key != old_key
+    assert db.get(StorageCleanup, old_key) is not None
+
+
+def test_clean_objects_rechecks_after_locking(client, db, engine, monkeypatch):
+    user_id, headers = sign_in(client)
+    webhook(client, user_id, "INITIAL_PURCHASE")
+    moment_id = str(uuid4())
+    client.post(
+        "/sync/push", headers=headers, json={"moments": [moment(moment_id, "2026-10-01T00:00:00Z")]}
+    )
+    upload_id = upload(client, headers, moment_id, "display", b"photo")
+    real_lock = jobs.lock_user
+
+    def completed_meanwhile(session, target):
+        with Session(engine) as other:
+            other.get(CloudObject, upload_id).status = "stored"
+            other.commit()
+        return real_lock(session, target)
+
+    monkeypatch.setattr(jobs, "lock_user", completed_meanwhile)
+
+    jobs.clean_objects(db, datetime.now(UTC) + UPLOAD_SETTLE_AFTER + timedelta(seconds=1))
+
+    db.expire_all()
+    assert db.get(CloudObject, upload_id) is not None
+    assert prefix_keys(user_id) != []
 
 
 def test_delete_prefix_reports_partial_failure(monkeypatch):
@@ -655,3 +884,242 @@ def test_delete_prefix_reports_partial_failure(monkeypatch):
 
     with pytest.raises(RuntimeError):
         delete_prefix("u/x/")
+
+
+def test_lookup_rejects_empty_entitlement(client, db, monkeypatch):
+    user_id, _expired_at = expired_user_with_photo(client)
+    monkeypatch.setattr(get_settings(), "revenuecat_api_key", "sk_test")
+    request = httpx.Request("GET", "https://api.revenuecat.com/v1/subscribers/u")
+    monkeypatch.setattr(
+        httpx,
+        "get",
+        lambda *_a, **_k: httpx.Response(
+            200, request=request, json={"subscriber": {"entitlements": {"cloud": {}}}}
+        ),
+    )
+
+    assert refresh_from_revenuecat(db, db.get(Entitlement, user_id)) is False
+    assert db.get(Entitlement, user_id).status == "grace"
+
+
+def test_jobs_skip_accounts_being_deleted(client, db, monkeypatch):
+    user_id, expired_at = expired_user_with_photo(client)
+    db.get(User, user_id).deleted_at = datetime.now(UTC)
+    db.commit()
+    give_final_notice(db, user_id, expired_at)
+    sent: list[str] = []
+
+    jobs.notify_grace(db, expired_at, lambda _db, target, _title, _body: sent.append(target))
+    jobs.expire_grace(db, expired_at + timedelta(days=31))
+
+    assert user_id not in sent
+    db.expire_all()
+    assert db.get(Entitlement, user_id).status == "grace"
+    assert prefix_keys(user_id) != []
+
+
+def test_purge_waits_after_final_notice_when_jobs_were_stopped(client, db):
+    user_id, expired_at = expired_user_with_photo(client)
+    stopped_until = expired_at + timedelta(days=31)
+
+    sent: list[str] = []
+
+    def notify(_db, target, title, _body):
+        if target == user_id:
+            sent.append(title)
+
+    jobs.run(db, now=stopped_until, notify=notify)
+
+    assert sent == [jobs.GRACE_MESSAGES["d1"][0]]
+    assert prefix_keys(user_id) != []  # 경고를 보낸 실행에서는 지우지 않는다
+
+    jobs.run(db, now=stopped_until + jobs.FINAL_NOTICE_WAIT, notify=lambda *_a: None)
+
+    assert prefix_keys(user_id) == []
+
+
+def test_failed_push_is_sent_again_and_delays_purge(client, db):
+    user_id, expired_at = expired_user_with_photo(client)
+
+    def down(*_args):
+        raise jobs.PushFailed("expo")
+
+    jobs.notify_grace(db, expired_at + timedelta(days=29, hours=12), down)
+
+    db.expire_all()
+    assert db.get(Entitlement, user_id).notified_stage is None
+    jobs.expire_grace(db, expired_at + timedelta(days=31))
+    assert prefix_keys(user_id) != []
+
+    purge_at = expired_at + timedelta(days=30, minutes=1) + jobs.MAX_PURGE_DELAY
+    jobs.expire_grace(db, purge_at)
+    jobs.sweep_storage_cleanups(db, purge_at)
+    assert prefix_keys(user_id) == []
+
+
+def test_expired_token_of_deleted_account_reports_account_gone(client, db):
+    user_id, _headers = sign_in(client)
+    settings = get_settings()
+    now = datetime.now(UTC)
+    token = jwt.encode(
+        {
+            "sub": user_id,
+            "iss": settings.jwt_issuer,
+            "iat": now - timedelta(days=60),
+            "exp": now - timedelta(days=30),
+        },
+        settings.jwt_secret,
+        algorithm="HS256",
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+
+    assert client.get("/account", headers=headers).json()["detail"] == "invalid access token"
+
+    db.delete(db.get(User, user_id))
+    db.commit()
+
+    assert client.get("/account", headers=headers).json()["detail"] == "account unavailable"
+
+
+@pytest.mark.parametrize(
+    ("tickets", "fails"),
+    [
+        ([{"status": "ok"}], False),
+        ([{"status": "error", "details": {"error": "InvalidCredentials"}}], True),
+        ([{"status": "error", "details": {"error": "DeviceNotRegistered"}}], False),
+        ([], True),
+    ],
+)
+def test_send_push_reports_undelivered_tickets(client, db, monkeypatch, tickets, fails):
+    user_id, headers = sign_in(client)
+    client.put(
+        "/account/devices",
+        headers=headers,
+        json={"expo_push_token": f"ExponentPushToken[{uuid4()}]", "platform": "ios"},
+    )
+    request = httpx.Request("POST", jobs.EXPO_PUSH_URL)
+    monkeypatch.setattr(
+        httpx,
+        "post",
+        lambda *_a, **_k: httpx.Response(200, request=request, json={"data": tickets}),
+    )
+
+    if fails:
+        with pytest.raises(jobs.PushFailed):
+            jobs.send_push(db, user_id, "title", "body")
+    else:
+        jobs.send_push(db, user_id, "title", "body")
+    db.rollback()
+
+
+def test_expired_token_with_other_issuer_is_unauthorized(client):
+    user_id, _headers = sign_in(client)
+    settings = get_settings()
+    now = datetime.now(UTC)
+    token = jwt.encode(
+        {"sub": user_id, "iss": "other", "exp": now - timedelta(days=1)},
+        settings.jwt_secret,
+        algorithm="HS256",
+    )
+
+    response = client.get("/account", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 401
+
+
+def test_final_notice_wait_applies_even_long_after_grace(client, db):
+    user_id, expired_at = expired_user_with_photo(client)
+    resumed = expired_at + timedelta(days=40)
+
+    jobs.run(db, now=resumed, notify=lambda *_a: None)
+    assert prefix_keys(user_id) != []
+
+    jobs.run(db, now=resumed + jobs.FINAL_NOTICE_WAIT, notify=lambda *_a: None)
+    assert prefix_keys(user_id) == []
+
+
+def test_purge_commits_rows_before_touching_storage(client, db, monkeypatch):
+    user_id, expired_at = expired_user_with_photo(client)
+    give_final_notice(db, user_id, expired_at)
+    purge_at = expired_at + timedelta(days=31)
+
+    jobs.expire_grace(db, purge_at)
+
+    db.expire_all()
+    assert db.get(Entitlement, user_id).status == "expired"
+    assert db.scalar(select(CloudObject).where(CloudObject.user_id == user_id)) is None
+    assert prefix_keys(user_id) != []  # R2 장애가 나도 없는 사진이 저장된 것으로 남지 않는다
+
+    with monkeypatch.context() as broken:
+        broken.setattr(
+            jobs, "delete_prefix", lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError())
+        )
+        jobs.sweep_storage_cleanups(db, purge_at)
+    assert db.get(StorageCleanup, user_prefix(user_id)) is not None
+
+    jobs.sweep_storage_cleanups(db, purge_at)
+    assert prefix_keys(user_id) == []
+
+
+def test_purge_runs_in_one_job_with_real_clock_and_removes_orphans(client, db):
+    user_id, expired_at = expired_user_with_photo(client)
+    entitlement = db.get(Entitlement, user_id)
+    entitlement.grace_until = datetime.now(UTC) - timedelta(minutes=1)
+    entitlement.notified_stage = "d1"
+    entitlement.notified_at = datetime.now(UTC) - timedelta(days=1)
+    db.commit()
+    r2_client().put_object(
+        Bucket=get_settings().r2_bucket,
+        Key=f"{user_prefix(user_id)}m/orphan/display.jpg",
+        Body=b"x",
+    )
+
+    jobs.run(db, notify=lambda *_a: None)
+
+    # 고른 실행의 시각보다 먼저 올라온 객체만 지우므로, 시계가 앞선 객체는 다음 실행에서 지워진다.
+    jobs.sweep_storage_cleanups(db, datetime.now(UTC) + timedelta(minutes=5))
+    assert db.get(StorageCleanup, user_prefix(user_id)) is None
+    assert prefix_keys(user_id) == []
+
+
+def test_sweep_keeps_photos_uploaded_after_resubscribe(client, db):
+    user_id, expired_at = expired_user_with_photo(client)
+    give_final_notice(db, user_id, expired_at)
+    purge_at = datetime.now(UTC) + timedelta(days=31)
+    db.get(Entitlement, user_id).grace_until = purge_at - timedelta(minutes=1)
+    db.commit()
+    jobs.expire_grace(db, purge_at)
+    old_key_cutoff = datetime.now(UTC) - timedelta(days=1)
+    db.get(StorageCleanup, user_prefix(user_id)).not_before = old_key_cutoff
+    db.commit()
+    before = set(prefix_keys(user_id))
+
+    jobs.sweep_storage_cleanups(db, purge_at)
+
+    # 정리 시점 이후에 올라온 것으로 보이는 객체는 남긴다.
+    assert set(prefix_keys(user_id)) == before
+
+
+def test_sweep_skips_cleanup_postponed_after_selection(db, engine, monkeypatch):
+    prefix = "u/postponed/"
+    db.add(StorageCleanup(prefix=prefix, not_before=datetime.now(UTC) - timedelta(minutes=1)))
+    db.commit()
+    real_get = db.get
+    deleted: list[str] = []
+
+    def postpone_then_get(model, key, **kwargs):
+        if model is StorageCleanup:
+            with Session(engine) as other:
+                other.get(StorageCleanup, key).not_before = datetime.now(UTC) + timedelta(hours=1)
+                other.commit()
+        return real_get(model, key, **kwargs)
+
+    monkeypatch.setattr(db, "get", postpone_then_get)
+    monkeypatch.setattr(jobs, "delete_prefix", lambda p, **_k: deleted.append(p))
+
+    jobs.sweep_storage_cleanups(db, datetime.now(UTC))
+
+    monkeypatch.undo()
+    db.expire_all()
+    assert deleted == []
+    assert db.get(StorageCleanup, prefix) is not None

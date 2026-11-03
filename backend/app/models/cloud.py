@@ -30,7 +30,7 @@ class User(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 동기화 변경 번호. push 때 사용자 행을 잠그고 올려서, pull 커서가 기기 시계와 무관해진다.
     sync_seq: Mapped[int] = mapped_column(BigInteger, default=0)
-    # 클라우드 데이터를 지울 때마다(유예 만료) 올린다. 기기는 값이 바뀌면 계정 공간을 비우고 시작한다.
+    # 클라우드 데이터를 지울 때마다(유예 만료) 올린다. 값이 바뀌면 기기는 계정 공간을 비운다.
     # 그대로 두면 재구독해도 기기는 이미 올렸다고 여긴다.
     data_generation: Mapped[int] = mapped_column(Integer, default=0)
 
@@ -48,17 +48,20 @@ class Entitlement(Base):
     """구독 상태. 앱이 보낸 값이 아니라 RevenueCat webhook·REST 조회 결과로만 바뀐다."""
 
     __tablename__ = "entitlements"
+    # 주기 작업이 grace 구독과, 만료 시각이 지난 active 구독을 찾는다.
+    __table_args__ = (Index("ix_entitlements_status_expires", "status", "expires_at"),)
     user_id: Mapped[str] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     plan: Mapped[str] = mapped_column(String(32), default="cloud")
     # none: 구독한 적 없음 / active / grace: 만료 후 30일 읽기 전용 / expired: 클라우드 삭제됨
-    # 정리 작업이 grace만 찾으므로 색인한다.
-    status: Mapped[str] = mapped_column(String(16), default="none", index=True)
+    status: Mapped[str] = mapped_column(String(16), default="none")
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     grace_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 유예 중 보낸 마지막 알림 단계 ('expired' | 'd7' | 'd1'). 재구독하면 비운다.
     notified_stage: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # 마지막 유예 알림을 보낸 시각. 삭제 직전 경고를 받고 내려받을 시간을 보장한다.
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 마지막으로 반영한 webhook 이벤트 시각. 늦게 도착한 옛 이벤트가 최신 상태를 덮지 않게 한다.
     event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     source: Mapped[str] = mapped_column(String(32), default="revenuecat")
@@ -174,13 +177,16 @@ class BillingEvent(Base):
     __tablename__ = "billing_events"
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     raw_payload: Mapped[str] = mapped_column(Text)
-    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # 보관 기간이 지난 행을 주기 작업이 지운다.
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class StorageCleanup(Base):
-    """계정을 지운 뒤 다시 지울 R2 prefix. 삭제 전에 받은 업로드 URL로 늦게 올라온 객체를 지운다."""
+    """나중에 지울 R2 객체(키 또는 prefix). 대체·실패한 업로드, 지운 기록, 유예 만료, 계정 삭제."""
 
     __tablename__ = "storage_cleanups"
-    prefix: Mapped[str] = mapped_column(String(64), primary_key=True)
+    prefix: Mapped[str] = mapped_column(String(1024), primary_key=True)
     not_before: Mapped[datetime] = mapped_column(DateTime(timezone=True))

@@ -7,9 +7,12 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUser, DbSession
 from app.cloud import (
+    UserGone,
     can_read,
     can_write,
     delete_account,
+    lock_active_user,
+    mark_account_deleted,
     refresh_from_revenuecat,
     subscription_status,
 )
@@ -88,6 +91,7 @@ def refresh_subscription(user: CurrentUser, db: DbSession) -> AccountResponse:
 
 @router.put("/devices", status_code=status.HTTP_204_NO_CONTENT)
 def register_device(payload: DeviceRequest, user: CurrentUser, db: DbSession) -> None:
+    lock_active_user(db, user.id)
     device = db.get(Device, payload.expo_push_token)
     if device is None:
         db.add(Device(token=payload.expo_push_token, user_id=user.id, platform=payload.platform))
@@ -103,9 +107,14 @@ def remove_account(user: CurrentUser, db: DbSession) -> None:
 
     스토어 구독은 서버가 해지할 수 없으므로 앱이 해지 방법을 안내한다.
     """
+    user_id = user.id
+    # 표시를 남기지 못하면 삭제가 이어지지 않으므로 앱에 실패로 알린다.
+    mark_account_deleted(db, user)
     try:
         delete_account(db, user)
+    except UserGone:
+        db.rollback()  # 주기 작업이 먼저 끝냈다.
     except Exception:
-        # 이미 삭제 요청으로 표시했다. 남은 정리는 주기 작업이 다시 하므로 앱에는 성공으로 알린다.
-        log.exception("account deletion will be retried: %s", user.id)
+        # 남은 정리는 주기 작업이 다시 하므로 앱에는 성공으로 알린다.
+        log.exception("account deletion will be retried: %s", user_id)
         db.rollback()

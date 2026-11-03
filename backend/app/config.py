@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     @classmethod
     def _use_psycopg_driver(cls, value: str) -> str:
         # Railway가 주는 postgresql:// 주소는 설치하지 않은 psycopg2를 찾는다.
-        scheme, separator, rest = value.partition("://")
+        scheme, _, rest = value.partition("://")
         return f"postgresql+psycopg://{rest}" if scheme in ("postgres", "postgresql") else value
 
     @model_validator(mode="after")

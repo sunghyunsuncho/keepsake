@@ -17,18 +17,39 @@ from app.models.cloud import (
     Usage,
     User,
 )
-from app.storage import UPLOAD_URL_TTL, delete_prefix, user_prefix
+from app.storage import UPLOAD_SETTLE_AFTER, delete_prefix, user_prefix
 
 log = logging.getLogger(__name__)
 
 REVENUECAT_API = "https://api.revenuecat.com/v1"
 
 
+class UserGone(Exception):
+    """계정 행이 지워졌거나 삭제가 진행 중이다. API에서는 401 'account unavailable'이 된다."""
+
+
 def lock_user(db: Session, user_id: str) -> User:
     """사용자 행을 잠근다. 사용량·사진·동기화 번호를 바꾸는 요청은 모두 이것부터 해서
-    같은 사용자의 요청이 차례로 처리되게 한다 (잠그는 순서가 같아 교착도 생기지 않는다)."""
-    user = db.scalar(select(User).where(User.id == user_id).with_for_update())
-    assert user is not None
+    같은 사용자의 요청이 차례로 처리되게 한다 (잠그는 순서가 같아 교착도 생기지 않는다).
+
+    populate_existing: 인증할 때 읽어 둔 값이 아니라 잠근 뒤의 최신 값을 돌려준다.
+    """
+    user = db.scalar(
+        select(User)
+        .where(User.id == user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if user is None:
+        raise UserGone(user_id)
+    return user
+
+
+def lock_active_user(db: Session, user_id: str) -> User:
+    """lock_user와 같고, 잠금을 기다리는 사이 계정 삭제가 시작됐으면 멈춘다."""
+    user = lock_user(db, user_id)
+    if user.deleted_at is not None:
+        raise UserGone(user_id)
     return user
 
 
@@ -61,6 +82,7 @@ def activate(entitlement: Entitlement, expires_at: datetime | None) -> None:
     entitlement.expires_at = expires_at
     entitlement.grace_until = None
     entitlement.notified_stage = None
+    entitlement.notified_at = None
 
 
 def start_grace(entitlement: Entitlement, expired_at: datetime | None) -> None:
@@ -74,12 +96,14 @@ def start_grace(entitlement: Entitlement, expired_at: datetime | None) -> None:
     entitlement.expires_at = expired_at
     entitlement.grace_until = base + timedelta(days=get_settings().cloud_grace_days)
     entitlement.notified_stage = None
+    entitlement.notified_at = None
 
 
 def _parse_time(value: object) -> datetime | None:
     if not isinstance(value, str):
         return None
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 def refresh_from_revenuecat(db: Session, entitlement: Entitlement) -> bool:
@@ -98,16 +122,19 @@ def refresh_from_revenuecat(db: Session, entitlement: Entitlement) -> bool:
         )
         response.raise_for_status()
         info = response.json()["subscriber"]["entitlements"].get(settings.revenuecat_entitlement_id)
-    except (httpx.HTTPError, KeyError, TypeError, ValueError):
+        # 있어야 할 내용이 없는 응답을 '평생 구독'으로 읽지 않는다.
+        if info is not None and (not isinstance(info, dict) or not info):
+            raise ValueError("unexpected entitlement")
+        expires_at = _parse_time(info.get("expires_date")) if info else None
+        # 스토어 결제 유예(Apple Billing Grace Period, Google 계정 보류 전 유예)가 끝나는 시각
+        store_grace = _parse_time(info.get("grace_period_expires_date")) if info else None
+    except (httpx.HTTPError, KeyError, TypeError, ValueError, AttributeError):
         log.warning("RevenueCat lookup failed for %s", entitlement.user_id, exc_info=True)
         return False
     now = datetime.now(UTC)
     if info is None:
         start_grace(entitlement, None)
         return True
-    expires_at = _parse_time(info.get("expires_date"))
-    # 스토어 결제 유예(Apple Billing Grace Period, Google 계정 보류 전 유예)가 끝나는 시각
-    store_grace = _parse_time(info.get("grace_period_expires_date"))
     effective_end = max((t for t in (expires_at, store_grace) if t is not None), default=None)
     if effective_end is None or effective_end > now:
         activate(entitlement, expires_at)
@@ -118,7 +145,10 @@ def refresh_from_revenuecat(db: Session, entitlement: Entitlement) -> bool:
 
 
 def delete_revenuecat_customer(user_id: str) -> None:
-    """RevenueCat의 고객 정보를 지운다. 실패하면 예외를 내서 정리 작업이 다시 시도하게 한다."""
+    """RevenueCat의 고객 정보를 지운다. 일시적 실패는 예외를 내서 정리 작업이 다시 시도하게 한다.
+
+    키 권한 같은 설정 문제(4xx)는 다시 해도 낫지 않아서, 경보만 남기고 삭제를 막지 않는다.
+    """
     settings = get_settings()
     if not settings.revenuecat_api_key:
         return
@@ -127,15 +157,22 @@ def delete_revenuecat_customer(user_id: str) -> None:
         headers={"Authorization": f"Bearer {settings.revenuecat_api_key}"},
         timeout=10,
     )
-    if response.status_code != 404:
-        response.raise_for_status()
+    if response.status_code == 404:
+        return
+    if 400 <= response.status_code < 500 and response.status_code != 429:
+        log.error("RevenueCat customer deletion rejected (%s): %s", response.status_code, user_id)
+        return
+    response.raise_for_status()
 
 
-def purge_cloud_data(db: Session, user_id: str) -> None:
-    """R2 객체와 서버 기록(moments, sync_records, cloud_objects)을 지운다. 계정·구독 행은 남긴다."""
+def purge_cloud_data(db: Session, user_id: str, now: datetime) -> None:
+    """서버 기록(moments, sync_records, cloud_objects)을 지운다. 계정·구독 행은 남긴다.
+
+    R2 객체는 커밋 뒤 정리 작업이 지운다. 먼저 지우면 일부 실패 때 없는 사진이 저장된 것으로 남는다.
+    """
     user = lock_user(db, user_id)
     user.data_generation += 1
-    delete_prefix(user_prefix(user_id))
+    db.merge(StorageCleanup(prefix=user_prefix(user_id), not_before=now))
     db.execute(delete(CloudObject).where(CloudObject.user_id == user_id))
     db.execute(delete(Moment).where(Moment.user_id == user_id))
     db.execute(delete(SyncRecord).where(SyncRecord.user_id == user_id))
@@ -144,20 +181,26 @@ def purge_cloud_data(db: Session, user_id: str) -> None:
         usage.bytes_total, usage.object_count = 0, 0
 
 
-def delete_account(db: Session, user: User) -> None:
-    """계정 삭제. R2와 RevenueCat을 먼저 지우고 계정 행을 지운다 (나머지 행은 FK cascade).
-
-    중간에 실패하면 deleted_at만 남겨서 로그인·업로드를 막고, 정리 작업이 다시 시도한다.
-    """
-    lock_user(db, user.id)
-    user.deleted_at = user.deleted_at or datetime.now(UTC)
+def mark_account_deleted(db: Session, user: User) -> None:
+    """삭제 요청을 표시한다. 이 뒤로 로그인과 업로드가 막히고, 주기 작업이 정리를 이어서 한다."""
+    locked = lock_user(db, user.id)
+    locked.deleted_at = locked.deleted_at or datetime.now(UTC)
     db.commit()
-    prefix = user_prefix(user.id)
+
+
+def delete_account(db: Session, user: User) -> None:
+    """표시된 계정을 지운다. R2와 RevenueCat을 지운 뒤 계정 행을 지운다 (나머지 행은 FK cascade).
+
+    요청 처리와 주기 작업이 겹칠 수 있어 행을 지우기 전에 다시 잠근다. 이미 지워졌으면 UserGone이다.
+    """
+    user_id = user.id
+    prefix = user_prefix(user_id)
     delete_prefix(prefix)
-    delete_revenuecat_customer(user.id)
-    # 삭제 전에 받은 업로드 URL이 끝날 때쯤 한 번 더 지운다.
-    db.merge(StorageCleanup(prefix=prefix, not_before=datetime.now(UTC) + UPLOAD_URL_TTL))
-    db.delete(user)
+    delete_revenuecat_customer(user_id)
+    locked = lock_user(db, user_id)
+    # 삭제 전에 받은 업로드 URL로 늦게 올라온 객체를 한 번 더 지운다.
+    db.merge(StorageCleanup(prefix=prefix, not_before=datetime.now(UTC) + UPLOAD_SETTLE_AFTER))
+    db.delete(locked)
     db.commit()
 
 

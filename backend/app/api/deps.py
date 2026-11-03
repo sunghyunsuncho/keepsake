@@ -29,6 +29,25 @@ def current_user(
             algorithms=["HS256"],
             issuer=settings.jwt_issuer,
         )
+    except jwt.ExpiredSignatureError as exc:
+        # 만료돼도 서명이 맞으면 계정 삭제 여부를 알려 준다. 기기가 기록을 Local로 옮겨야 한다.
+        try:
+            claims = jwt.decode(
+                credentials.credentials,
+                settings.jwt_secret,
+                algorithms=["HS256"],
+                issuer=settings.jwt_issuer,
+                options={"verify_exp": False},
+            )
+        except jwt.PyJWTError:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid access token") from exc
+        expired_user = db.get(User, claims.get("sub"))
+        detail = (
+            "account unavailable"
+            if expired_user is None or expired_user.deleted_at is not None
+            else "invalid access token"
+        )
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail) from exc
     except jwt.PyJWTError as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid access token") from exc
     user = db.get(User, claims.get("sub"))

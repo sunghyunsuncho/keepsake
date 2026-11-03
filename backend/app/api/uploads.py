@@ -11,10 +11,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession, require_read, require_write
-from app.cloud import lock_user
+from app.cloud import lock_active_user
 from app.config import get_settings
-from app.models.cloud import CloudObject, Moment, Usage
-from app.storage import UPLOAD_URL_TTL, delete_object, object_key, r2_client
+from app.models.cloud import CloudObject, Moment, StorageCleanup, Usage
+from app.storage import (
+    UPLOAD_SETTLE_AFTER,
+    UPLOAD_URL_TTL,
+    object_key,
+    r2_client,
+)
 
 router = APIRouter(tags=["uploads"])
 
@@ -65,9 +70,7 @@ class DownloadResponse(BaseModel):
 def create_upload(payload: CreateUploadRequest, user: CurrentUser, db: DbSession) -> UploadResponse:
     require_write(db, user)
     # 용량 확인과 사용량 변경이 같은 사용자의 다른 요청과 겹치지 않게 한다.
-    if lock_user(db, user.id).deleted_at is not None:
-        # 잠금을 기다리는 사이 계정 삭제가 시작됐다.
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "account unavailable")
+    lock_active_user(db, user.id)
     moment = db.get(Moment, (user.id, payload.moment_id))
     if moment is None or moment.deleted_at is not None:
         # 기기는 기록을 먼저 push한 뒤 사진을 올린다.
@@ -82,8 +85,7 @@ def create_upload(payload: CreateUploadRequest, user: CurrentUser, db: DbSession
         )
     )
     if current is not None and current.status == "stored":
-        # 기록의 사진은 바뀌지 않는다. 다른 기기가 다시 올리려 해도 덮어쓰지 않아야, 그 업로드가
-        # 끝나지 못했을 때 정리 작업이 같은 키의 백업을 지우지 않는다.
+        # 기록의 사진은 바뀌지 않는다. 다른 기기가 이미 올렸으면 그 사진을 그대로 쓴다.
         raise HTTPException(status.HTTP_409_CONFLICT, "photo is already stored")
     if usage.bytes_total + payload.size > get_settings().cloud_max_bytes:
         # 용량 초과: 새 업로드만 막고 기존 백업은 그대로 둔다.
@@ -91,14 +93,19 @@ def create_upload(payload: CreateUploadRequest, user: CurrentUser, db: DbSession
 
     content_type = payload.content_type.lower()
     ext = EXTENSIONS.get(content_type, "bin")
-    key = object_key(user.id, payload.moment_id, payload.variant, ext)
+    key = object_key(user.id, payload.moment_id, payload.variant, uuid4().hex, ext)
     if current is None:
         current = CloudObject(
             id=str(uuid4()), user_id=user.id, moment_id=payload.moment_id, variant=payload.variant
         )
         db.add(current)
-    elif current.r2_key != key:
-        delete_object(current.r2_key)
+    else:
+        # 앞선 업로드의 URL이 아직 살아 있어 지금 지워도 다시 생길 수 있다. 끝난 뒤에 지운다.
+        db.merge(
+            StorageCleanup(
+                prefix=current.r2_key, not_before=datetime.now(UTC) + UPLOAD_SETTLE_AFTER
+            )
+        )
     current.r2_key, current.size_bytes, current.md5 = key, payload.size, payload.md5.lower()
     current.content_type, current.status = content_type, "pending"
     current.created_at = datetime.now(UTC)
@@ -127,7 +134,7 @@ def create_upload(payload: CreateUploadRequest, user: CurrentUser, db: DbSession
 @router.post("/uploads/{upload_id}/complete", status_code=status.HTTP_204_NO_CONTENT)
 def complete_upload(upload_id: str, user: CurrentUser, db: DbSession) -> None:
     # 잠근 뒤에 읽어야 같은 완료 요청이 두 번 와도 사용량을 한 번만 더한다.
-    locked = lock_user(db, user.id)
+    locked = lock_active_user(db, user.id)
     obj = db.get(CloudObject, upload_id)
     if obj is None or obj.user_id != user.id or obj.status == "deleting":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "upload not found")
@@ -143,7 +150,11 @@ def complete_upload(upload_id: str, user: CurrentUser, db: DbSession) -> None:
     etag = str(head.get("ETag", "")).strip('"').lower()
     md5_mismatch = len(etag) == 32 and etag != obj.md5
     if head["ContentLength"] != obj.size_bytes or md5_mismatch:
-        delete_object(obj.r2_key)
+        # URL이 아직 살아 있어 지금 지워도 다시 올라올 수 있다.
+        # 사용량에 잡히지 않는 객체가 남지 않게 URL이 끝난 뒤 지운다.
+        db.merge(
+            StorageCleanup(prefix=obj.r2_key, not_before=datetime.now(UTC) + UPLOAD_SETTLE_AFTER)
+        )
         db.delete(obj)
         db.commit()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "uploaded file does not match")
