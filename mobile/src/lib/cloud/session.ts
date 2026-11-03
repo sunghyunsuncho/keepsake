@@ -1,14 +1,19 @@
+import { File, Paths } from 'expo-file-system';
 import createClient, { type Middleware } from 'openapi-fetch';
 import * as SecureStore from 'expo-secure-store';
 import { useSyncExternalStore } from 'react';
 
 import { API_URL } from '@/api/client';
 import type { components, paths } from '@/api/schema';
-import { retireAccountSpace } from '@/db/spaces';
 
 // Cloud 로그인 상태. 서버가 발급한 토큰은 Keychain/Keystore에만 둔다.
 // Local 사용자는 로그인하지 않으므로 세션이 없는 상태가 기본이다 (docs/PLAN.md §0).
 const SESSION_KEY = 'keepsake.cloud.session';
+// iOS Keychain은 앱을 지워도 남는다. 앱과 함께 지워지는 이 파일이 없으면 새로 설치한 것으로 보고 세션을 버린다.
+const INSTALL_MARKER = 'keepsake-installed';
+export const SPACE_KEY = 'keepsake.cloud.space';
+// 서버가 지워진 계정의 토큰에 주는 401 내용 (backend current_user)
+export const ACCOUNT_UNAVAILABLE = 'account unavailable';
 
 export type CloudSession = { accessToken: string; userId: string };
 export type Account = components['schemas']['AccountResponse'];
@@ -20,8 +25,29 @@ function emit() {
   listeners.forEach((listener) => listener());
 }
 
-export async function loadSession(): Promise<CloudSession | null> {
-  if (session !== undefined) return session;
+let loading: Promise<CloudSession | null> | null = null;
+
+export function loadSession(): Promise<CloudSession | null> {
+  if (session !== undefined) return Promise.resolve(session);
+  loading ??= readSession();
+  return loading;
+}
+
+async function forgetSessionAfterReinstall() {
+  try {
+    const marker = new File(Paths.document, INSTALL_MARKER);
+    if (marker.exists) return;
+    // 표시를 먼저 남긴다. 반대 순서면 표시를 남기지 못할 때 실행할 때마다 로그인이 풀린다.
+    marker.create();
+    await SecureStore.deleteItemAsync(SESSION_KEY);
+    await SecureStore.deleteItemAsync(SPACE_KEY);
+  } catch {
+    // 지우지 못해도 앱은 열려야 한다.
+  }
+}
+
+async function readSession() {
+  await forgetSessionAfterReinstall();
   // 저장소를 읽지 못해도(복원된 기기의 키 불일치 등) 앱은 Local로 열려야 한다.
   const raw = await SecureStore.getItemAsync(SESSION_KEY).catch(() => null);
   session = parseSession(raw);
@@ -70,6 +96,14 @@ export class CloudError extends Error {
   }
 }
 
+type SessionLostHandler = (userId: string, accountGone: boolean) => Promise<void>;
+let sessionLostHandler: SessionLostHandler | null = null;
+
+/** 서버가 세션을 거절했을 때 할 정리를 engine이 등록한다. accountGone: 다른 기기 등에서 계정이 지워졌다. */
+export function setSessionLostHandler(handler: SessionLostHandler) {
+  sessionLostHandler = handler;
+}
+
 // 토큰을 붙이고, 만료·무효(401)면 로그아웃 상태로 돌린다. 기기 데이터는 그대로 남는다.
 const auth: Middleware = {
   async onRequest({ request }) {
@@ -80,10 +114,11 @@ const auth: Middleware = {
   async onResponse({ request, response }) {
     // 이전 계정의 토큰으로 보낸 요청이 늦게 401을 받아도, 그 사이 새로 로그인한 세션은 지우지 않는다.
     if (response.status === 401 && session && request.headers.get('Authorization') === `Bearer ${session.accessToken}`) {
-      // 계정이 지워졌으면(다른 기기, 응답을 받지 못한 삭제 요청) 이 기기 사진의 기록을 Local에 남긴다.
-      const { userId } = session;
+      const { accessToken, userId } = session;
       const body = (await response.clone().json().catch(() => null)) as { detail?: unknown } | null;
-      if (body?.detail === 'account unavailable') await retireAccountSpace(userId).catch(() => {});
+      await sessionLostHandler?.(userId, body?.detail === ACCOUNT_UNAVAILABLE);
+      // 정리하는 사이 새로 로그인했으면 그 세션은 지우지 않는다.
+      if (session?.accessToken !== accessToken) return response;
       await saveSession(null);
     }
     return response;

@@ -135,7 +135,7 @@ function MissingPhoto({ style, explain }: { style: StyleProp<ViewStyle>; explain
       <Ionicons name="image-outline" size={explain ? 32 : 24} color={theme.textSecondary} />
       {explain && (
         <ThemedText type="small" themeColor="textSecondary" style={styles.center}>
-          기기 사진첩에서 지워진 사진이에요.{'\n'}메모와 장소, 날짜는 그대로 남아 있어요.
+          기기 사진첩에서 찾을 수 없는 사진이에요.{'\n'}메모와 장소, 날짜는 그대로 남아 있어요.
         </ThemedText>
       )}
     </View>

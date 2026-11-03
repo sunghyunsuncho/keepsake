@@ -45,11 +45,14 @@ export async function setPurchasesUser(userId: string) {
 }
 
 export async function clearPurchasesUser() {
+  const apiKey = API_KEY;
+  if (!apiKey) return;
   await serially(async () => {
-    if (!currentUser) return;
     currentUser = null;
+    // 이번 실행에서 사용자를 정한 적이 없어도 SDK에는 지난 실행의 사용자가 저장돼 있을 수 있다.
+    await configure(apiKey);
     try {
-      await Purchases.logOut();
+      if (!(await Purchases.isAnonymous())) await Purchases.logOut();
     } catch {
       // 이미 익명 상태면 실패한다. 무시해도 된다.
     }

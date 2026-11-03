@@ -65,6 +65,10 @@ export async function pushDeviceLinks(db: SQLiteDatabase, userId: string) {
   }
 }
 
+// 일부 허용 상태에서 마지막으로 연결을 확인한 때. 허용 범위가 바뀐 것을 직접 알 수 없다.
+let limitedChecked: { userId: string; visible: number; at: number } | null = null;
+const LIMITED_RECHECK_MS = 60 * 60 * 1000;
+
 /**
  * 새로 만든 계정 공간에서 한 번, 이 기기에 저장해 둔 연결을 되살린다.
  * Android 사진 id는 초기화 뒤 다른 사진을 가리킬 수 있어 파일 이름과 촬영 시각이 맞을 때만 잇는다.
@@ -74,6 +78,20 @@ export async function restoreDeviceLinks(db: SQLiteDatabase, userId: string) {
   // 권한을 받기 전이면 확인할 수 없으니 다음 동기화에서 다시 한다.
   const { granted, accessPrivileges } = await MediaLibrary.getPermissionsAsync(false, ['photo']);
   if (!granted) return;
+  // 일부 사진만 허용했으면 볼 수 있는 사진 수가 달라졌을 때나 한 시간에 한 번만 다시 본다.
+  // 동기화마다 전체를 받지 않는다. 수가 같게 바꾼 경우는 다음 확인 때 이어진다.
+  const limited = accessPrivileges === 'limited';
+  let visible = 0;
+  if (limited) {
+    visible = (await MediaLibrary.getAssetsAsync({ mediaType: MediaLibrary.MediaType.photo, first: 1 })).totalCount;
+    if (
+      limitedChecked?.userId === userId &&
+      limitedChecked.visible === visible &&
+      Date.now() - limitedChecked.at < LIMITED_RECHECK_MS
+    ) {
+      return;
+    }
+  }
 
   const deviceId = await deviceIdFor(userId);
   let after = '';
@@ -113,7 +131,7 @@ export async function restoreDeviceLinks(db: SQLiteDatabase, userId: string) {
     if (!page.has_more || page.links.length === 0) break;
     after = page.links[page.links.length - 1].moment_id;
   }
-  // 일부 사진만 허용했으면 나중에 허용한 사진을 이을 수 있도록 다음 동기화에서 다시 본다.
-  if (accessPrivileges !== 'limited') await setSetting(db, 'cloud_links_restored', true);
+  if (limited) limitedChecked = { userId, visible, at: Date.now() };
+  else await setSetting(db, 'cloud_links_restored', true);
   if (restored > 0) notifyChange();
 }

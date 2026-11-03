@@ -42,6 +42,14 @@ export function photosLeftBehind(
   return shown.filter((asset) => asset.creationTime <= until && !kept.has(asset.id));
 }
 
+/** 살펴본 사진 중 기록으로 남기지 않은 사진. 안내하는 수와 정리 화면의 목록이 같아지도록 파일 이름까지 확인한다. */
+export async function withoutKeptPhotos(assets: MediaLibrary.Asset[]) {
+  if (assets.length === 0) return assets;
+  // 확인하지 못해도 정리 화면과 지우기 직전에 다시 확인한다.
+  const saved = await assetsKeptOnDevice(assets).catch(() => new Set<string>());
+  return assets.filter((asset) => !saved.has(asset.id));
+}
+
 /** 정리 화면에 보여줄 사진. 고르기 화면 이후에 달라졌을 수 있어 남긴 사진을 다시 확인하고, 즐겨찾기도 뺀다. */
 export async function loadCleanupPhotos() {
   const saved = await assetsKeptOnDevice(pending);

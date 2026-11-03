@@ -16,7 +16,7 @@ export function CloudSync() {
   const signedIn = Boolean(session);
 
   useEffect(() => {
-    // 공간이 바뀌면 이전 DB가 닫힌 뒤이므로, 정리하기로 한 계정 공간 파일을 지울 수 있다.
+    // 옮기다 멈춘 계정 공간을 마저 옮기고 파일을 지운다. 아직 열려 있는 파일은 다음 실행에서 지워진다.
     purgeRetiredSpaces().catch(() => {});
   }, [db]);
 

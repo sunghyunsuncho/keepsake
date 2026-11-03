@@ -112,6 +112,10 @@ const MIGRATIONS: string[] = [
     decided_at TEXT NOT NULL
   );
   `,
+  // 7: 사진 정리가 파일 이름으로 남긴 사진을 찾는다.
+  `
+  CREATE INDEX idx_moments_original_filename ON moments(original_filename) WHERE deleted_at IS NULL;
+  `,
 ];
 
 export async function migrateDb(db: SQLiteDatabase) {

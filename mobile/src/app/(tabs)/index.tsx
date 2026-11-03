@@ -31,7 +31,7 @@ import { getSettings, setSetting, type Settings } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { dayKeyOf, usePhotoSelection, type SavedItem } from '@/hooks/use-photo-selection';
 import { formatDay, formatTime, toDateKey, todayKey } from '@/lib/dates';
-import { photosLeftBehind, setCleanupPhotos } from '@/lib/cleanup';
+import { photosLeftBehind, setCleanupPhotos, withoutKeptPhotos } from '@/lib/cleanup';
 import { getPhotosSince, subscribeLibraryChanges, usePhotoAccess } from '@/lib/photos';
 import { checkMissedPhotos, clearMissedPhotos, loadMissedPhotos } from '@/lib/missed-photos';
 import { markReviewed, offerReminders } from '@/lib/reminders';
@@ -319,10 +319,12 @@ function Inbox({
     if (items.length === picked.length) {
       const seen = Math.max(seenUntil, ...picked.map((a) => a.creationTime));
       addLeftBehind(
-        photosLeftBehind(
-          shown,
-          [...saved.keys(), ...picked.map((a) => a.id)],
-          Math.min(seen, Date.now()),
+        await withoutKeptPhotos(
+          photosLeftBehind(
+            shown,
+            [...saved.keys(), ...picked.map((a) => a.id)],
+            Math.min(seen, Date.now()),
+          ),
         ),
       );
       await moveCursor(seen);
@@ -334,7 +336,7 @@ function Inbox({
   };
 
   const markSeen = async () => {
-    addLeftBehind(photosLeftBehind(shown, saved.keys(), Math.min(seenUntil, Date.now())));
+    addLeftBehind(await withoutKeptPhotos(photosLeftBehind(shown, saved.keys(), Math.min(seenUntil, Date.now()))));
     await moveCursor(seenUntil);
     await markReviewed(db);
   };

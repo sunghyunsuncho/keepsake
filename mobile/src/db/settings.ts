@@ -28,6 +28,8 @@ export type Settings = {
   cloud_links_restored: boolean;
   /** 서버 데이터가 지워져 파일을 지울 계정 공간의 user_id */
   retired_spaces: string[];
+  /** 남길 기록을 Local로 옮기는 중인 계정 공간의 user_id. 실패하면 다음 실행 때 다시 옮긴다. */
+  retiring_spaces: string[];
   /** 마지막으로 [남기기]나 [여기까지 봤어요]를 누른 시각. 고르기 알림의 기준이다. */
   last_reviewed_at: string | null;
   reminder_enabled: boolean;
@@ -65,6 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cloud_account_key: null,
   cloud_links_restored: false,
   retired_spaces: [],
+  retiring_spaces: [],
   last_reviewed_at: null,
   reminder_enabled: false,
   reminder_time: '21:00',
@@ -135,6 +138,7 @@ const VALIDATORS: Record<keyof Settings, (value: unknown) => boolean> = {
   cloud_account_key: (v) => v === null || typeof v === 'string',
   cloud_links_restored: (v) => typeof v === 'boolean',
   retired_spaces: (v) => Array.isArray(v) && v.every((id) => typeof id === 'string'),
+  retiring_spaces: (v) => Array.isArray(v) && v.every((id) => typeof id === 'string'),
   last_reviewed_at: isIsoOrNull,
   reminder_enabled: (v) => typeof v === 'boolean',
   reminder_time: (v) => typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v),
