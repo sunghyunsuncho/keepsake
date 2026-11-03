@@ -13,8 +13,8 @@ SOURCE = ROOT / "mobile/assets/source/keepsake_icon.png"
 IMAGES = ROOT / "mobile/assets/images"
 STORE = ROOT / "mobile/assets/store"
 
-# app.json의 splash/adaptiveIcon backgroundColor와 같은 값을 유지한다.
-BACKGROUND = "#F4F1EC"
+# app.json의 adaptiveIcon backgroundColor와 같은 값을 유지한다.
+BACKGROUND = "#FFFFFF"
 # 마크로 보는 최소 불투명도. 이보다 옅은 픽셀은 바깥 그림자다.
 MARK_ALPHA_THRESHOLD = 32
 
@@ -45,10 +45,10 @@ def monochrome(image: Image.Image) -> Image.Image:
     """Android 테마 아이콘용 단색 마크. 시스템이 알파값만 보고 색을 입힌다.
 
     전체 실루엣만 쓰면 안쪽 디자인이 사라지므로, 어두운 면(판·해·띠)은 진하게,
-    밝은 회색 판은 반투명하게 남겨 K 모양과 사진 느낌을 함께 살린다.
+    밝은 판은 반투명하게 남겨 K 모양과 사진 느낌을 함께 살린다.
     """
     shape = image.getchannel("A").point(lambda v: 255 if v > MARK_ALPHA_THRESHOLD else 0)
-    dark = image.convert("L").point(lambda v: 255 if v < 120 else 0)
+    dark = image.convert("L").point(lambda v: 255 if v < 130 else 0)
     alpha = ImageChops.multiply(shape, ImageChops.lighter(dark, Image.new("L", image.size, 90)))
     white = Image.new("RGBA", image.size, (255, 255, 255, 0))
     white.putalpha(alpha)
@@ -65,7 +65,7 @@ def main() -> None:
     mark = load_mark()
 
     # iOS 앱 아이콘 + App Store 아이콘: 투명도 불가, 1024 정사각형 (모서리는 iOS가 둥글게 처리)
-    icon = place(mark, 1024, 660, BACKGROUND)
+    icon = place(mark, 1024, 740, BACKGROUND)
     save(icon, IMAGES / "icon.png", opaque=True)
     save(icon, STORE / "app-store-icon-1024.png", opaque=True)
     # Google Play 스토어 아이콘: 512 정사각형
@@ -73,7 +73,7 @@ def main() -> None:
 
     # Android 적응형 아이콘: 기기마다 원·둥근 사각형 등으로 잘리므로
     # 마크를 가운데 안전 영역(지름 66%) 안에 들어가게 작게 둔다.
-    foreground = place(mark, 1024, 500, None)
+    foreground = place(mark, 1024, 560, None)
     save(foreground, IMAGES / "android-icon-foreground.png")
     save(Image.new("RGBA", (1024, 1024), BACKGROUND), IMAGES / "android-icon-background.png")
     save(monochrome(foreground), IMAGES / "android-icon-monochrome.png")
