@@ -99,42 +99,6 @@ export function PhotoTile({
   );
 }
 
-/** 하루 권장 수 대비 남긴(꽉 찬 점)·고른(옅은 점) 사진 수. 넘치면 "+N". */
-export function DayDots({
-  saved,
-  picked,
-  recommended,
-}: {
-  saved: number;
-  picked: number;
-  recommended: number;
-}) {
-  const theme = useTheme();
-  const total = saved + picked;
-  return (
-    <View style={styles.dots}>
-      {Array.from({ length: recommended }, (_, i) => (
-        <View
-          key={i}
-          style={[
-            styles.dot,
-            {
-              borderColor: theme.accent,
-              backgroundColor:
-                i < saved ? theme.accent : i < total ? theme.accent + '55' : 'transparent',
-            },
-          ]}
-        />
-      ))}
-      {total > recommended && (
-        <ThemedText type="smallBold" themeColor="textSecondary">
-          +{total - recommended}
-        </ThemedText>
-      )}
-    </View>
-  );
-}
-
 const COLUMN_ICONS: Record<GridColumns, keyof typeof Ionicons.glyphMap> = {
   1: 'square-outline',
   2: 'grid-outline',
@@ -207,6 +171,49 @@ export function BottomBar({
         </Pressable>
       )}
       <Button label={action.label} loading={action.loading} onPress={action.onPress} />
+    </View>
+  );
+}
+
+/** 고르기 뒤에만 보이는 사진 정리 제안. 삭제 화면으로 가기 전에는 사진을 전혀 건드리지 않는다. */
+export function CleanupSuggestion({
+  count,
+  onDismiss,
+  onCleanup,
+}: {
+  count: number;
+  onDismiss: () => void;
+  onCleanup: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.cleanupSuggestion, { backgroundColor: theme.background, borderColor: theme.border }]}>
+      <View style={styles.cleanupHeading}>
+        <View style={[styles.cleanupIcon, { backgroundColor: theme.accent + '18' }]}>
+          <Ionicons name="leaf-outline" size={20} color={theme.accent} />
+        </View>
+        <View style={styles.flex}>
+          <ThemedText type="smallBold">남기지 않은 사진 {count}장</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            필요한 사진만 남기고, 나머지는 한 번 더 확인해 정리할 수 있어요.
+          </ThemedText>
+        </View>
+        <Pressable onPress={onDismiss} hitSlop={10} accessibilityLabel="정리 제안 닫기">
+          <Ionicons name="close" size={18} color={theme.textSecondary} />
+        </Pressable>
+      </View>
+      <View style={styles.cleanupActions}>
+        <Pressable onPress={onDismiss} style={styles.cleanupSecondary} accessibilityRole="button">
+          <ThemedText type="smallBold" themeColor="textSecondary">이번엔 그냥 둘게요</ThemedText>
+        </Pressable>
+        <Pressable
+          onPress={onCleanup}
+          style={[styles.cleanupPrimary, { backgroundColor: theme.accent }]}
+          accessibilityRole="button">
+          <Ionicons name="options-outline" size={17} color={theme.onAccent} />
+          <ThemedText type="smallBold" style={{ color: theme.onAccent }}>사진 정리</ThemedText>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -308,8 +315,6 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     padding: Spacing.four,
   },
-  dots: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
-  dot: { width: 10, height: 10, borderRadius: 5, borderWidth: 1.5 },
   segment: { flexDirection: 'row', borderRadius: Spacing.two, padding: 2 },
   segmentItem: {
     width: 32,
@@ -363,6 +368,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
   },
   secondary: { paddingVertical: Spacing.two },
+  cleanupSuggestion: {
+    margin: Spacing.two,
+    padding: Spacing.three,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Spacing.four,
+    gap: Spacing.three,
+    shadowColor: '#140F0A',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  cleanupHeading: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.two },
+  cleanupIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  cleanupActions: { flexDirection: 'row', gap: Spacing.two },
+  cleanupSecondary: { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center' },
+  cleanupPrimary: { flex: 1, minHeight: 42, borderRadius: Spacing.two, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.one },
   tray: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: Spacing.two,

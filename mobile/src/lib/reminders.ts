@@ -6,13 +6,13 @@ import { getSettings, setSetting, type ReminderFrequency, type Settings } from '
 import { countPhotosSince } from '@/lib/photos';
 
 // 고르기 리마인더 (로컬 알림, 서버 없음). docs/PLAN.md Phase 3.
-// 앱이 백그라운드로 갈 때·설정을 바꿀 때·[남기기] 후에 예약을 모두 지우고 다음 몇 회분을 다시 예약한다.
-// 알림 내용(새 사진 수)은 예약할 때 정해지므로, 앱을 자주 열수록 정확해진다.
+// 앱이 백그라운드로 갈 때·설정을 바꿀 때·[남기기] 후에 다음 한 회만 다시 예약한다.
+// 사진 보관함은 앱이 닫혀 있을 때 바뀐 것을 항상 알려 주지 않으므로, 앱이 사진 수를 확인한
+// 시점에만 예약한다. 사진이 없는데 보내는 주기 알림보다, 다음 앱 전환 때 다시 확인하는 편을 택한다.
 
 const IDENTIFIER_PREFIX = 'review-reminder-';
 const CHANNEL_ID = 'reminders';
-// iOS는 앱당 예약 알림을 64개까지 둔다. 다시 예약할 기회가 없어도 한동안은 알림이 가도록 7회분.
-const SCHEDULE_COUNT = 7;
+const MONTHLY_NUDGE_DAYS = 30;
 
 export const REMINDER_INTERVAL_DAYS: Record<ReminderFrequency, number> = {
   daily: 1,
@@ -25,8 +25,6 @@ export const REMINDER_FREQUENCY_LABEL: Record<ReminderFrequency, string> = {
   every_2_days: '이틀마다',
   weekly: '매주',
 };
-
-const GENERIC_BODY = '최근 찍은 사진 중 남기고 싶은 순간이 있나요?';
 
 // 백그라운드 전환과 [남기기]가 겹치면 지우기·예약이 섞이므로 차례로 실행한다.
 let queue: Promise<void> = Promise.resolve();
@@ -60,21 +58,22 @@ async function reschedule(db: SQLiteDatabase) {
   const cursor = settings.review_cursor
     ? new Date(Math.min(new Date(settings.review_cursor).getTime(), now.getTime()))
     : null;
-  const unseen = cursor ? await countPhotosSince(cursor) : null;
-
-  for (const [index, date] of reminderDates(settings, now).entries()) {
-    let body = GENERIC_BODY;
-    // 첫 회에만 지금 쌓인 사진 수를 넣는다. 0장이면 알릴 것이 없으니 건너뛴다.
-    if (index === 0 && cursor && unseen !== null) {
-      if (unseen === 0) continue;
-      body = unseenBody(unseen, cursor, date);
-    }
-    await Notifications.scheduleNotificationAsync({
-      identifier: `${IDENTIFIER_PREFIX}${index}`,
-      content: { body, data: { url: '/' } },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date, channelId: CHANNEL_ID },
-    });
-  }
+  // 새 사진이 있고 일정 기간이 지났을 때 먼저 알린다. 사진 보관함 변경을 놓쳤더라도
+  // 마지막으로 고른 지 한 달이 되는 날에는 한 번 부드럽게 다시 고르도록 알린다.
+  if (!cursor) return;
+  const unseen = await countPhotosSince(cursor);
+  const reviewDate = nextReminderDate(settings, now);
+  const monthlyDate = monthlyNudgeDate(settings, now);
+  const date = unseen ? earliestDate(reviewDate, monthlyDate) : monthlyDate;
+  if (!date) return;
+  await Notifications.scheduleNotificationAsync({
+    identifier: `${IDENTIFIER_PREFIX}next`,
+    content: {
+      body: unseen ? unseenBody(unseen, cursor, date) : MONTHLY_NUDGE_BODY,
+      data: { url: '/' },
+    },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date, channelId: CHANNEL_ID },
+  });
 }
 
 /**
@@ -98,7 +97,34 @@ export function reminderDates(
   );
   let k = Math.max(settings.last_reviewed_at ? 1 : 0, Math.floor(daysSinceAnchor / interval));
   while (at(k) <= now) k++;
-  return Array.from({ length: SCHEDULE_COUNT }, (_, i) => at(k + i));
+  return [at(k)];
+}
+
+/** 다음 한 번의 알림 시각. 앱이 다시 열리거나 백그라운드로 갈 때 다시 판단한다. */
+export function nextReminderDate(
+  settings: Pick<Settings, 'last_reviewed_at' | 'reminder_time' | 'reminder_frequency'>,
+  now: Date,
+) {
+  return reminderDates(settings, now)[0];
+}
+
+const MONTHLY_NUDGE_BODY = '마지막으로 사진을 고른 지 한 달이 되었어요. 새로 찍은 사진 중 남기고 싶은 순간이 있나요?';
+
+/** 새 사진 감지가 늦어져도 한 달 뒤 한 번은 다시 고르기를 제안한다. 이미 지난 알림은 되살리지 않는다. */
+export function monthlyNudgeDate(
+  settings: Pick<Settings, 'last_reviewed_at' | 'reminder_time'>,
+  now: Date,
+) {
+  if (!settings.last_reviewed_at) return null;
+  const anchor = new Date(settings.last_reviewed_at);
+  const [hours, minutes] = settings.reminder_time.split(':').map(Number);
+  const date = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + MONTHLY_NUDGE_DAYS, hours, minutes);
+  return date > now ? date : null;
+}
+
+function earliestDate(...dates: (Date | null)[]) {
+  const available = dates.filter((date): date is Date => date !== null);
+  return available.sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
 }
 
 /** "지난 3일 동안 찍은 사진 24장 중 …" */

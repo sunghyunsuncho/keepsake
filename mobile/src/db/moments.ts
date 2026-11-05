@@ -93,6 +93,14 @@ export function listMoments(db: SQLiteDatabase) {
   );
 }
 
+/** 가장 최근에 보관한 사진. 고른 순서를 보여 주는 작은 미리보기에 쓴다. */
+export function listRecentlySavedMoments(db: SQLiteDatabase, limit: number) {
+  return db.getAllAsync<Moment>(
+    'SELECT * FROM moments WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ?',
+    limit,
+  );
+}
+
 export function getMoment(db: SQLiteDatabase, id: string) {
   return db.getFirstAsync<Moment>('SELECT * FROM moments WHERE id = ? AND deleted_at IS NULL', id);
 }

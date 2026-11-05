@@ -32,6 +32,11 @@ export function setCleanupPhotos(assets: MediaLibrary.Asset[]) {
   pending = assets;
 }
 
+/** 정리 화면을 취소하면 후보도 버린다. 사진첩의 파일에는 아무 변화가 없다. */
+export function clearCleanupPhotos() {
+  pending = [];
+}
+
 /** 살펴본 사진(until까지) 중 이번에 남긴 사진을 뺀 것. */
 export function photosLeftBehind(
   shown: MediaLibrary.Asset[],

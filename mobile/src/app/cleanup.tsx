@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import type { Asset } from 'expo-media-library';
-import { router } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
@@ -23,7 +23,7 @@ import { Spacing } from '@/constants/theme';
 import { useDbQuery } from '@/db/changes';
 import { getSettings, setSetting } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
-import { CLEANUP_GUIDE, DELETE_NOTICE, deleteLeftBehindPhotos, loadCleanupPhotos } from '@/lib/cleanup';
+import { CLEANUP_GUIDE, DELETE_NOTICE, clearCleanupPhotos, deleteLeftBehindPhotos, loadCleanupPhotos } from '@/lib/cleanup';
 import { useCloudSession } from '@/lib/cloud/session';
 
 /** 고르기를 마친 뒤 남기지 않은 사진을 살펴보고 지운다. 누른 사진은 지우지 않는다. */
@@ -37,6 +37,11 @@ export default function CleanupScreen() {
   const [deleting, setDeleting] = useState(false);
   const [notDeleted, setNotDeleted] = useState(false);
   const [deletedCount, setDeletedCount] = useState<number | null>(null);
+
+  const cancel = () => {
+    clearCleanupPhotos();
+    router.back();
+  };
 
   useEffect(() => {
     loadCleanupPhotos()
@@ -88,7 +93,7 @@ export default function CleanupScreen() {
           <Button label="닫기" onPress={() => router.back()} />
           {!session && (
             <Button
-              label="Cloud 알아보기"
+              label="안전 보관 알아보기"
               variant="secondary"
               onPress={() => router.replace('/cloud')}
             />
@@ -158,6 +163,15 @@ export default function CleanupScreen() {
 
   return (
     <ThemedView style={styles.flex}>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <Pressable onPress={cancel} hitSlop={10} accessibilityRole="button">
+              <ThemedText type="smallBold" style={{ color: theme.accent }}>취소</ThemedText>
+            </Pressable>
+          ),
+        }}
+      />
       <SafeAreaView style={styles.flex} edges={['bottom']}>
         {content}
       </SafeAreaView>

@@ -76,8 +76,8 @@ export function ReminderSection({ settings }: { settings: Settings | undefined }
             </ThemedText>
           </Pressable>
           <ThemedText type="small" themeColor="textSecondary">
-            마지막으로 고른 날부터 {REMINDER_FREQUENCY_LABEL[settings?.reminder_frequency ?? 'every_2_days']}{' '}
-            알려드려요. 그날 이미 골랐으면 알리지 않아요.
+            마지막으로 고른 뒤 {REMINDER_FREQUENCY_LABEL[settings?.reminder_frequency ?? 'every_2_days']}이 지나고
+            새 사진이 있으면 알려드려요. 사진을 고르지 않은 지 한 달이 되면 한 번 더 알려드려요.
           </ThemedText>
           {permitted === false && (
             // 아직 묻지 않았으면 묻고, 거절했으면 설정 앱으로 안내한다.

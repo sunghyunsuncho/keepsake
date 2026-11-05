@@ -6,9 +6,9 @@ import { notifyChange } from '@/db/changes';
 // 설정은 기기에 하나다: 계정을 바꿔도 알림·고르기 지점이 달라지지 않게 항상 Local DB에 둔다.
 // 동기화 상태(ACCOUNT_KEYS)만 그 계정 공간의 DB에 둔다.
 export type GridColumns = 1 | 2 | 3;
+export type AlbumSortOrder = 'newest' | 'oldest';
 
 export type Settings = {
-  daily_recommended_count: number;
   wifi_only_upload: boolean;
   /** 고르기 화면에서 한 줄에 보여줄 사진 수 */
   pick_grid_columns: GridColumns;
@@ -47,8 +47,12 @@ export type Settings = {
   missed_baseline: { cursor: string; count: number; checked_at: number } | null;
   /** 앨범을 얼마나 당겨서 볼지. 마지막으로 본 단계를 기억한다. */
   album_zoom: AlbumZoom;
+  /** 앨범과 전체 화면에서 최근 기록을 위에 둘지, 오래된 기록을 위에 둘지 */
+  album_sort_order: AlbumSortOrder;
   /** '몇 년 전 오늘'을 닫은 날 ("YYYY-MM-DD"). 그날은 다시 보여주지 않는다. */
   on_this_day_hidden: string | null;
+  /** 새 사진을 고를 때 바로 담을 사용자 앨범. null이면 '나의 순간들'에만 남긴다. */
+  picking_album_id: string | null;
 };
 
 export type ReminderFrequency = 'daily' | 'every_2_days' | 'weekly';
@@ -59,7 +63,6 @@ export type AlbumZoom = 'year' | 'month' | 'day' | 'story';
 export const ALBUM_ZOOMS: readonly AlbumZoom[] = ['year', 'month', 'day', 'story'];
 
 export const DEFAULT_SETTINGS: Settings = {
-  daily_recommended_count: 3,
   wifi_only_upload: true,
   pick_grid_columns: 3,
   review_cursor: null,
@@ -76,10 +79,11 @@ export const DEFAULT_SETTINGS: Settings = {
   missed_photo_ids: [],
   missed_baseline: null,
   album_zoom: 'month',
+  album_sort_order: 'newest',
   on_this_day_hidden: null,
+  picking_album_id: null,
 };
 
-export const RECOMMENDED_COUNT_RANGE = { min: 1, max: 10 } as const;
 export const GRID_COLUMN_OPTIONS: readonly GridColumns[] = [1, 2, 3];
 
 const ACCOUNT_KEYS: readonly (keyof Settings)[] = [
@@ -127,10 +131,6 @@ const isIsoOrNull = (v: unknown) =>
 
 // 저장된 값이 깨졌거나 이전 버전 형식이면 기본값을 쓴다 (화면 계산이 NaN이 되지 않도록).
 const VALIDATORS: Record<keyof Settings, (value: unknown) => boolean> = {
-  daily_recommended_count: (v) =>
-    Number.isInteger(v) &&
-    (v as number) >= RECOMMENDED_COUNT_RANGE.min &&
-    (v as number) <= RECOMMENDED_COUNT_RANGE.max,
   wifi_only_upload: (v) => typeof v === 'boolean',
   pick_grid_columns: (v) => GRID_COLUMN_OPTIONS.includes(v as GridColumns),
   review_cursor: isIsoOrNull,
@@ -156,7 +156,9 @@ const VALIDATORS: Record<keyof Settings, (value: unknown) => boolean> = {
     );
   },
   album_zoom: (v) => ALBUM_ZOOMS.includes(v as AlbumZoom),
+  album_sort_order: (v) => v === 'newest' || v === 'oldest',
   on_this_day_hidden: (v) => v === null || typeof v === 'string',
+  picking_album_id: (v) => v === null || typeof v === 'string',
 };
 
 export async function setSetting<K extends keyof Settings>(

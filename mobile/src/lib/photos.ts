@@ -105,6 +105,23 @@ export async function getPhotosSince(since: Date, after?: string) {
   };
 }
 
+/** 지난 사진 화면: 기준 시각보다 앞선 사진을 최신 것부터 한 쪽씩 가져온다. */
+export async function getPhotosBefore(before: Date, after?: string) {
+  const page = await MediaLibrary.getAssetsAsync({
+    mediaType: MediaLibrary.MediaType.photo,
+    createdBefore: before.getTime(),
+    sortBy: [[MediaLibrary.SortBy.creationTime, false]],
+    first: INBOX_PAGE_SIZE,
+    after,
+  });
+  return {
+    assets: page.assets,
+    endCursor: page.endCursor,
+    hasNextPage: page.hasNextPage,
+    totalCount: page.totalCount,
+  };
+}
+
 /** since 이후에 찍은 사진 수. 사진 접근 권한이 없으면 null. */
 export async function countPhotosSince(since: Date) {
   const { granted } = await MediaLibrary.getPermissionsAsync(false, GRANULAR);
@@ -117,12 +134,33 @@ export async function countPhotosSince(since: Date) {
   return page.totalCount;
 }
 
+/** 사진 보관함에서 가장 오래된 사진의 촬영 시각. 과거 사진을 처음부터 이어 볼 때 쓴다. */
+export async function firstPhotoDate() {
+  const page = await MediaLibrary.getAssetsAsync({
+    mediaType: MediaLibrary.MediaType.photo,
+    sortBy: [[MediaLibrary.SortBy.creationTime, true]],
+    first: 1,
+  });
+  return page.assets[0] ? new Date(page.assets[0].creationTime) : null;
+}
+
 const INBOX_PAGE_SIZE = 200;
 const PAGE_SIZE = 300;
 
 /** 그날(현지 시간) 촬영한 사진 전체를 촬영 시각 순으로 가져온다. */
 export async function getDayPhotos(dateKey: string) {
   const { start, end } = dayRange(dateKey);
+  return getPhotosBetween(start, end);
+}
+
+/** 한 달을 한 화면에서 돌아볼 때 쓸 사진. 날짜별 묶음은 화면 쪽에서 만든다. */
+export async function getMonthPhotos(date: Date) {
+  const start = new Date(date.getFullYear(), date.getMonth(), 1);
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+  return getPhotosBetween(start, end);
+}
+
+async function getPhotosBetween(start: Date, end: Date) {
   const assets: MediaLibrary.Asset[] = [];
   let after: string | undefined;
 

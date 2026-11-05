@@ -4,35 +4,37 @@ import type { Asset } from 'expo-media-library';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/button';
+import { AlbumNameSheet } from '@/components/album-name-sheet';
 import { DateSheet } from '@/components/date-sheet';
+import { MomentPhoto } from '@/components/moment-photo';
 import {
   BottomBar,
+  CleanupSuggestion,
   Centered,
   ColumnToggle,
-  DayDots,
   GRID_GAP,
   IconButton,
   LimitedAccessBanner,
   PhotoTile,
-  SavedTray,
   tileHeightFor,
   useTileWidth,
 } from '@/components/pick';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { ALL_ALBUM_ID, createAlbum, getAlbumTitle, listAlbums, updateAlbumMoments } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
-import { activeMomentIds, momentIdsByAsset } from '@/db/moments';
+import { listRecentlySavedMoments, momentIdsByAsset } from '@/db/moments';
 import { getSettings, setSetting, type Settings } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
-import { dayKeyOf, usePhotoSelection, type SavedItem } from '@/hooks/use-photo-selection';
+import { dayKeyOf, usePhotoSelection } from '@/hooks/use-photo-selection';
 import { formatDay, formatTime, toDateKey, todayKey } from '@/lib/dates';
 import { photosLeftBehind, setCleanupPhotos, withoutKeptPhotos } from '@/lib/cleanup';
-import { getPhotosSince, subscribeLibraryChanges, usePhotoAccess } from '@/lib/photos';
+import { firstPhotoDate, getPhotosSince, subscribeLibraryChanges, usePhotoAccess } from '@/lib/photos';
 import { checkMissedPhotos, clearMissedPhotos, loadMissedPhotos } from '@/lib/missed-photos';
 import { markReviewed, offerReminders } from '@/lib/reminders';
 
@@ -40,9 +42,22 @@ export default function PickScreen() {
   const db = useSQLiteContext();
   const { access, canAskAgain, request } = usePhotoAccess();
   const { data: settings } = useDbQuery(() => getSettings(db), [db]);
+  const targetAlbumId = settings?.picking_album_id ?? null;
+  const { data: targetAlbumTitle } = useDbQuery(
+    () => (targetAlbumId ? getAlbumTitle(db, targetAlbumId) : Promise.resolve(null)),
+    [db, targetAlbumId],
+  );
+
+  // 앨범을 지운 뒤 고르기 화면이 남아 있으면 기기에 저장한 대상 ID가 오래된 값일 수 있다.
+  // 그 상태에서 다음 사진을 엉뚱하게 기본 보관함에만 남기지 않도록 먼저 대상 확인을 끝낸다.
+  useEffect(() => {
+    if (targetAlbumId && targetAlbumTitle === null) {
+      setSetting(db, 'picking_album_id', null).catch(() => {});
+    }
+  }, [db, targetAlbumId, targetAlbumTitle]);
 
   let content;
-  if (access === null || !settings) {
+  if (access === null || !settings || (targetAlbumId !== null && targetAlbumTitle === undefined)) {
     content = (
       <Centered>
         <ActivityIndicator />
@@ -56,7 +71,12 @@ export default function PickScreen() {
     content = <StartPoint />;
   } else {
     content = (
-      <Inbox limited={access === 'limited'} cursor={settings.review_cursor} settings={settings} />
+      <Inbox
+        limited={access === 'limited'}
+        cursor={settings.review_cursor}
+        settings={settings}
+        targetAlbum={targetAlbumTitle ? { id: targetAlbumId!, title: targetAlbumTitle } : null}
+      />
     );
   }
 
@@ -106,6 +126,7 @@ function PermissionIntro({
 function StartPoint() {
   const db = useSQLiteContext();
   const [choosingDate, setChoosingDate] = useState(false);
+  const [startingArchive, setStartingArchive] = useState(false);
 
   // 고른 날 0시 직전을 '여기까지 봤다'로 두면 그날 사진부터 보인다.
   const startFrom = (date: Date) => {
@@ -117,6 +138,15 @@ function StartPoint() {
     date.setDate(date.getDate() - days);
     return date;
   };
+  const startFromBeginning = async () => {
+    setStartingArchive(true);
+    try {
+      const first = await firstPhotoDate();
+      if (first) startFrom(first);
+    } finally {
+      setStartingArchive(false);
+    }
+  };
 
   return (
     <Centered style={styles.startPoint}>
@@ -124,10 +154,18 @@ function StartPoint() {
         어디서부터 고를까요?
       </ThemedText>
       <ThemedText themeColor="textSecondary" style={styles.center}>
+        처음부터 시작해도 괜찮아요. 중간에 멈추면 다음번에 그 뒤부터 이어서 보여드려요.{"\n"}
+        {'\n'}
         필름 한 롤을 다 찍고 나서 남길 사진을 고르듯,{'\n'}
         Keepsake는 지난번에 살펴본 다음 사진부터 차례로 보여드려요.
       </ThemedText>
       <View style={styles.startOptions}>
+        <Button
+          label={startingArchive ? '사진을 찾는 중…' : '처음부터 조금씩 고르기'}
+          variant="secondary"
+          disabled={startingArchive}
+          onPress={startFromBeginning}
+        />
         <Button label="오늘 찍은 사진부터" onPress={() => startFrom(new Date())} />
         <Button label="최근 1주" variant="secondary" onPress={() => startFrom(daysAgo(6))} />
         <Button label="최근 한 달" variant="secondary" onPress={() => startFrom(daysAgo(30))} />
@@ -165,20 +203,24 @@ function Inbox({
   limited,
   cursor,
   settings,
+  targetAlbum,
 }: {
   limited: boolean;
   cursor: string;
   settings: Settings;
+  targetAlbum: { id: string; title: string } | null;
 }) {
   const db = useSQLiteContext();
+  const theme = useTheme();
   // 예전에 미래 시각으로 저장된 지점이 있어도 지금 찍는 사진이 숨지 않게 현재 시각을 넘지 않게 한다.
   const cursorMs = useMemo(() => Math.min(new Date(cursor).getTime(), Date.now()), [cursor]);
   const [roll, setRoll] = useState<Roll | null>(null);
   const [libraryVersion, setLibraryVersion] = useState(0);
   const [seenUntil, setSeenUntil] = useState(cursorMs);
-  const [justSaved, setJustSaved] = useState<SavedItem[]>([]);
   // 방금 살펴보고 남기지 않은 사진. 지점을 옮기면 목록에서 사라지므로 옮기기 전에 잡아 둔다.
   const [leftBehind, setLeftBehind] = useState<Asset[]>([]);
+  // 날짜별 확인 때마다 정리 제안을 띄우지 않고, 후보를 모아 사용자가 원할 때 한 번에 연다.
+  const [cleanupReady, setCleanupReady] = useState(false);
   const loadingMore = useRef(false);
   // 다시 읽기를 시작할 때마다 올린다. 늦게 끝난 이전 요청(다시 읽기·다음 쪽)이 결과를 덮지 않게 한다.
   const generation = useRef(0);
@@ -254,10 +296,6 @@ function Inbox({
     [db, assetIds],
   );
   const selection = usePhotoSelection(db, saved);
-  // 방금 남긴 사진 중 그 사이(상세 화면 등에서) 기록에서 뺀 것은 목록에서 뺀다.
-  const justSavedIds = useMemo(() => justSaved.map((item) => item.momentId), [justSaved]);
-  const { data: alive } = useDbQuery(() => activeMomentIds(db, justSavedIds), [db, justSavedIds]);
-  const recentlySaved = alive ? justSaved.filter((item) => alive.has(item.momentId)) : justSaved;
   const columns = settings.pick_grid_columns;
   const tileWidth = useTileWidth(columns);
 
@@ -314,7 +352,6 @@ function Inbox({
     const items = await selection.complete(shown);
     // 고른 사진이 그 사이 모두 지워졌으면 선택만 비운다. 지점을 옮기거나 정리를 권하지 않는다.
     if (picked.length === 0) return;
-    setJustSaved((prev) => [...items, ...prev]);
     // 실패해서 선택에 남은 사진이 있으면, 그 사진이 사라지지 않도록 지점을 옮기지 않는다.
     if (items.length === picked.length) {
       const seen = Math.max(seenUntil, ...picked.map((a) => a.creationTime));
@@ -330,6 +367,7 @@ function Inbox({
       await moveCursor(seen);
     }
     if (items.length > 0) {
+      if (targetAlbum) await updateAlbumMoments(db, targetAlbum.id, { add: items.map((item) => item.momentId) });
       await markReviewed(db);
       offerReminders(db);
     }
@@ -341,10 +379,31 @@ function Inbox({
     await markReviewed(db);
   };
 
+  // 날짜 묶음에서 바로 진행을 확정한다. 이 날짜보다 앞선 사진도 함께 본 것으로 처리된다.
+  const markSeenThroughDay = (dayAssets: Asset[]) => {
+    if (selection.draft.length > 0) {
+      Alert.alert('먼저 고른 사진을 남겨 주세요', '선택을 해제하거나 [남기기]를 누른 뒤 진행할 수 있어요.');
+      return;
+    }
+    const through = Math.min(Math.max(...dayAssets.map((asset) => asset.creationTime)), Date.now());
+    Alert.alert('이 날짜까지 확인할까요?', '이 날짜까지의 사진은 다음 고르기에서 건너뛰어요.', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '확인',
+        onPress: async () => {
+          addLeftBehind(await withoutKeptPhotos(photosLeftBehind(shown, saved.keys(), through)));
+          setSeenUntil((previous) => Math.max(previous, through));
+          await moveCursor(through);
+          await markReviewed(db);
+        },
+      },
+    ]);
+  };
+
   const header = (
     <View style={styles.header}>
       <View style={styles.flex}>
-        <ThemedText style={styles.title}>새로 찍은 사진</ThemedText>
+        <ThemedText style={styles.title}>{targetAlbum ? `${targetAlbum.title}에 담을 사진` : '새로 찍은 사진'}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
           {roll && roll.assets.length > 0
             ? `${formatDay(dayKeyOf(roll.assets[0]))}부터 ${roll.totalCount}장`
@@ -352,7 +411,20 @@ function Inbox({
         </ThemedText>
       </View>
       <ColumnToggle value={columns} onChange={(next) => setSetting(db, 'pick_grid_columns', next)} />
-      <IconButton icon="calendar-outline" label="날짜로 보기" onPress={() => router.push('/day')} />
+      {leftBehind.length > 0 && !cleanupReady && (
+        <Pressable onPress={() => setCleanupReady(true)} hitSlop={8} accessibilityRole="button">
+          <ThemedText type="smallBold" style={{ color: theme.accent }}>
+            정리 후보 {leftBehind.length}
+          </ThemedText>
+        </Pressable>
+      )}
+      {targetAlbum && (
+        <IconButton
+          icon="close"
+          label="앨범에 담기 마치기"
+          onPress={() => setSetting(db, 'picking_album_id', null)}
+        />
+      )}
     </View>
   );
 
@@ -379,8 +451,7 @@ function Inbox({
       ) : (
         <>
           <ThemedText type="small" themeColor="textSecondary" style={styles.prompt}>
-            십 년 뒤에도 다시 보고 싶은 사진만 골라 남겨 보세요. 하루 {settings.daily_recommended_count}
-            장쯤이면 충분해요.
+            십 년 뒤에도 다시 보고 싶은 사진만 골라 남겨 보세요.
           </ThemedText>
           <FlashList
             // 열 수가 바뀌면 배치를 처음부터 다시 계산한다.
@@ -409,7 +480,7 @@ function Inbox({
                   count={item.assets.length}
                   saved={item.assets.filter((a) => saved.has(a.id)).length}
                   picked={item.assets.filter((a) => selection.draft.includes(a.id)).length}
-                  recommended={settings.daily_recommended_count}
+                  onMarkSeen={() => markSeenThroughDay(item.assets)}
                 />
               ) : (
                 <PhotoTile
@@ -432,30 +503,24 @@ function Inbox({
         </>
       )}
 
-      {recentlySaved.length > 0 && selection.draft.length === 0 && !selection.saving && (
-        <SavedTray
-          items={recentlySaved}
-          title={`${recentlySaved.length}장을 남겼어요. 눌러서 그때의 기억을 적어 보세요`}
-          onOpen={(id) => router.push({ pathname: '/moment/[id]', params: { id } })}
-          onClose={() => setJustSaved([])}
-        />
-      )}
-
-      {leftBehind.length > 0 && selection.draft.length === 0 && !selection.saving && (
-        <BottomBar
-          title={`남기지 않은 사진 ${leftBehind.length}장`}
-          subtitle="살펴보고 지우면 휴대폰이 가벼워져요"
-          secondary={{ label: '그냥 둘게요', onPress: () => setLeftBehind([]) }}
-          action={{
-            label: '정리하기',
-            onPress: () => {
-              setCleanupPhotos(leftBehind);
-              setLeftBehind([]);
-              router.push('/cleanup');
-            },
+      {leftBehind.length > 0 && cleanupReady && selection.draft.length === 0 && !selection.saving && (
+        <CleanupSuggestion
+          count={leftBehind.length}
+          onDismiss={() => { setLeftBehind([]); setCleanupReady(false); }}
+          onCleanup={() => {
+            setCleanupPhotos(leftBehind);
+            setLeftBehind([]);
+            setCleanupReady(false);
+            router.push('/cleanup');
           }}
         />
       )}
+
+      {assets.length === 0 &&
+        missed.length === 0 &&
+        selection.draft.length === 0 &&
+        !selection.saving &&
+        !cleanupReady && <SavedMomentsLink />}
 
       {selection.draft.length > 0 || selection.saving ? (
         <BottomBar
@@ -502,14 +567,15 @@ function DayHeader({
   count,
   saved,
   picked,
-  recommended,
+  onMarkSeen,
 }: {
   dateKey: string;
   count: number;
   saved: number;
   picked: number;
-  recommended: number;
+  onMarkSeen: () => void;
 }) {
+  const theme = useTheme();
   return (
     <View style={styles.dayHeader}>
       <View style={styles.flex}>
@@ -517,10 +583,20 @@ function DayHeader({
           {dateKey === todayKey() ? `오늘 · ${formatDay(dateKey)}` : formatDay(dateKey)}
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
-          사진 {count}장
+          사진 {count}장{saved > 0 ? ` · ${saved}장 남김` : picked > 0 ? ` · ${picked}장 고름` : ''}
         </ThemedText>
       </View>
-      <DayDots saved={saved} picked={picked} recommended={recommended} />
+      <Pressable
+        onPress={onMarkSeen}
+        accessibilityRole="button"
+        accessibilityLabel="이 날짜까지 확인하고 다음부터 건너뛰기"
+        hitSlop={8}
+        style={styles.dayComplete}>
+        <Ionicons name="checkmark-circle-outline" size={17} color={theme.accent} />
+        <ThemedText type="smallBold" style={{ color: theme.accent }}>
+          확인
+        </ThemedText>
+      </Pressable>
     </View>
   );
 }
@@ -547,12 +623,114 @@ function AllCaughtUp({ cursor }: { cursor: number }) {
       <ThemedText type="small" themeColor="textSecondary" style={styles.center}>
         {formatMoment(cursor)} 사진까지 봤어요.{'\n'}새 사진을 찍으면 여기에서 이어서 고를 수 있어요.
       </ThemedText>
-      <Pressable onPress={() => router.push('/day')} hitSlop={8}>
-        <ThemedText type="small" style={{ color: theme.accent }}>
-          지난 날짜의 사진 다시 보기
-        </ThemedText>
+      <Pressable
+        onPress={() => router.push('/day')}
+        accessibilityRole="button"
+        style={[styles.pastPhotosCard, { backgroundColor: theme.backgroundElement }]}>
+        <View style={[styles.pastPhotosIcon, { backgroundColor: theme.accent + '18' }]}>
+          <Ionicons name="time-outline" size={20} color={theme.accent} />
+        </View>
+        <View style={styles.flex}>
+          <ThemedText type="smallBold">지난 사진 다시 보기</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">예전에 찍은 사진도 다시 골라 남길 수 있어요.</ThemedText>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
       </Pressable>
     </Centered>
+  );
+}
+
+/** 고르기에서 남긴 사진은 사진첩의 기본 보관함으로 이어진다. */
+function SavedMomentsLink() {
+  const db = useSQLiteContext();
+  const theme = useTheme();
+  const { width } = useWindowDimensions();
+  const [naming, setNaming] = useState(false);
+  const { data: albums } = useDbQuery(() => listAlbums(db), [db]);
+  const { data: recentMoments } = useDbQuery(() => listRecentlySavedMoments(db, 3), [db]);
+  const momentsAlbum = albums?.[0];
+  const cardWidth = (width - Spacing.three * 2 - Spacing.three) / 2;
+  const cardHeight = Math.min(Math.round(cardWidth * 0.56), 100);
+  const previews = recentMoments?.length ? recentMoments : momentsAlbum?.cover ? [momentsAlbum.cover] : [];
+  const innerHeight = cardHeight - Spacing.two - Spacing.one;
+  const mainWidth = Math.round((cardWidth - Spacing.two * 2 - Spacing.one) * 0.62);
+  const sideWidth = cardWidth - Spacing.two * 2 - Spacing.one - mainWidth;
+  const sideCount = Math.min(Math.max(previews.length - 1, 0), 2);
+  const sideHeight = sideCount === 1 ? innerHeight : (innerHeight - Spacing.one) / 2;
+
+  const create = async (title: string) => {
+    setNaming(false);
+    const id = await createAlbum(db, title);
+    router.push({ pathname: '/albums/[id]/add', params: { id } });
+  };
+
+  return (
+    <>
+      <View style={[styles.momentsShortcut, { backgroundColor: theme.backgroundElement }]}>
+        <Pressable
+          onPress={() => router.push({ pathname: '/albums/[id]', params: { id: ALL_ALBUM_ID } })}
+          accessibilityRole="button"
+          style={({ pressed }) => [{ width: cardWidth, opacity: pressed ? 0.8 : 1 }]}>
+          <View style={[styles.momentsBox, { width: cardWidth, height: cardHeight, backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+            {previews.length > 0 ? (
+              <>
+                <MomentPhoto moment={previews[0]} style={[styles.mainMomentPhoto, { width: mainWidth, height: innerHeight }]} transition={150} />
+                {previews.length > 1 && (
+                  <View style={styles.sideMomentPhotos}>
+                    {previews.slice(1, 3).map((moment) => (
+                      <MomentPhoto key={moment.id} moment={moment} style={[styles.sideMomentPhoto, { width: sideWidth, height: sideHeight }]} transition={150} />
+                    ))}
+                  </View>
+                )}
+              </>
+            ) : (
+              <View style={[styles.emptyMomentsBox, styles.emptyMomentsCover, { backgroundColor: theme.backgroundSelected }]}>
+                <Ionicons name="images-outline" size={28} color={theme.textSecondary} />
+              </View>
+            )}
+          </View>
+          <ThemedText type="smallBold" numberOfLines={1} style={styles.momentsGalleryTitle}>
+            나의 순간들
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            {momentsAlbum?.count ?? 0}장
+          </ThemedText>
+        </Pressable>
+
+        <Pressable
+          onPress={() => setNaming(true)}
+          accessibilityRole="button"
+          style={({ pressed }) => [{ width: cardWidth, opacity: pressed ? 0.7 : 1 }]}>
+          <View style={[styles.newBookShelf, { width: cardWidth, height: cardHeight, backgroundColor: theme.backgroundElement }]}>
+            <View style={[styles.newBook, { height: cardHeight - 24, backgroundColor: theme.backgroundSelected, borderColor: theme.border }]}>
+              <View style={[styles.bookSpine, { backgroundColor: theme.accent }]} />
+              <View style={styles.newBookSpring}>
+                {Array.from({ length: 4 }, (_, index) => (
+                  <View key={index} style={[styles.newBookRing, { borderColor: theme.background }]} />
+                ))}
+              </View>
+              <Ionicons name="add" size={18} color={theme.accent} />
+              <View style={[styles.bookPage, { backgroundColor: theme.background }]} />
+              <View style={[styles.bookPage, styles.bookPageLower, { backgroundColor: theme.background }]} />
+            </View>
+          </View>
+          <ThemedText type="smallBold" style={[styles.momentsGalleryTitle, { color: theme.accent }]}>
+            새 앨범
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            나의 순간들에서 골라 담아요
+          </ThemedText>
+        </Pressable>
+      </View>
+
+      <AlbumNameSheet
+        visible={naming}
+        heading="새 앨범"
+        confirmLabel="만들기"
+        onSubmit={create}
+        onCancel={() => setNaming(false)}
+      />
+    </>
   );
 }
 
@@ -571,7 +749,7 @@ const styles = StyleSheet.create({
   startOptions: { alignSelf: 'stretch', gap: Spacing.two },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: Spacing.two,
     paddingLeft: Spacing.three,
     paddingRight: Spacing.two,
@@ -586,4 +764,40 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.three,
     paddingBottom: Spacing.two,
   },
+  dayComplete: { flexDirection: 'row', alignItems: 'center', gap: Spacing.half },
+  pastPhotosCard: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    marginTop: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Spacing.three,
+  },
+  momentsShortcut: {
+    flexDirection: 'row',
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.four,
+    marginTop: Spacing.three,
+    marginBottom: Spacing.three,
+    borderTopLeftRadius: Spacing.four,
+    borderTopRightRadius: Spacing.four,
+  },
+  momentsBox: { flexDirection: 'row', padding: Spacing.one, gap: Spacing.one, borderRadius: Spacing.three, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  mainMomentPhoto: { borderRadius: Spacing.two, overflow: 'hidden' },
+  sideMomentPhotos: { gap: Spacing.one },
+  sideMomentPhoto: { borderRadius: Spacing.one, overflow: 'hidden' },
+  emptyMomentsBox: { flex: 1, borderRadius: Spacing.two },
+  emptyMomentsCover: { alignItems: 'center', justifyContent: 'center' },
+  newBookShelf: { alignItems: 'center', justifyContent: 'center', borderRadius: Spacing.three, position: 'relative', overflow: 'hidden' },
+  newBook: { width: 70, borderWidth: StyleSheet.hairlineWidth, borderRadius: Spacing.one, overflow: 'hidden', justifyContent: 'center', paddingLeft: Spacing.three, gap: Spacing.one },
+  bookSpine: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 6 },
+  newBookSpring: { position: 'absolute', zIndex: 2, left: 0, top: 6, bottom: 6, justifyContent: 'space-between' },
+  newBookRing: { width: 12, height: 5, marginLeft: -2, borderWidth: 1.25, borderRadius: 3 },
+  bookPage: { height: 3, marginRight: Spacing.two, borderRadius: Spacing.half },
+  bookPageLower: { width: 28 },
+  momentsGalleryTitle: { marginTop: Spacing.one },
+  pastPhotosIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
 });
