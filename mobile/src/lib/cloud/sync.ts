@@ -21,7 +21,7 @@ const PUSH_BATCH = 200;
 const RECORD_TABLES = {
   albums: {
     keys: ['id'],
-    columns: ['id', 'kind', 'title', 'start_date', 'end_date', 'created_at', 'updated_at', 'deleted_at'],
+    columns: ['id', 'kind', 'title', 'start_date', 'end_date', 'cover_mode', 'cover_moment_id', 'cover_emoji', 'created_at', 'updated_at', 'deleted_at'],
   },
   album_moments: {
     keys: ['album_id', 'moment_id'],
@@ -188,6 +188,17 @@ async function mergeRecord(db: SQLiteDatabase, remote: SyncRecordRow) {
     updated_at: remote.updated_at,
     deleted_at: remote.deleted_at ?? null,
   };
+  // 표지 필드는 스키마 8에서 추가됐다. 이미 Cloud에 있던 앨범 레코드는 이 필드가
+  // 없으므로, 그대로 병합하면 NOT NULL인 cover_mode에 NULL을 넣게 된다.
+  // 구버전 레코드는 새 기능이 생기기 전의 "최신 사진" 표지로 해석한다.
+  if (remote.kind === 'albums') {
+    data.cover_mode =
+      data.cover_mode === 'photo' || data.cover_mode === 'design' || data.cover_mode === 'latest'
+        ? data.cover_mode
+        : 'latest';
+    data.cover_moment_id = data.cover_mode === 'photo' ? data.cover_moment_id ?? null : null;
+    data.cover_emoji = data.cover_mode === 'design' ? data.cover_emoji ?? '✨' : null;
+  }
   const existing = await db.getFirstAsync<{ updated_at: string }>(
     `SELECT updated_at FROM ${remote.kind} WHERE ${keys.map((k) => `${k} = ?`).join(' AND ')}`,
     keys.map((k) => data[k] ?? null),

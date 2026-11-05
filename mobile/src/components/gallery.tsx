@@ -148,19 +148,25 @@ export function StoryCard({
   onOpenPhoto,
   onOpenMoment,
   onLongPress,
+  selecting = false,
+  selected = false,
+  onSelect,
 }: {
   moment: Moment;
   onOpenPhoto: () => void;
   onOpenMoment: () => void;
   onLongPress?: () => void;
+  selecting?: boolean;
+  selected?: boolean;
+  onSelect?: () => void;
 }) {
   const theme = useTheme();
   const day = localDateKey(moment.taken_at, moment.taken_tz_offset);
   // 카드마다 아주 살짝 다르게 기울인다. id로 정해서 다시 그려도 같다.
   const tilt = moment.id.charCodeAt(moment.id.length - 1) % 2 ? '0.5deg' : '-0.5deg';
   return (
-    <View style={[styles.print, { transform: [{ rotate: tilt }] }]}>
-      <Pressable onPress={onOpenPhoto} onLongPress={onLongPress} accessibilityLabel="사진 크게 보기">
+    <View style={[styles.print, { transform: [{ rotate: tilt }] }, selecting && selected && { borderWidth: 3, borderColor: theme.accent }]}>
+      <Pressable onPress={selecting ? onSelect : onOpenPhoto} onLongPress={selecting ? undefined : onLongPress} accessibilityLabel={selecting ? '앨범에서 뺄 사진 선택' : '사진 크게 보기'}>
         <MomentPhoto
           moment={moment}
           style={[styles.printImage, { backgroundColor: theme.backgroundElement }]}
@@ -168,8 +174,8 @@ export function StoryCard({
         />
       </Pressable>
       <Pressable
-        onPress={onOpenMoment}
-        onLongPress={onLongPress}
+        onPress={selecting ? onSelect : onOpenMoment}
+        onLongPress={selecting ? undefined : onLongPress}
         style={({ pressed }) => [styles.printBody, { opacity: pressed ? 0.7 : 1 }]}>
         {moment.memo.trim() !== '' ? (
           <ThemedText numberOfLines={3} style={{ color: PRINT.ink }}>
@@ -187,6 +193,11 @@ export function StoryCard({
           </ThemedText>
         </View>
       </Pressable>
+      {selecting && (
+        <View style={[styles.storyCheck, { backgroundColor: selected ? theme.accent : 'rgba(0,0,0,0.2)', borderColor: '#fff' }]}>
+          {selected && <Ionicons name="checkmark" size={16} color={theme.onAccent} />}
+        </View>
+      )}
     </View>
   );
 }
@@ -237,6 +248,7 @@ const styles = StyleSheet.create({
   },
   flex: { flex: 1 },
   print: {
+    position: 'relative',
     marginHorizontal: 22,
     marginTop: Spacing.one,
     marginBottom: 26,
@@ -250,4 +262,5 @@ const styles = StyleSheet.create({
   printImage: { width: '100%', aspectRatio: 1 },
   printBody: { paddingHorizontal: Spacing.one, paddingTop: 14, paddingBottom: Spacing.three, gap: 10, minHeight: 64 },
   printFoot: { flexDirection: 'row', alignItems: 'baseline', gap: Spacing.two },
+  storyCheck: { position: 'absolute', top: Spacing.two, right: Spacing.two, width: 26, height: 26, borderRadius: 13, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
 });

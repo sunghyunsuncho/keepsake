@@ -181,7 +181,7 @@ async function runOnce(db: SQLiteDatabase, onlyIfLocalChanges: boolean) {
           uploaded = await uploadPending(db, () => stopRequested);
         } catch (e) {
           if (e instanceof CloudError && e.status === 413) {
-            problem = 'Cloud 용량이 가득 찼어요. 새 사진은 올리지 않고, 이미 올린 사진은 그대로 있어요.';
+            problem = '안전 보관함 용량이 가득 찼어요. 새 사진은 올리지 않고, 이미 올린 사진은 그대로 있어요.';
           } else throw e;
         }
       }

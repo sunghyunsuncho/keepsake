@@ -4,6 +4,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet } from 'react-native';
 
+import { Button } from '@/components/button';
 import { GalleryHeader, TileRow } from '@/components/gallery';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -11,6 +12,7 @@ import { Spacing } from '@/constants/theme';
 import { albumMomentIds, getAlbumTitle, updateAlbumMoments } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
 import { listMoments } from '@/db/moments';
+import { setSetting } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { galleryRows } from '@/lib/gallery';
 
@@ -61,6 +63,12 @@ export default function AlbumAddScreen() {
     }
   };
 
+  const pickNewPhotos = async () => {
+    // 설정 저장이 끝난 뒤 이동해야 고르기 화면이 잠깐 기본 보관함 모드로 열리지 않는다.
+    await setSetting(db, 'picking_album_id', id);
+    router.navigate('/');
+  };
+
   return (
     <ThemedView style={styles.flex}>
       <Stack.Screen
@@ -92,6 +100,7 @@ export default function AlbumAddScreen() {
           <ThemedText themeColor="textSecondary" style={styles.center}>
             아직 남긴 사진이 없어요.{'\n'}고르기 탭에서 사진을 먼저 남겨 주세요.
           </ThemedText>
+          <Button label="새 사진에서 고르기" onPress={pickNewPhotos} />
         </ThemedView>
       ) : (
         <>

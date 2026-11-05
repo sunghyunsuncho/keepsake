@@ -116,9 +116,30 @@ const MIGRATIONS: string[] = [
   `
   CREATE INDEX idx_moments_original_filename ON moments(original_filename) WHERE deleted_at IS NULL;
   `,
+  // 8: 앨범 표지. 최신 사진, 앨범 안의 특정 사진, 기본 이모지 디자인 중 하나를 고른다.
+  `
+  ALTER TABLE albums ADD COLUMN cover_mode TEXT NOT NULL DEFAULT 'latest';
+  ALTER TABLE albums ADD COLUMN cover_moment_id TEXT;
+  ALTER TABLE albums ADD COLUMN cover_emoji TEXT;
+  `,
 ];
 
 export async function migrateDb(db: SQLiteDatabase) {
+  // Fast Refresh·공간 전환 때 이전 연결이 WAL 정리를 끝내기 전이면 PRAGMA/ALTER가 잠깐 잠긴다.
+  // 마이그레이션은 멱등적으로 user_version을 올리므로, 짧게 기다렸다 같은 작업을 다시 시도해도 안전하다.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await migrateDbOnce(db);
+      return;
+    } catch (error) {
+      const locked = /database is locked|database is busy|SQLITE_BUSY/i.test(String(error));
+      if (!locked || attempt === 4) throw error;
+      await new Promise<void>((resolve) => setTimeout(resolve, 80 * (attempt + 1)));
+    }
+  }
+}
+
+async function migrateDbOnce(db: SQLiteDatabase) {
   // busy_timeout: 다른 연결이 쓰는 동안 기본 연결의 쓰기가 바로 실패하지 않고 기다리게 한다.
   await db.execAsync(`PRAGMA journal_mode = 'wal'; PRAGMA busy_timeout = 5000;`);
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');

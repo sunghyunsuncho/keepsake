@@ -47,12 +47,12 @@ function RootLayout() {
               <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 <Stack.Screen name="moment/[id]" options={{ title: '' }} />
-                <Stack.Screen name="day" options={{ title: '날짜로 보기' }} />
+                <Stack.Screen name="day" options={{ title: '지난 사진' }} />
                 <Stack.Screen name="albums/[id]/index" options={{ title: '' }} />
                 <Stack.Screen name="albums/[id]/add" options={{ title: '', presentation: 'modal' }} />
                 <Stack.Screen name="viewer" options={{ headerShown: false, animation: 'fade' }} />
                 <Stack.Screen name="cleanup" options={{ title: '사진 정리', presentation: 'modal' }} />
-                <Stack.Screen name="cloud" options={{ title: 'Keepsake Cloud', presentation: 'modal' }} />
+                <Stack.Screen name="cloud" options={{ title: '안전 보관', presentation: 'modal' }} />
                 <Stack.Screen name="cloud-import" options={{ title: '기기 기록 올리기', presentation: 'modal' }} />
               </Stack>
             </SQLiteProvider>

@@ -70,7 +70,7 @@ export default function CloudScreen() {
     const refreshed = await refreshSubscription(db);
     if (refreshed.subscription.can_upload) {
       Alert.alert(
-        grace ? '다시 구독해 주셔서 고마워요' : 'Cloud를 시작했어요',
+        grace ? '다시 구독해 주셔서 고마워요' : '안전 보관을 시작했어요',
         grace ? '백업한 기록이 그대로 이어져요.' : '올릴 기록을 고르면 백업을 시작해요.',
       );
       closeScreen();
@@ -93,7 +93,7 @@ export default function CloudScreen() {
       setIntent(null);
       if (signedIn.subscription.can_upload) {
         // 이미 구독 중인 계정(또는 결제 연결 전): 구매하지 않고 바로 백업·복원을 시작한다.
-        Alert.alert('Cloud에 연결했어요', '이 계정의 기록을 받아올게요. 이 기기의 기록은 고른 것만 올라가요.');
+        Alert.alert('안전 보관에 연결했어요', '이 계정의 기록을 받아올게요. 이 기기의 기록은 고른 것만 올라가요.');
         closeScreen();
         return;
       }
@@ -107,18 +107,18 @@ export default function CloudScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.pitch}>
           <ThemedText type="subtitle">남긴 사진은 지키고, 휴대폰은 가볍게</ThemedText>
-          <Feature text="사진 전체가 아니라 직접 남긴 사진의 원본과 메모만 Cloud에 보관해요." />
-          <Feature text="백업이 끝난 사진은 기기 사진첩에서 지워도 Keepsake에 그대로 남아요. 휴대폰을 비워도 돼요." />
+          <Feature text="사진 전체가 아니라 직접 남긴 사진의 원본과 메모만 안전하게 보관해요." />
+          <Feature text="안전 보관이 끝난 사진은 기기 사진첩에서 지워도 Keepsake에 그대로 남아요. 휴대폰을 비워도 돼요." />
           <Feature text="기기를 바꿔도 로그인만 하면 그대로 돌아와요." />
           <Feature text="여러 기기에서 같은 사진첩을 볼 수 있어요." />
           <ThemedText type="small" themeColor="textSecondary">
-            고르기와 사진첩은 Cloud 없이도 모두 쓸 수 있어요. 기기의 기록은 고른 것만 Cloud에 복사되고, 구독과 관계없이 그대로 남아요.
+            고르기와 사진첩은 이 기기에만 보관해도 모두 쓸 수 있어요. 기기의 기록은 고른 것만 안전 보관함에 복사되고, 구독과 관계없이 그대로 남아요.
           </ThemedText>
         </View>
 
         {session && subscribed ? (
           <View style={styles.section}>
-            <ThemedText>Cloud를 사용하고 있어요.</ThemedText>
+            <ThemedText>안전 보관을 사용하고 있어요.</ThemedText>
             <Button label="닫기" onPress={() => router.back()} />
           </View>
         ) : !session && intent ? (
@@ -129,7 +129,7 @@ export default function CloudScreen() {
                 ? '백업한 사진을 다른 기기에서도 찾을 수 있도록, 구독 전에 로그인해 주세요.'
                 : purchasesAvailable
                   ? '이미 구독 중이라면 같은 계정으로 로그인하면 백업한 기록을 받아와요.'
-                  : '로그인하면 이 계정의 Cloud를 볼 수 있어요. 다른 기기에서 같은 계정으로 로그인하면 기록을 받아와요.'
+                  : '로그인하면 이 계정의 안전 보관함을 볼 수 있어요. 다른 기기에서 같은 계정으로 로그인하면 기록을 받아와요.'
             }
             onApple={() => signIn(signInWithApple)}
             onGoogle={() => signIn(signInWithGoogle)}

@@ -8,6 +8,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { AlbumNameSheet } from '@/components/album-name-sheet';
+import { AlbumCoverSheet } from '@/components/album-cover-sheet';
 import { Button } from '@/components/button';
 import { GalleryHeader, STICKY_HEADER_HEIGHT, StoryCard, TileRow } from '@/components/gallery';
 import { ThemedText } from '@/components/themed-text';
@@ -19,11 +20,12 @@ import {
   getAlbumTitle,
   listAlbumMoments,
   renameAlbum,
+  setAlbumCover,
   updateAlbumMoments,
 } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
 import type { Moment } from '@/db/moments';
-import { ALBUM_ZOOMS, DEFAULT_SETTINGS, getSettings, setSetting, type AlbumZoom } from '@/db/settings';
+import { ALBUM_ZOOMS, DEFAULT_SETTINGS, getSettings, setSetting, type AlbumSortOrder, type AlbumZoom } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { localDateKey } from '@/lib/dates';
 import { anchorIndex, firstMomentOf, galleryRows, type GalleryRow } from '@/lib/gallery';
@@ -37,18 +39,25 @@ type Anchor = { id: string; day: string };
 
 // 앨범 하나: 해 → 달 → 날 → 이야기 순으로 당겨 보고(두 손가락 또는 위의 단계 버튼), 사진을 누르면 크게 본다.
 export default function AlbumScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, source } = useLocalSearchParams<{ id: string; source?: string }>();
   const db = useSQLiteContext();
+  const theme = useTheme();
   const { data: title } = useDbQuery(() => getAlbumTitle(db, id), [db, id]);
   const { data: moments } = useDbQuery(() => listAlbumMoments(db, id), [db, id]);
   const { data: settings } = useDbQuery(() => getSettings(db), [db]);
   const [renaming, setRenaming] = useState(false);
+  const [choosingCover, setChoosingCover] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // 단계를 바꾼 뒤 처음 보여줄 위치. 바꾸기 직전에 보던 기록이다.
   const [view, setView] = useState<{ zoom: AlbumZoom; anchor: Anchor | null } | null>(null);
   const zoom = view?.zoom ?? settings?.album_zoom ?? DEFAULT_SETTINGS.album_zoom;
+  const order = settings?.album_sort_order ?? DEFAULT_SETTINGS.album_sort_order;
   const isCustom = id !== ALL_ALBUM_ID;
+  const parentAlbumRoute = source === 'cloud' ? '/cloud-library' : '/album';
+  const parentAlbumLabel = source === 'cloud' ? '안전 사진첩으로 돌아가기' : '사진첩으로 돌아가기';
 
-  const rows = useMemo(() => (moments ? galleryRows(moments, zoom) : []), [moments, zoom]);
+  const rows = useMemo(() => (moments ? galleryRows(moments, zoom, order) : []), [moments, zoom, order]);
   const stickyHeaderIndices = useMemo(
     () => rows.flatMap((row, index) => (row.type === 'header' && row.sticky ? [index] : [])),
     [rows],
@@ -110,26 +119,53 @@ export default function AlbumScreen() {
   const openViewer = (moment: Moment) =>
     router.push({ pathname: '/viewer', params: { album: id, moment: moment.id } });
   const openMoment = (moment: Moment) => router.push({ pathname: '/moment/[id]', params: { id: moment.id } });
+  const pickForAlbum = async () => {
+    await setSetting(db, 'picking_album_id', id);
+    router.navigate('/');
+  };
 
-  // 꾹 누르기: 기록 열기, 만든 앨범이면 앨범에서 빼기도.
+  const toggleEditing = () => {
+    setEditing((current) => !current);
+    setSelectedIds(new Set());
+  };
+  const toggleSelected = (momentId: string) =>
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (!next.delete(momentId)) next.add(momentId);
+      return next;
+    });
+  const removeSelected = () => {
+    if (selectedIds.size === 0) return;
+    Alert.alert(
+      '앨범에서 뺄까요?',
+      '사진이나 기록은 삭제되지 않아요. 이 앨범에 연결된 사진만 빠져요.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '앨범에서 빼기',
+          style: 'destructive',
+          onPress: async () => {
+            await updateAlbumMoments(db, id, { remove: [...selectedIds] });
+            setSelectedIds(new Set());
+            setEditing(false);
+          },
+        },
+      ],
+    );
+  };
+
+  // 꾹 누르기: 기록을 연다. 앨범에서 빼기는 여러 장을 고르는 편집 모드에서만 한다.
   const showActions = (moment: Moment) => {
     Alert.alert('', undefined, [
       { text: '기록 열기', onPress: () => openMoment(moment) },
-      ...(isCustom
-        ? [
-            {
-              text: '이 앨범에서 빼기',
-              style: 'destructive' as const,
-              onPress: () => updateAlbumMoments(db, id, { remove: [moment.id] }),
-            },
-          ]
-        : []),
       { text: '취소', style: 'cancel' },
     ]);
   };
 
   const showAlbumMenu = () => {
     Alert.alert(title ?? '', undefined, [
+      { text: '새 사진에서 고르기', onPress: pickForAlbum },
+      { text: '표지 바꾸기', onPress: () => setChoosingCover(true) },
       { text: '이름 바꾸기', onPress: () => setRenaming(true) },
       {
         text: '앨범 지우기',
@@ -155,16 +191,17 @@ export default function AlbumScreen() {
     <Stack.Screen
       options={{
         title: title ?? '',
+        // 탭 전환으로 들어온 경우에도 기본 back stack에 의존하지 않고 들어온 사진첩으로 돌아간다.
+        headerLeft: () => (
+          <HeaderIcon
+            icon="chevron-back"
+            label={parentAlbumLabel}
+            onPress={() => router.navigate(parentAlbumRoute)}
+          />
+        ),
         headerRight: isCustom
           ? () => (
-              <View style={styles.headerButtons}>
-                <HeaderIcon
-                  icon="add"
-                  label="사진 넣고 빼기"
-                  onPress={() => router.push({ pathname: '/albums/[id]/add', params: { id } })}
-                />
-                <HeaderIcon icon="ellipsis-horizontal" label="앨범 메뉴" onPress={showAlbumMenu} />
-              </View>
+              <HeaderIcon icon="ellipsis-horizontal" label="앨범 메뉴" onPress={showAlbumMenu} />
             )
           : undefined,
       }}
@@ -195,11 +232,16 @@ export default function AlbumScreen() {
         {isCustom ? (
           <>
             <ThemedText themeColor="textSecondary" style={styles.center}>
-              아직 넣은 사진이 없어요.{'\n'}남긴 사진 중에서 이 앨범에 넣을 사진을 골라 보세요.
+              아직 담은 사진이 없어요.{'\n'}나의 순간들에서 고르거나 새 사진을 담아 보세요.
             </ThemedText>
             <Button
-              label="사진 넣기"
+              label="나의 순간들에서 사진 추가"
               onPress={() => router.push({ pathname: '/albums/[id]/add', params: { id } })}
+            />
+            <Button
+              label="새 사진에서 고르기"
+              variant="secondary"
+              onPress={pickForAlbum}
             />
           </>
         ) : (
@@ -210,6 +252,17 @@ export default function AlbumScreen() {
             <Button label="사진 고르러 가기" onPress={() => router.navigate('/')} />
           </>
         )}
+        {isCustom && (
+          <AlbumCoverSheet
+            visible={choosingCover}
+            moments={moments}
+            onChoose={(cover) => {
+              setChoosingCover(false);
+              setAlbumCover(db, id, cover);
+            }}
+            onCancel={() => setChoosingCover(false)}
+          />
+        )}
       </ThemedView>
     );
   }
@@ -218,6 +271,33 @@ export default function AlbumScreen() {
     <ThemedView style={styles.flex}>
       {header}
       <ZoomBar value={zoom} onChange={(next) => changeZoom(next)} />
+      <View style={styles.compactControls}>
+        {isCustom && (
+          <View style={styles.albumToolbar}>
+          <AlbumActionButton
+            icon="add"
+            label="추가"
+            onPress={() => router.push({ pathname: '/albums/[id]/add', params: { id } })}
+          />
+          <AlbumActionButton
+            icon={editing ? 'close' : 'remove'}
+            label={editing ? '빼기 취소' : '빼기'}
+            active={editing}
+            onPress={toggleEditing}
+          />
+          </View>
+        )}
+        <SortOrderButton value={order} onChange={(next) => setSetting(db, 'album_sort_order', next)} />
+      </View>
+      {editing && (
+        <View style={[styles.editBar, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+          <View style={styles.flex}>
+            <ThemedText type="smallBold">{selectedIds.size}장 선택됨</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">사진과 기록은 남고, 이 앨범에서만 빠져요.</ThemedText>
+          </View>
+          <Button label="앨범에서 빼기" variant="danger" disabled={selectedIds.size === 0} onPress={removeSelected} />
+        </View>
+      )}
       <GestureDetector gesture={pinch}>
         <Animated.View style={[styles.flex, pinchStyle]}>
           <FlashList
@@ -243,7 +323,10 @@ export default function AlbumScreen() {
                     moment={item.moment}
                     onOpenPhoto={() => openViewer(item.moment)}
                     onOpenMoment={() => openMoment(item.moment)}
-                    onLongPress={() => showActions(item.moment)}
+                    onLongPress={editing ? undefined : () => showActions(item.moment)}
+                    selecting={editing}
+                    selected={selectedIds.has(item.moment.id)}
+                    onSelect={() => toggleSelected(item.moment.id)}
                   />
                 );
               }
@@ -251,23 +334,27 @@ export default function AlbumScreen() {
                 <TileRow
                   moments={item.moments}
                   columns={item.columns}
+                  checked={editing ? selectedIds : undefined}
                   framed={zoom === 'day'}
                   // 해 단계에서 누르면 그 달로 당겨 보고, 그 밖에는 크게 본다.
                   onPress={(moment) =>
-                    zoom === 'year'
+                    editing
+                      ? toggleSelected(moment.id)
+                      : zoom === 'year'
                       ? changeZoom('month', {
                           id: moment.id,
                           day: localDateKey(moment.taken_at, moment.taken_tz_offset),
                         })
                       : openViewer(moment)
                   }
-                  onLongPress={showActions}
+                  onLongPress={editing ? undefined : showActions}
                 />
               );
             }}
           />
         </Animated.View>
       </GestureDetector>
+
 
       <AlbumNameSheet
         visible={renaming}
@@ -280,6 +367,17 @@ export default function AlbumScreen() {
         }}
         onCancel={() => setRenaming(false)}
       />
+      {isCustom && (
+        <AlbumCoverSheet
+          visible={choosingCover}
+          moments={moments}
+          onChoose={(cover) => {
+            setChoosingCover(false);
+            setAlbumCover(db, id, cover);
+          }}
+          onCancel={() => setChoosingCover(false)}
+        />
+      )}
     </ThemedView>
   );
 }
@@ -307,6 +405,43 @@ function ZoomBar({ value, onChange }: { value: AlbumZoom; onChange: (zoom: Album
   );
 }
 
+function SortOrderButton({ value, onChange }: { value: AlbumSortOrder; onChange: (value: AlbumSortOrder) => void }) {
+  const theme = useTheme();
+  const next = value === 'newest' ? 'oldest' : 'newest';
+  return (
+    <Pressable onPress={() => onChange(next)} style={styles.sortOrder} accessibilityRole="button" accessibilityLabel={`정렬: ${value === 'newest' ? '최신순' : '오래된순'}. 눌러서 바꾸기`}>
+      <Ionicons name="swap-vertical" size={16} color={theme.accent} />
+      <ThemedText type="smallBold" style={{ color: theme.accent }}>{value === 'newest' ? '최신순' : '오래된순'}</ThemedText>
+    </Pressable>
+  );
+}
+
+function AlbumActionButton({
+  icon,
+  label,
+  active = false,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  active?: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [
+        styles.albumActionButton,
+        { backgroundColor: active ? theme.accent : theme.backgroundElement, opacity: pressed ? 0.72 : 1 },
+      ]}>
+      <Ionicons name={icon} size={18} color={active ? theme.onAccent : theme.accent} />
+      <ThemedText type="smallBold" style={{ color: active ? theme.onAccent : theme.text }}>{label}</ThemedText>
+    </Pressable>
+  );
+}
+
 function HeaderIcon({
   icon,
   label,
@@ -318,7 +453,11 @@ function HeaderIcon({
 }) {
   const theme = useTheme();
   return (
-    <Pressable onPress={onPress} hitSlop={8} accessibilityLabel={label} style={styles.headerIcon}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [styles.headerIcon, { backgroundColor: pressed ? theme.backgroundElement : 'transparent' }]}>
       <Ionicons name={icon} size={24} color={theme.text} />
     </Pressable>
   );
@@ -334,8 +473,11 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     padding: Spacing.four,
   },
-  headerButtons: { flexDirection: 'row', gap: Spacing.two },
-  headerIcon: { padding: Spacing.one },
+  headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  compactControls: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.three, paddingBottom: Spacing.two, gap: Spacing.two },
+  albumToolbar: { flexDirection: 'row', gap: Spacing.one },
+  albumActionButton: { minHeight: 32, paddingHorizontal: Spacing.two, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },
+  editBar: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, borderWidth: StyleSheet.hairlineWidth, borderRadius: Spacing.two, marginHorizontal: Spacing.three, marginBottom: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two },
   zoomBar: {
     flexDirection: 'row',
     marginHorizontal: Spacing.three,
@@ -349,4 +491,5 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.one,
     borderRadius: Spacing.two - Spacing.half,
   },
+  sortOrder: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: Spacing.two, minHeight: 32 },
 });

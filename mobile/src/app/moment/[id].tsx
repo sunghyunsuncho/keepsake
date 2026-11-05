@@ -193,7 +193,7 @@ function MomentEditor({ moment }: { moment: Moment }) {
 
           <ThemedText type="small" themeColor="textSecondary">
             {moment.original_uploaded
-              ? '원본이 Cloud에 보관되어 있어요. 기기 사진첩에서 지워도 남아요.'
+              ? '원본이 안전 보관함에 있어요. 기기 사진첩에서 지워도 남아요.'
               : '사진은 기기 사진첩의 원본을 그대로 보여줘요. 기기 사진첩에서 지우면 여기서도 보이지 않아요.'}
           </ThemedText>
 

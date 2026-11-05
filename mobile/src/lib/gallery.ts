@@ -1,5 +1,5 @@
 import type { Moment } from '@/db/moments';
-import type { AlbumZoom } from '@/db/settings';
+import type { AlbumSortOrder, AlbumZoom } from '@/db/settings';
 import { formatDay, formatMonth, localDateKey } from '@/lib/dates';
 
 // 앨범 화면의 줄 목록. 당긴 정도(zoom)에 따라 같은 기록을 다르게 묶는다.
@@ -27,18 +27,18 @@ const YEAR_ROWS = 3;
 type Keyed = { moment: Moment; day: string };
 
 /**
- * 최근 기록부터, 촬영지 날짜 기준으로 정렬한다. DB는 UTC 시각순이라 시간대가 다른 사진이 섞이면
+ * 사용자가 고른 방향으로, 촬영지 날짜 기준으로 정렬한다. DB는 UTC 시각순이라 시간대가 다른 사진이 섞이면
  * 같은 날이 두 번 나뉠 수 있다 (같은 날 안에서는 UTC 시각순 유지).
  */
-function byLocalDay(moments: Moment[]): Keyed[] {
+function byLocalDay(moments: Moment[], order: AlbumSortOrder): Keyed[] {
   return moments
     .map((moment) => ({ moment, day: localDateKey(moment.taken_at, moment.taken_tz_offset) }))
-    .sort((a, b) => (a.day === b.day ? 0 : a.day < b.day ? 1 : -1));
+    .sort((a, b) => (a.day === b.day ? 0 : order === 'newest' ? (a.day < b.day ? 1 : -1) : (a.day < b.day ? -1 : 1)));
 }
 
 /** 앨범 화면과 같은 순서. 전체 화면으로 넘겨 볼 때 쓴다. */
-export function sortForGallery(moments: Moment[]) {
-  return byLocalDay(moments).map((k) => k.moment);
+export function sortForGallery(moments: Moment[], order: AlbumSortOrder = 'newest') {
+  return byLocalDay(moments, order).map((k) => k.moment);
 }
 
 function groupBy(items: Keyed[], keyOf: (day: string) => string) {
@@ -73,8 +73,8 @@ function sample<T>(items: T[], count: number) {
   return Array.from({ length: count }, (_, i) => items[Math.round((i * (items.length - 1)) / (count - 1))]);
 }
 
-export function galleryRows(moments: Moment[], zoom: AlbumZoom): GalleryRow[] {
-  const keyed = byLocalDay(moments);
+export function galleryRows(moments: Moment[], zoom: AlbumZoom, order: AlbumSortOrder = 'newest'): GalleryRow[] {
+  const keyed = byLocalDay(moments, order);
   const rows: GalleryRow[] = [];
 
   if (zoom === 'year') {

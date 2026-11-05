@@ -31,10 +31,10 @@ export function CloudSection() {
     return (
       <View style={styles.section}>
         <ThemedText type="small" themeColor="textSecondary">
-          Cloud를 구독하면 직접 남긴 사진의 원본만 따로 보관해요. 백업이 끝난 사진은 기기 사진첩에서 지워도
+          안전 보관을 시작하면 직접 남긴 사진의 원본만 따로 보관해요. 백업이 끝난 사진은 기기 사진첩에서 지워도
           남으니 휴대폰을 비워도 되고, 새 기기에서는 로그인만으로 되돌릴 수 있어요.
         </ThemedText>
-        <Button label="Cloud 알아보기" variant="secondary" onPress={() => router.push('/cloud')} />
+        <Button label="안전 보관 알아보기" variant="secondary" onPress={() => router.push('/cloud')} />
       </View>
     );
   }
@@ -51,7 +51,7 @@ export function CloudSection() {
         '기기 사진첩에 저장했어요',
         result.failed > 0
           ? `${result.failed}장은 저장하지 못했어요. 다시 시도해 주세요.`
-          : 'Cloud에만 있던 원본을 모두 기기 사진첩에 저장했어요.',
+          : '안전 보관함에만 있던 원본을 모두 기기 사진첩에 저장했어요.',
       );
     } catch (e) {
       Alert.alert(
@@ -64,7 +64,7 @@ export function CloudSection() {
   };
 
   const confirmSignOut = () =>
-    Alert.alert('로그아웃할까요?', 'Local 기록으로 돌아가요. 이 계정의 기록은 다시 로그인하면 볼 수 있어요.', [
+    Alert.alert('로그아웃할까요?', '이 기기에만 보관한 기록으로 돌아가요. 이 계정의 기록은 다시 로그인하면 볼 수 있어요.', [
       { text: '취소', style: 'cancel' },
       {
         text: '로그아웃',
@@ -78,7 +78,7 @@ export function CloudSection() {
   const confirmDelete = () =>
     Alert.alert(
       '계정을 삭제할까요?',
-      'Cloud에 백업한 사진과 기록이 바로 삭제되고 되돌릴 수 없어요. Local 기록과, 이 기기 사진과 연결된 기록은 기기에 남아요.' +
+      '안전 보관한 사진과 기록이 바로 삭제되고 되돌릴 수 없어요. 이 기기에만 보관한 기록과, 이 기기 사진과 연결된 기록은 기기에 남아요.' +
         (purchasesAvailable ? '\n\n구독은 자동으로 해지되지 않으니 스토어의 구독 관리에서 해지해 주세요.' : ''),
       [
         { text: '취소', style: 'cancel' },
@@ -154,7 +154,7 @@ export function CloudSection() {
           label={
             downloading
               ? `기기 사진첩에 저장하는 중 ${downloading.done}/${downloading.total}`
-              : `Cloud에만 있는 원본을 기기 사진첩에 저장 (${missingOriginals}장)`
+              : `안전 보관함에만 있는 원본을 기기 사진첩에 저장 (${missingOriginals}장)`
           }
           variant={subscription.status === 'grace' ? 'primary' : 'secondary'}
           disabled={downloading !== null}
@@ -166,7 +166,7 @@ export function CloudSection() {
         <>
           <View style={styles.row}>
             <ThemedText type="small" style={styles.flex}>
-              Wi-Fi에서만 사진 올리기
+              Wi-Fi 연결 시에만 안전 보관하기
             </ThemedText>
             <Switch
               value={settings?.wifi_only_upload ?? true}
@@ -200,13 +200,13 @@ export function CloudSection() {
 function statusText(status: string, graceUntil: string | null) {
   switch (status) {
     case 'active':
-      return 'Cloud 백업을 사용하고 있어요.';
+      return '안전 보관을 사용하고 있어요.';
     case 'grace':
       return graceUntil
-        ? `구독이 끝났어요. ${formatFullDate(graceUntil)}까지 백업한 사진을 내려받을 수 있고, 그 뒤 삭제돼요. 새 기록은 이 기기에만 저장돼요.`
-        : '구독이 끝났어요. 30일 동안 백업한 사진을 내려받을 수 있어요. 새 기록은 이 기기에만 저장돼요.';
+        ? `구독이 끝났어요. ${formatFullDate(graceUntil)}까지 안전 보관한 사진을 내려받을 수 있고, 그 뒤 삭제돼요. 새 기록은 이 기기에만 저장돼요.`
+        : '구독이 끝났어요. 30일 동안 안전 보관한 사진을 내려받을 수 있어요. 새 기록은 이 기기에만 저장돼요.';
     case 'expired':
-      return '구독이 끝나 Cloud 데이터가 삭제됐어요. 이 기기 사진과 연결된 기록은 Local에 남겼어요.';
+      return '구독이 끝나 안전 보관한 데이터가 삭제됐어요. 이 기기 사진과 연결된 기록은 이 기기에 남겼어요.';
     default:
       return '로그인했어요. 구독하면 백업을 시작해요.';
   }

@@ -10,14 +10,18 @@ import { localDateKey } from '@/lib/dates';
 // 한 기록이 여러 앨범에 들어가도 사진·기록은 하나다.
 
 export const ALL_ALBUM_ID = 'all';
-export const ALL_ALBUM_TITLE = '모든 순간';
+export const ALL_ALBUM_TITLE = '나의 순간들';
 export const ALBUM_TITLE_MAX = 40;
 
 export type AlbumSummary = {
   id: string;
   title: string;
   count: number;
-  /** 가장 최근 기록. 표지로 쓴다. */
+  startAt: string | null;
+  endAt: string | null;
+  coverMode: 'latest' | 'photo' | 'design';
+  coverEmoji: string | null;
+  /** 최신 기록 또는 직접 고른 표지 사진. */
   cover: Moment | null;
 };
 
@@ -32,32 +36,91 @@ export async function listAlbums(db: SQLiteDatabase): Promise<AlbumSummary[]> {
   const latest = await db.getFirstAsync<Moment>(
     'SELECT * FROM moments WHERE deleted_at IS NULL ORDER BY taken_at DESC, created_at DESC LIMIT 1',
   );
+  const totalRange = await db.getFirstAsync<{ start_at: string | null; end_at: string | null }>(
+    'SELECT MIN(taken_at) AS start_at, MAX(taken_at) AS end_at FROM moments WHERE deleted_at IS NULL',
+  );
   const albums = await listCustomAlbums(db);
   // 앨범마다 최근 기록 한 행 + 그 앨범의 기록 수
-  const covers = await db.getAllAsync<Moment & { cover_album_id: string; album_count: number }>(
+  const covers = await db.getAllAsync<Moment & { cover_album_id: string; album_count: number; album_start_at: string; album_end_at: string }>(
     `SELECT * FROM (
        SELECT m.*, am.album_id AS cover_album_id,
          ROW_NUMBER() OVER (PARTITION BY am.album_id ORDER BY m.taken_at DESC, m.created_at DESC) AS album_rank,
-         COUNT(*) OVER (PARTITION BY am.album_id) AS album_count
+         COUNT(*) OVER (PARTITION BY am.album_id) AS album_count,
+         MIN(m.taken_at) OVER (PARTITION BY am.album_id) AS album_start_at,
+         MAX(m.taken_at) OVER (PARTITION BY am.album_id) AS album_end_at
        FROM album_moments am JOIN moments m ON m.id = am.moment_id
        WHERE am.deleted_at IS NULL AND m.deleted_at IS NULL
      ) WHERE album_rank = 1`,
   );
+  const selectedCovers = albums.some((album) => album.cover_mode === 'photo')
+    ? await db.getAllAsync<Moment & { cover_album_id: string }>(
+        `SELECT m.*, a.id AS cover_album_id FROM albums a
+         JOIN album_moments am ON am.album_id = a.id AND am.moment_id = a.cover_moment_id AND am.deleted_at IS NULL
+         JOIN moments m ON m.id = a.cover_moment_id
+         WHERE a.deleted_at IS NULL AND a.cover_mode = 'photo' AND m.deleted_at IS NULL`,
+      )
+    : [];
   const coverOf = new Map(covers.map((cover) => [cover.cover_album_id, cover]));
+  const selectedCoverOf = new Map(selectedCovers.map((cover) => [cover.cover_album_id, cover]));
   return [
-    { id: ALL_ALBUM_ID, title: ALL_ALBUM_TITLE, count: total?.count ?? 0, cover: latest },
+    {
+      id: ALL_ALBUM_ID,
+      title: ALL_ALBUM_TITLE,
+      count: total?.count ?? 0,
+      startAt: totalRange?.start_at ?? null,
+      endAt: totalRange?.end_at ?? null,
+      coverMode: 'latest',
+      coverEmoji: null,
+      cover: latest,
+    },
     ...albums.map((album) => {
       const cover = coverOf.get(album.id) ?? null;
-      return { ...album, count: cover?.album_count ?? 0, cover };
+      return {
+        ...album,
+        count: cover?.album_count ?? 0,
+        startAt: cover?.album_start_at ?? null,
+        endAt: cover?.album_end_at ?? null,
+        cover: album.cover_mode === 'photo' ? selectedCoverOf.get(album.id) ?? cover : cover,
+        coverMode: album.cover_mode,
+        coverEmoji: album.cover_emoji,
+      };
     }),
   ];
 }
 
 /** 사용자가 만든 앨범 (만든 순서). */
 export function listCustomAlbums(db: SQLiteDatabase) {
-  return db.getAllAsync<{ id: string; title: string }>(
-    "SELECT id, title FROM albums WHERE deleted_at IS NULL AND kind = 'custom' ORDER BY created_at",
+  return db
+    .getAllAsync<{ id: string; title: string; cover_mode: AlbumSummary['coverMode']; cover_emoji: string | null }>(
+      "SELECT id, title, cover_mode, cover_emoji FROM albums WHERE deleted_at IS NULL AND kind = 'custom' ORDER BY created_at",
+    )
+    .catch(async (error: unknown) => {
+      // Fast Refresh 중에는 SQLiteProvider가 다시 마운트되지 않아 새 마이그레이션이 아직 실행되지 않을 수 있다.
+      // 그때도 목록 화면은 기존 최신 사진 표지로 연다. 다음 전체 새로고침에서 마이그레이션이 적용된다.
+      if (!String(error).includes('no such column')) throw error;
+      const legacy = await db.getAllAsync<{ id: string; title: string }>(
+        "SELECT id, title FROM albums WHERE deleted_at IS NULL AND kind = 'custom' ORDER BY created_at",
+      );
+      return legacy.map((album) => ({ ...album, cover_mode: 'latest' as const, cover_emoji: null }));
+    });
+}
+
+export async function setAlbumCover(
+  db: SQLiteDatabase,
+  id: string,
+  cover: { mode: AlbumSummary['coverMode']; momentId?: string | null; emoji?: string | null },
+) {
+  const now = new Date().toISOString();
+  await db.runAsync(
+    `UPDATE albums SET cover_mode = ?, cover_moment_id = ?, cover_emoji = ?,
+       updated_at = ${laterThanBefore('?')}, ${SYNC_PENDING} WHERE id = ? AND deleted_at IS NULL`,
+    cover.mode,
+    cover.mode === 'photo' ? (cover.momentId ?? null) : null,
+    cover.mode === 'design' ? (cover.emoji ?? '✨') : null,
+    now,
+    id,
   );
+  notifyChange();
 }
 
 /** 앨범 이름. 기본 앨범이거나 없는(지워진) 앨범이면 기본 이름/null. */
@@ -184,6 +247,25 @@ export async function updateAlbumMoments(
         now,
         albumId,
         momentId,
+      );
+    }
+    // 직접 고른 표지는 반드시 현재 앨범 안의 사진이어야 한다. 표지 사진을 빼면
+    // 이전 선택을 남겨 두었다가 나중에 다시 넣었을 때 표지가 몰래 되살아나지 않게
+    // 최신 사진 표지로 되돌린다. 제거가 많아도 한 번의 UPDATE로 처리한다.
+    if (remove.length > 0) {
+      const selectedCover = await db.getFirstAsync<{ cover_moment_id: string | null }>(
+        "SELECT cover_moment_id FROM albums WHERE id = ? AND cover_mode = 'photo' AND deleted_at IS NULL",
+        albumId,
+      );
+      if (!selectedCover?.cover_moment_id || !new Set(remove).has(selectedCover.cover_moment_id)) return;
+      await db.runAsync(
+        `UPDATE albums SET cover_mode = 'latest', cover_moment_id = NULL, cover_emoji = NULL,
+           updated_at = ${laterThanBefore('?')}, ${SYNC_PENDING}
+         WHERE id = ? AND cover_mode = 'photo' AND cover_moment_id = ?
+           AND deleted_at IS NULL`,
+        now,
+        albumId,
+        selectedCover.cover_moment_id,
       );
     }
   });

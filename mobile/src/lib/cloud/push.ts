@@ -19,7 +19,7 @@ export async function registerPushToken({ ask }: { ask: boolean }) {
     if (!granted) return;
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('cloud', {
-        name: 'Cloud 백업',
+        name: '안전 보관',
         importance: Notifications.AndroidImportance.DEFAULT,
       });
     }

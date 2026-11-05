@@ -12,6 +12,7 @@ import { Spacing } from '@/constants/theme';
 import { ALL_ALBUM_ID, listAlbumMoments, listOnThisDay } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
 import type { Moment } from '@/db/moments';
+import { DEFAULT_SETTINGS, getSettings } from '@/db/settings';
 import { formatFullDate } from '@/lib/dates';
 import { sortForGallery } from '@/lib/gallery';
 
@@ -25,13 +26,15 @@ export default function ViewerScreen() {
   // 기록 화면을 위에 띄웠을 때는 그 화면의 상태 표시줄을 쓴다.
   const focused = useIsFocused();
   const [index, setIndex] = useState(0);
+  const { data: settings } = useDbQuery(() => getSettings(db), [db]);
+  const order = settings?.album_sort_order ?? DEFAULT_SETTINGS.album_sort_order;
 
   const { data: loaded } = useDbQuery(
     () =>
       params.onThisDay
         ? listOnThisDay(db, params.onThisDay).then((groups) => groups.flatMap((g) => g.moments))
-        : listAlbumMoments(db, params.album ?? ALL_ALBUM_ID).then(sortForGallery),
-    [db, params.album, params.onThisDay],
+        : listAlbumMoments(db, params.album ?? ALL_ALBUM_ID).then((items) => sortForGallery(items, order)),
+    [db, params.album, params.onThisDay, order],
   );
   const moments = loaded ?? null;
   // 기록 화면에서 지우고 돌아오면 목록이 줄어들 수 있다.
