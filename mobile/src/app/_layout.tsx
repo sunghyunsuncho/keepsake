@@ -59,7 +59,6 @@ function RootLayout() {
                 <Stack.Screen name="cloud" options={{ title: '안전 보관', presentation: 'modal', header: ModalHeader }} />
                 <Stack.Screen name="notifications" options={{ title: '알림', header: StackHeader }} />
                 <Stack.Screen name="open-source-licenses" options={{ title: '오픈소스 라이선스', header: StackHeader }} />
-                <Stack.Screen name="legal/[doc]" options={{ header: StackHeader }} />
                 <Stack.Screen name="cloud-albums/new" options={{ title: '새 안전 앨범', presentation: 'modal', header: ModalHeader }} />
                 <Stack.Screen name="cloud-import" options={{ title: '기기 기록 올리기', presentation: 'modal', header: ModalHeader }} />
               </Stack>

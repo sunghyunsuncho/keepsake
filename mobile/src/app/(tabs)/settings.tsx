@@ -19,6 +19,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useCloudState } from '@/lib/cloud/engine';
 import { type Account, useCloudSession } from '@/lib/cloud/session';
 import { formatFullDate } from '@/lib/dates';
+import { openLegalDocument } from '@/lib/legal';
 
 type SectionKey = 'device' | 'cloud';
 
@@ -88,12 +89,12 @@ export default function SettingsScreen() {
           <SettingsRow
             label="이용약관"
             icon={FileTextIcon}
-            onPress={() => router.push({ pathname: '/legal/[doc]', params: { doc: 'terms' } })}
+            onPress={() => openLegalDocument('terms')}
           />
           <SettingsRow
             label="개인정보 처리방침"
             icon={ShieldCheckIcon}
-            onPress={() => router.push({ pathname: '/legal/[doc]', params: { doc: 'privacy' } })}
+            onPress={() => openLegalDocument('privacy')}
           />
         </SettingsSection>
 

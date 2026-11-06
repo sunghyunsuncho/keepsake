@@ -18,6 +18,7 @@ import {
   restorePurchases,
 } from '@/lib/cloud/purchases';
 import { useCloudSession } from '@/lib/cloud/session';
+import { openLegalDocument } from '@/lib/legal';
 import {
   appleSignInAvailable,
   describeSignInError,
@@ -275,12 +276,12 @@ function Paywall({
         수 있어요. 구독이 끝나면 30일 동안 보관한 사진을 내려받을 수 있고, 그 뒤 사진은 삭제돼요. 기록 백업은 로그인한 동안 계속돼요.
       </ThemedText>
       <View style={styles.legal}>
-        <Pressable onPress={() => router.push({ pathname: '/legal/[doc]', params: { doc: 'terms' } })} hitSlop={8}>
+        <Pressable onPress={() => openLegalDocument('terms')} hitSlop={8}>
           <ThemedText type="small" themeColor="textSecondary" style={styles.link}>
             이용약관
           </ThemedText>
         </Pressable>
-        <Pressable onPress={() => router.push({ pathname: '/legal/[doc]', params: { doc: 'privacy' } })} hitSlop={8}>
+        <Pressable onPress={() => openLegalDocument('privacy')} hitSlop={8}>
           <ThemedText type="small" themeColor="textSecondary" style={styles.link}>
             개인정보처리방침
           </ThemedText>
