@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
-from app.api import account, auth, billing, health, sync, uploads
+from app.api import account, auth, billing, health, legal, sync, uploads
 from app.cloud import UserGone
 from app.monitoring import init_sentry
 
@@ -29,3 +29,4 @@ app.include_router(account.router)
 app.include_router(sync.router)
 app.include_router(uploads.router)
 app.include_router(billing.router)
+app.include_router(legal.router)
