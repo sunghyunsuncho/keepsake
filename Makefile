@@ -1,16 +1,20 @@
+# 호스트 포트는 compose.dev.env에서 정한다 (./start.sh 등 스크립트와 공유).
+include compose.dev.env
+COMPOSE = docker compose --env-file compose.dev.env
+
 .PHONY: up down api migrate migration test lint api-types mobile ios icons
 
 # 인프라 (Postgres, S3 호환 스토리지)
 up:
-	docker compose up -d --wait postgres s3
+	$(COMPOSE) up -d --wait postgres s3
 	cd backend && uv run python -m scripts.create_bucket
 
 down:
-	docker compose down
+	$(COMPOSE) down
 
 # 백엔드
 api:
-	cd backend && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8010
+	cd backend && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port $(API_PORT)
 
 migrate:
 	cd backend && uv run alembic upgrade head
@@ -32,13 +36,13 @@ api-types:
 	cd backend && uv run python -m scripts.export_openapi
 	cd mobile && npm run api:types
 
-# 모바일. vernissage Metro(8081)와 겹치지 않게 8082를 쓴다.
+# 모바일. Metro 포트는 compose.dev.env의 METRO_PORT.
 mobile:
-	cd mobile && npx expo start --port 8082
+	cd mobile && npx expo start --port $(METRO_PORT)
 
 # iOS 시뮬레이터용 개발 빌드 설치 (네이티브 설정·패키지가 바뀌었을 때만)
 ios:
-	cd mobile && npx expo run:ios --port 8082
+	cd mobile && npx expo run:ios --port $(METRO_PORT)
 
 # mobile/assets/source/keepsake_icon.png → 앱 아이콘·스플래시·스토어 아이콘
 icons:
