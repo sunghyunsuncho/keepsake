@@ -15,8 +15,8 @@
 | 연령 등급 | 4+ | 전체 이용가 |
 | 번들 ID / 패키지 | com.atelierlabs.keepsake | com.atelierlabs.keepsake |
 | 지원 URL | {{지원 페이지}} | {{지원 페이지}} |
-| 개인정보처리방침 URL | {{docs/legal/privacy-policy.md 게시 주소}} | 같음 |
-| 이용약관(EULA) | {{docs/legal/terms.md 게시 주소}} (구독 앱은 설명이나 EULA 칸에 링크 필수) | 같음 |
+| 개인정보처리방침 URL | https://keepsake.atelierlabs.co.kr/legal/privacy-policy (영어: /en/legal/privacy-policy) | 같음 |
+| 이용약관(EULA) | https://keepsake.atelierlabs.co.kr/legal/terms-of-service (영어: /en/legal/terms-of-service, 구독 앱은 설명이나 EULA 칸에 링크 필수) | 같음 |
 
 ## 2. 키워드 (App Store, 100바이트)
 
@@ -76,8 +76,8 @@ Keepsake는 매일 찍은 사진 중에서 정말 남기고 싶은 몇 장만 �
 · 구독 관리와 해지는 기기의 계정 설정에서 할 수 있어요
 · 구독이 끝나면 30일 동안 보관한 사진을 내려받을 수 있고, 이후 사진은 삭제돼요. 기록 백업은 로그인한 동안 계속돼요
 
-개인정보처리방침: {{주소}}
-이용약관: {{주소}}
+개인정보처리방침: https://keepsake.atelierlabs.co.kr/legal/privacy-policy
+이용약관: https://keepsake.atelierlabs.co.kr/legal/terms-of-service
 ```
 
 ## 5. 스크린샷 문구

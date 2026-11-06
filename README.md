@@ -12,7 +12,7 @@
 backend/   FastAPI (Python 3.13, uv) — 계정, 구독 상태, 백업·동기화
 mobile/    Expo (SDK 54, TypeScript, expo-router) — vernissage와 같은 버전 — iOS / Android 앱
   modules/ 앱 안의 로컬 네이티브 모듈 (photo-meta: 사진 좌표 → 주소, 원본 EXIF의 촬영 시간대)
-docs/      계획, QA 체크리스트, 약관·개인정보처리방침(legal/), 스토어 등록 정보(store/)
+docs/      계획, QA 체크리스트, 스토어 등록 정보(store/)
 ```
 
 ## 처음 설정
@@ -51,6 +51,8 @@ cp mobile/.env.example mobile/.env
 | `make up` / `make down` | 인프라만 시작 / 종료 |
 
 백엔드 API를 바꾸면 `make api-types`를 실행해서 모바일 타입을 갱신한다. 잊으면 `make test`의 `test_openapi`가 실패한다.
+
+이용약관과 개인정보처리방침의 게시 원본은 `backend/app/legal/{ko,en}/`에 있다. 앱과 스토어는 `keepsake.atelierlabs.co.kr`의 공개 페이지를 사용한다.
 
 ## 실기기에서 실행하기
 
