@@ -26,6 +26,8 @@ export type Settings = {
   cloud_account_key: string | null;
   /** 이 계정 공간에서 기기 사진 연결을 되살리는 일을 마쳤는지 */
   cloud_links_restored: boolean;
+  /** 안전 앨범이 생기기 전에 올린 사진을 '이전에 보관한 사진' 앨범에 담았는지 (lib/cloud/photos.ts) */
+  cloud_photos_adopted: boolean;
   /** 서버 데이터가 지워져 파일을 지울 계정 공간의 user_id */
   retired_spaces: string[];
   /** 남길 기록을 Local로 옮기는 중인 계정 공간의 user_id. 실패하면 다음 실행 때 다시 옮긴다. */
@@ -53,6 +55,8 @@ export type Settings = {
   on_this_day_hidden: string | null;
   /** 새 사진을 고를 때 바로 담을 사용자 앨범. null이면 '나의 순간들'에만 남긴다. */
   picking_album_id: string | null;
+  /** 정리 후보: 살펴보고 남기지 않은 사진의 asset id. [그대로 두기]를 누르거나 정리를 마칠 때까지 남긴다. */
+  cleanup_candidate_ids: string[];
 };
 
 export type ReminderFrequency = 'daily' | 'every_2_days' | 'weekly';
@@ -69,6 +73,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cloud_pull_cursor: 0,
   cloud_account_key: null,
   cloud_links_restored: false,
+  cloud_photos_adopted: false,
   retired_spaces: [],
   retiring_spaces: [],
   last_reviewed_at: null,
@@ -82,6 +87,7 @@ export const DEFAULT_SETTINGS: Settings = {
   album_sort_order: 'newest',
   on_this_day_hidden: null,
   picking_album_id: null,
+  cleanup_candidate_ids: [],
 };
 
 export const GRID_COLUMN_OPTIONS: readonly GridColumns[] = [1, 2, 3];
@@ -90,6 +96,7 @@ const ACCOUNT_KEYS: readonly (keyof Settings)[] = [
   'cloud_pull_cursor',
   'cloud_account_key',
   'cloud_links_restored',
+  'cloud_photos_adopted',
 ];
 
 let deviceDb: SQLiteDatabase | null = null;
@@ -137,6 +144,7 @@ const VALIDATORS: Record<keyof Settings, (value: unknown) => boolean> = {
   cloud_pull_cursor: (v) => Number.isInteger(v) && (v as number) >= 0,
   cloud_account_key: (v) => v === null || typeof v === 'string',
   cloud_links_restored: (v) => typeof v === 'boolean',
+  cloud_photos_adopted: (v) => typeof v === 'boolean',
   retired_spaces: (v) => Array.isArray(v) && v.every((id) => typeof id === 'string'),
   retiring_spaces: (v) => Array.isArray(v) && v.every((id) => typeof id === 'string'),
   last_reviewed_at: isIsoOrNull,
@@ -159,6 +167,7 @@ const VALIDATORS: Record<keyof Settings, (value: unknown) => boolean> = {
   album_sort_order: (v) => v === 'newest' || v === 'oldest',
   on_this_day_hidden: (v) => v === null || typeof v === 'string',
   picking_album_id: (v) => v === null || typeof v === 'string',
+  cleanup_candidate_ids: (v) => Array.isArray(v) && v.every((id) => typeof id === 'string'),
 };
 
 export async function setSetting<K extends keyof Settings>(

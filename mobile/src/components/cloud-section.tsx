@@ -1,46 +1,58 @@
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { Alert, Linking, StyleSheet, Switch, View } from 'react-native';
+import { Alert, Linking } from 'react-native';
+import { ArrowCircleUpIcon, ArrowsClockwiseIcon, ChartPieSliceIcon, CloudArrowUpIcon, CreditCardIcon, DownloadSimpleIcon, HourglassIcon, SignOutIcon, TrashIcon, WifiHighIcon } from 'phosphor-react-native';
 
-import { Button } from '@/components/button';
-import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { SettingsRow, SettingsSwitchRow, shortDateTime } from '@/components/settings-list';
 import { useDbQuery } from '@/db/changes';
 import { getSettings, setSetting } from '@/db/settings';
-import { useTheme } from '@/hooks/use-theme';
-import { formatFullDate, formatTime } from '@/lib/dates';
+import { formatFullDate } from '@/lib/dates';
 import { deleteAccount, signOut, syncCloud, useCloudState } from '@/lib/cloud/engine';
 import { countMissingOriginals, PhotoSaveError, saveOriginalsToLibrary } from '@/lib/cloud/photos';
 import { MANAGE_SUBSCRIPTION_URL, purchasesAvailable } from '@/lib/cloud/purchases';
 import { useCloudSession } from '@/lib/cloud/session';
 import { formatBytes } from '@/lib/storage';
 
-/** 설정 화면의 Cloud 구역. 상태 판단은 서버가 준 subscription 값을 그대로 보여준다. */
-export function CloudSection() {
+// 설정 탭의 계정·보관 행들. 상태 판단은 서버가 준 subscription 값을 그대로 보여준다.
+// 등급: 로그인하지 않으면 백업 없음 → 로그인하면 기록 백업(RecordBackupRows) → 구독하면 사진 보관(CloudLibraryRows).
+
+/** 기기 사진첩 설정의 기록 백업 행. 로그인했을 때만 보인다 (로그인은 설정 탭 맨 위 계정 행에서 한다). */
+export function RecordBackupRows() {
   const db = useSQLiteContext();
-  const theme = useTheme();
   const session = useCloudSession();
-  const { account, running, problem, pendingUploads, lastSyncedAt } = useCloudState();
+  const { account, running, problem, lastSyncedAt } = useCloudState();
+  if (!session) return null;
+
+  return (
+    <>
+      <SettingsRow
+        label="기록 백업"
+        icon={ArrowsClockwiseIcon}
+        value={problem ?? (lastSyncedAt ? shortDateTime(lastSyncedAt) : account ? null : '확인하는 중')}
+        loading={running}
+        onPress={() => syncCloud(db)}
+      />
+      {account && (
+        <SettingsRow
+          label="기기 기록 올리기"
+          icon={CloudArrowUpIcon}
+          onPress={() => router.push({ pathname: '/cloud-import', params: { all: '1' } })}
+        />
+      )}
+    </>
+  );
+}
+
+/** 안전 사진첩 설정 행. 구독 중이거나 구독이 끝난 뒤 30일 유예 중인 사용자에게만 보인다. */
+export function CloudLibraryRows() {
+  const db = useSQLiteContext();
+  const { account, pendingUploads } = useCloudState();
   const { data: settings } = useDbQuery(() => getSettings(db), [db]);
   const { data: missingOriginals } = useDbQuery(() => countMissingOriginals(db), [db]);
   const [downloading, setDownloading] = useState<{ done: number; total: number } | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  if (!session) {
-    return (
-      <View style={styles.section}>
-        <ThemedText type="small" themeColor="textSecondary">
-          안전 보관을 시작하면 직접 남긴 사진의 원본만 따로 보관해요. 백업이 끝난 사진은 기기 사진첩에서 지워도
-          남으니 휴대폰을 비워도 되고, 새 기기에서는 로그인만으로 되돌릴 수 있어요.
-        </ThemedText>
-        <Button label="안전 보관 알아보기" variant="secondary" onPress={() => router.push('/cloud')} />
-      </View>
-    );
-  }
-
   const subscription = account?.subscription;
-  const usage = account?.usage;
+  if (!account || !subscription?.can_download) return null;
 
   const fetchOriginals = async () => {
     if (downloading) return;
@@ -49,19 +61,60 @@ export function CloudSection() {
       const result = await saveOriginalsToLibrary(db, (done, total) => setDownloading({ done, total }));
       Alert.alert(
         '기기 사진첩에 저장했어요',
-        result.failed > 0
-          ? `${result.failed}장은 저장하지 못했어요. 다시 시도해 주세요.`
-          : '안전 보관함에만 있던 원본을 모두 기기 사진첩에 저장했어요.',
+        result.failed > 0 ? `${result.failed}장은 저장하지 못했어요. 다시 시도해 주세요.` : undefined,
       );
     } catch (e) {
-      Alert.alert(
-        '사진을 저장하지 못했어요',
-        e instanceof PhotoSaveError ? e.message : '잠시 후 다시 시도해 주세요.',
-      );
+      Alert.alert('사진을 저장하지 못했어요', e instanceof PhotoSaveError ? e.message : '잠시 후 다시 시도해 주세요.');
     } finally {
       setDownloading(null);
     }
   };
+
+  const grace = subscription.status === 'grace';
+  const { usage } = account;
+
+  return (
+    <>
+      {grace && (
+        <SettingsRow
+          label="사진 내려받기 기한"
+          icon={HourglassIcon}
+          value={subscription.grace_until ? formatFullDate(subscription.grace_until) : '30일'}
+        />
+      )}
+      <SettingsRow label="사용한 공간" icon={ChartPieSliceIcon} value={`${formatBytes(usage.bytes_total)} / ${formatBytes(usage.max_bytes)}`} />
+      {subscription.can_upload && pendingUploads > 0 && <SettingsRow label="올릴 사진" icon={ArrowCircleUpIcon} value={`${pendingUploads}장`} />}
+      {subscription.can_upload && (
+        <SettingsSwitchRow
+          label="Wi-Fi에서만 사진 올리기"
+          icon={WifiHighIcon}
+          value={settings?.wifi_only_upload ?? true}
+          onValueChange={(value) => {
+            setSetting(db, 'wifi_only_upload', value).then(() => syncCloud(db));
+          }}
+        />
+      )}
+      {(missingOriginals ?? 0) > 0 && (
+        <SettingsRow
+          label="원본을 기기 사진첩에 저장"
+          icon={DownloadSimpleIcon}
+          value={downloading ? `${downloading.done}/${downloading.total}` : `${missingOriginals}장`}
+          disabled={downloading !== null}
+          onPress={fetchOriginals}
+        />
+      )}
+      {purchasesAvailable && (
+        <SettingsRow label="구독 관리" icon={CreditCardIcon} onPress={() => MANAGE_SUBSCRIPTION_URL && Linking.openURL(MANAGE_SUBSCRIPTION_URL)} />
+      )}
+    </>
+  );
+}
+
+/** 로그아웃·계정 삭제 행. 로그인했을 때만 보인다. */
+export function AccountRows() {
+  const session = useCloudSession();
+  const [busy, setBusy] = useState(false);
+  if (!session) return null;
 
   const confirmSignOut = () =>
     Alert.alert('로그아웃할까요?', '이 기기에만 보관한 기록으로 돌아가요. 이 계정의 기록은 다시 로그인하면 볼 수 있어요.', [
@@ -108,113 +161,9 @@ export function CloudSection() {
     );
 
   return (
-    <View style={styles.section}>
-      <View style={[styles.statBox, { backgroundColor: theme.backgroundElement }]}>
-        {!subscription ? (
-          <ThemedText type="small">{problem ?? '상태를 확인하는 중이에요'}</ThemedText>
-        ) : (
-          <>
-            <ThemedText type="small" style={subscription.status === 'grace' ? { color: theme.danger } : undefined}>
-              {statusText(subscription.status, subscription.grace_until)}
-            </ThemedText>
-            {usage && subscription.status !== 'none' && (
-              <ThemedText type="small" themeColor="textSecondary">
-                {`${usage.object_count}개 파일 · ${formatBytes(usage.bytes_total)} / ${formatBytes(usage.max_bytes)}`}
-              </ThemedText>
-            )}
-            {subscription.can_upload && (
-              <ThemedText type="small" themeColor="textSecondary">
-                {running
-                  ? '동기화하는 중…'
-                  : pendingUploads > 0
-                    ? `올릴 사진 ${pendingUploads}장`
-                    : lastSyncedAt
-                      ? `${formatFullDate(lastSyncedAt)} ${formatTime(lastSyncedAt)}에 동기화했어요`
-                      : ' '}
-              </ThemedText>
-            )}
-            {problem && (
-              <ThemedText type="small" style={{ color: theme.danger }}>
-                {problem}
-              </ThemedText>
-            )}
-          </>
-        )}
-      </View>
-
-      {subscription && !subscription.can_upload && (
-        <Button
-          label={subscription.status === 'grace' ? '다시 구독하기' : '구독하기'}
-          onPress={() => router.push('/cloud')}
-        />
-      )}
-
-      {subscription?.can_download && (missingOriginals ?? 0) > 0 && (
-        <Button
-          label={
-            downloading
-              ? `기기 사진첩에 저장하는 중 ${downloading.done}/${downloading.total}`
-              : `안전 보관함에만 있는 원본을 기기 사진첩에 저장 (${missingOriginals}장)`
-          }
-          variant={subscription.status === 'grace' ? 'primary' : 'secondary'}
-          disabled={downloading !== null}
-          onPress={fetchOriginals}
-        />
-      )}
-
-      {subscription?.can_upload && (
-        <>
-          <View style={styles.row}>
-            <ThemedText type="small" style={styles.flex}>
-              Wi-Fi 연결 시에만 안전 보관하기
-            </ThemedText>
-            <Switch
-              value={settings?.wifi_only_upload ?? true}
-              onValueChange={(value) => {
-                setSetting(db, 'wifi_only_upload', value).then(() => syncCloud(db));
-              }}
-            />
-          </View>
-          <Button
-            label="기기 기록 올리기"
-            variant="secondary"
-            onPress={() => router.push({ pathname: '/cloud-import', params: { all: '1' } })}
-          />
-          <Button label="지금 동기화" variant="secondary" loading={running} onPress={() => syncCloud(db)} />
-          {purchasesAvailable && (
-            <Button
-              label="구독 관리"
-              variant="secondary"
-              onPress={() => MANAGE_SUBSCRIPTION_URL && Linking.openURL(MANAGE_SUBSCRIPTION_URL)}
-            />
-          )}
-        </>
-      )}
-
-      <Button label="로그아웃" variant="secondary" disabled={busy} onPress={confirmSignOut} />
-      <Button label="계정 삭제" variant="danger" disabled={busy} onPress={confirmDelete} />
-    </View>
+    <>
+      <SettingsRow label="로그아웃" icon={SignOutIcon} disabled={busy} onPress={confirmSignOut} chevron={false} />
+      <SettingsRow label="계정 삭제" icon={TrashIcon} destructive disabled={busy} onPress={confirmDelete} />
+    </>
   );
 }
-
-function statusText(status: string, graceUntil: string | null) {
-  switch (status) {
-    case 'active':
-      return '안전 보관을 사용하고 있어요.';
-    case 'grace':
-      return graceUntil
-        ? `구독이 끝났어요. ${formatFullDate(graceUntil)}까지 안전 보관한 사진을 내려받을 수 있고, 그 뒤 삭제돼요. 새 기록은 이 기기에만 저장돼요.`
-        : '구독이 끝났어요. 30일 동안 안전 보관한 사진을 내려받을 수 있어요. 새 기록은 이 기기에만 저장돼요.';
-    case 'expired':
-      return '구독이 끝나 안전 보관한 데이터가 삭제됐어요. 이 기기 사진과 연결된 기록은 이 기기에 남겼어요.';
-    default:
-      return '로그인했어요. 구독하면 백업을 시작해요.';
-  }
-}
-
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  section: { gap: Spacing.three },
-  statBox: { padding: Spacing.three, borderRadius: Spacing.three, gap: Spacing.one },
-  row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
-});

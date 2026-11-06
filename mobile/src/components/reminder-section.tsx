@@ -1,13 +1,12 @@
 import * as Notifications from 'expo-notifications';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { AppState, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Alert, AppState } from 'react-native';
+import { BellIcon, ClockIcon, RepeatIcon, WarningCircleIcon } from 'phosphor-react-native';
 
 import { DateSheet } from '@/components/date-sheet';
-import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { SettingsRow, SettingsSwitchRow } from '@/components/settings-list';
 import { REMINDER_FREQUENCIES, type Settings } from '@/db/settings';
-import { useTheme } from '@/hooks/use-theme';
 import {
   dateToReminderTime,
   enableRemindersFromSettings,
@@ -18,74 +17,39 @@ import {
   setReminderSchedule,
 } from '@/lib/reminders';
 
-export function ReminderSection({ settings }: { settings: Settings | undefined }) {
+/** 설정 목록의 고르기 알림 행들: 켜기, 빈도, 시각. 알림을 허용하지 않았으면 허용 행을 보여준다. */
+export function ReminderRows({ settings }: { settings: Settings | undefined }) {
   const db = useSQLiteContext();
-  const theme = useTheme();
   const [choosingTime, setChoosingTime] = useState(false);
   const permitted = useNotificationPermission();
   const enabled = settings?.reminder_enabled ?? false;
   const time = settings?.reminder_time ?? '21:00';
+  const frequency = settings?.reminder_frequency ?? 'every_2_days';
+
+  const chooseFrequency = () =>
+    Alert.alert('알림 빈도', '마지막으로 고른 뒤 이 기간이 지나고 새 사진이 있으면 알려드려요.', [
+      ...REMINDER_FREQUENCIES.map((option) => ({
+        text: `${REMINDER_FREQUENCY_LABEL[option]}${option === frequency ? ' ✓' : ''}`,
+        onPress: () => setReminderSchedule(db, { frequency: option }),
+      })),
+      { text: '취소', style: 'cancel' as const },
+    ]);
 
   return (
     <>
-      <View style={styles.row}>
-        <ThemedText type="small" style={styles.flex}>
-          새로 찍은 사진을 고를 때가 되면 알려 주기
-        </ThemedText>
-        <Switch
-          value={enabled}
-          onValueChange={(value) =>
-            value ? enableRemindersFromSettings(db) : setReminderEnabled(db, false)
-          }
-        />
-      </View>
-
+      <SettingsSwitchRow
+        label="고르기 알림"
+        icon={BellIcon}
+        value={enabled}
+        onValueChange={(value) => (value ? enableRemindersFromSettings(db) : setReminderEnabled(db, false))}
+      />
       {enabled && (
         <>
-          <View style={styles.options}>
-            {REMINDER_FREQUENCIES.map((frequency) => {
-              const selected = settings?.reminder_frequency === frequency;
-              return (
-                <Pressable
-                  key={frequency}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  onPress={() => setReminderSchedule(db, { frequency })}
-                  style={[
-                    styles.option,
-                    { backgroundColor: selected ? theme.accent : theme.backgroundElement },
-                  ]}>
-                  <ThemedText
-                    type="small"
-                    style={{ color: selected ? theme.onAccent : theme.text, fontWeight: 700 }}>
-                    {REMINDER_FREQUENCY_LABEL[frequency]}
-                  </ThemedText>
-                </Pressable>
-              );
-            })}
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setChoosingTime(true)}
-            style={[styles.row, styles.timeRow, { backgroundColor: theme.backgroundElement }]}>
-            <ThemedText type="small" style={styles.flex}>
-              알림 시각
-            </ThemedText>
-            <ThemedText type="smallBold" style={{ color: theme.accent }}>
-              {formatReminderTime(time)}
-            </ThemedText>
-          </Pressable>
-          <ThemedText type="small" themeColor="textSecondary">
-            마지막으로 고른 뒤 {REMINDER_FREQUENCY_LABEL[settings?.reminder_frequency ?? 'every_2_days']}이 지나고
-            새 사진이 있으면 알려드려요. 사진을 고르지 않은 지 한 달이 되면 한 번 더 알려드려요.
-          </ThemedText>
+          <SettingsRow label="알림 빈도" icon={RepeatIcon} value={REMINDER_FREQUENCY_LABEL[frequency]} onPress={chooseFrequency} />
+          <SettingsRow label="알림 시각" icon={ClockIcon} value={formatReminderTime(time)} onPress={() => setChoosingTime(true)} />
           {permitted === false && (
             // 아직 묻지 않았으면 묻고, 거절했으면 설정 앱으로 안내한다.
-            <Pressable onPress={() => enableRemindersFromSettings(db)} hitSlop={8}>
-              <ThemedText type="small" style={{ color: theme.danger }}>
-                알림이 허용되지 않았어요. 눌러서 허용해 주세요.
-              </ThemedText>
-            </Pressable>
+            <SettingsRow label="알림 허용하기" icon={WarningCircleIcon} destructive onPress={() => enableRemindersFromSettings(db)} />
           )}
         </>
       )}
@@ -115,17 +79,3 @@ function useNotificationPermission() {
   }, []);
   return granted;
 }
-
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
-  options: { flexDirection: 'row', gap: Spacing.two },
-  option: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: Spacing.three,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  timeRow: { padding: Spacing.three, borderRadius: Spacing.three },
-});

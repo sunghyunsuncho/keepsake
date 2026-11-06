@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { BottomBar, Centered, ColumnToggle, GRID_GAP, LimitedAccessBanner, PhotoTile, tileHeightFor, useTileWidth } from '@/components/pick';
+import { BackButton } from '@/components/stack-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -31,7 +32,6 @@ const PAST_ZOOM_LABELS: Record<PastZoom, string> = { year: '연도', month: '월
 /** 지난 사진을 가장 오래된 것부터 월·일 머리글 아래 세로로 계속 보여 준다. */
 export default function DayScreen() {
   const db = useSQLiteContext();
-  const theme = useTheme();
   const { access } = usePhotoAccess();
   const [before] = useState(() => new Date(Date.now() + 24 * 60 * 60 * 1000));
   const [zoom, setZoom] = useState<PastZoom>('month');
@@ -114,11 +114,7 @@ export default function DayScreen() {
     <ThemedView style={styles.flex}>
       <Stack.Screen
         options={{
-          headerLeft: () => (
-            <Pressable onPress={() => router.navigate('/')} hitSlop={10} accessibilityLabel="고르기로 돌아가기">
-              <ThemedText type="smallBold" style={{ color: theme.accent }}>‹ 고르기</ThemedText>
-            </Pressable>
-          ),
+          headerLeft: () => <BackButton label="고르기로 돌아가기" onPress={() => router.navigate('/')} />,
         }}
       />
       <View style={styles.header}>

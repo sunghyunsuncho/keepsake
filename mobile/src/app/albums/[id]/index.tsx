@@ -10,6 +10,8 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import { AlbumNameSheet } from '@/components/album-name-sheet';
 import { AlbumCoverSheet } from '@/components/album-cover-sheet';
 import { Button } from '@/components/button';
+import { BackButton, HeaderButton } from '@/components/stack-header';
+import { PHOTO_QUALITY, PHOTO_QUALITIES, PhotoQualityBadge } from '@/components/photo-quality';
 import { GalleryHeader, STICKY_HEADER_HEIGHT, StoryCard, TileRow } from '@/components/gallery';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -17,16 +19,21 @@ import { Spacing } from '@/constants/theme';
 import {
   ALL_ALBUM_ID,
   deleteAlbum,
-  getAlbumTitle,
+  getAlbum,
+  isBuiltInAlbum,
   listAlbumMoments,
+  listCloudAlbumPending,
   renameAlbum,
   setAlbumCover,
+  setAlbumQuality,
   updateAlbumMoments,
+  type AlbumInfo,
 } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
 import type { Moment } from '@/db/moments';
 import { ALBUM_ZOOMS, DEFAULT_SETTINGS, getSettings, setSetting, type AlbumSortOrder, type AlbumZoom } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
+import { useCloudState } from '@/lib/cloud/engine';
 import { localDateKey } from '@/lib/dates';
 import { anchorIndex, firstMomentOf, galleryRows, type GalleryRow } from '@/lib/gallery';
 
@@ -42,7 +49,8 @@ export default function AlbumScreen() {
   const { id, source } = useLocalSearchParams<{ id: string; source?: string }>();
   const db = useSQLiteContext();
   const theme = useTheme();
-  const { data: title } = useDbQuery(() => getAlbumTitle(db, id), [db, id]);
+  const { data: album } = useDbQuery(() => getAlbum(db, id), [db, id]);
+  const title = album === undefined ? undefined : (album?.title ?? null);
   const { data: moments } = useDbQuery(() => listAlbumMoments(db, id), [db, id]);
   const { data: settings } = useDbQuery(() => getSettings(db), [db]);
   const [renaming, setRenaming] = useState(false);
@@ -53,9 +61,12 @@ export default function AlbumScreen() {
   const [view, setView] = useState<{ zoom: AlbumZoom; anchor: Anchor | null } | null>(null);
   const zoom = view?.zoom ?? settings?.album_zoom ?? DEFAULT_SETTINGS.album_zoom;
   const order = settings?.album_sort_order ?? DEFAULT_SETTINGS.album_sort_order;
-  const isCustom = id !== ALL_ALBUM_ID;
-  const parentAlbumRoute = source === 'cloud' ? '/cloud-library' : '/album';
-  const parentAlbumLabel = source === 'cloud' ? '안전 사진첩으로 돌아가기' : '사진첩으로 돌아가기';
+  const isCustom = !isBuiltInAlbum(id);
+  const isCloud = album?.kind === 'cloud';
+  const canUpload = useCloudState().account?.subscription.can_upload ?? false;
+  const fromCloud = source === 'cloud' || isCloud;
+  const parentAlbumRoute = fromCloud ? '/cloud-library' : '/album';
+  const parentAlbumLabel = fromCloud ? '안전 사진첩으로 돌아가기' : '사진첩으로 돌아가기';
 
   const rows = useMemo(() => (moments ? galleryRows(moments, zoom, order) : []), [moments, zoom, order]);
   const stickyHeaderIndices = useMemo(
@@ -138,7 +149,9 @@ export default function AlbumScreen() {
     if (selectedIds.size === 0) return;
     Alert.alert(
       '앨범에서 뺄까요?',
-      '사진이나 기록은 삭제되지 않아요. 이 앨범에 연결된 사진만 빠져요.',
+      isCloud
+        ? '다른 안전 앨범에 없는 사진은 안전 보관에서 삭제돼 용량이 돌아와요. 기록(메모·장소)과 기기 사진첩의 원본은 그대로예요.'
+        : '사진이나 기록은 삭제되지 않아요. 이 앨범에 연결된 사진만 빠져요.',
       [
         { text: '취소', style: 'cancel' },
         {
@@ -162,16 +175,57 @@ export default function AlbumScreen() {
     ]);
   };
 
+  const chooseQuality = () => {
+    if (!album?.photoQuality) return;
+    const current = album.photoQuality;
+    Alert.alert(
+      '보관 화질',
+      `${PHOTO_QUALITY.original.label}: ${PHOTO_QUALITY.original.description}\n\n${PHOTO_QUALITY.display.label}: ${PHOTO_QUALITY.display.description}` +
+        (current === 'original'
+          ? '\n\n효율 보관으로 바꾸면 다른 원본 보관 앨범에 없는 사진의 원본은 안전 보관에서 삭제돼요.'
+          : ''),
+      [
+        ...PHOTO_QUALITIES.map((quality) => ({
+          text: `${PHOTO_QUALITY[quality].label}${quality === current ? ' (지금)' : ''}`,
+          onPress: () => {
+            if (quality !== current) setAlbumQuality(db, id, quality);
+          },
+        })),
+        { text: '취소', style: 'cancel' as const },
+      ],
+    );
+  };
+
+  // 기기 앨범: 안전 보관에 연결하거나, 이미 연결한 안전 앨범으로 간다.
+  const cloudLink = () => {
+    if (isCloud || !canUpload) return [];
+    const linkedId = album?.linkedCloudAlbumId;
+    return linkedId
+      ? [
+          {
+            text: '연결된 안전 앨범 보기',
+            onPress: () => router.push({ pathname: '/albums/[id]', params: { id: linkedId, source: 'cloud' } }),
+          },
+        ]
+      : [{ text: '안전 보관에 연결', onPress: () => router.push({ pathname: '/cloud-albums/new', params: { source: id } }) }];
+  };
+
   const showAlbumMenu = () => {
     Alert.alert(title ?? '', undefined, [
       { text: '새 사진에서 고르기', onPress: pickForAlbum },
+      ...(isCloud ? [{ text: '보관 화질 바꾸기', onPress: chooseQuality }] : cloudLink()),
       { text: '표지 바꾸기', onPress: () => setChoosingCover(true) },
       { text: '이름 바꾸기', onPress: () => setRenaming(true) },
       {
         text: '앨범 지우기',
         style: 'destructive',
         onPress: () =>
-          Alert.alert('앨범을 지울까요?', '앨범만 지워지고, 들어 있던 기록은 그대로 남아요.', [
+          Alert.alert(
+            '앨범을 지울까요?',
+            isCloud
+              ? '다른 안전 앨범에 없는 사진은 안전 보관에서 삭제돼요. 기록과 기기 사진첩의 원본은 그대로예요.'
+              : '앨범만 지워지고, 들어 있던 기록은 그대로 남아요.',
+            [
             { text: '취소', style: 'cancel' },
             {
               text: '지우기',
@@ -181,7 +235,8 @@ export default function AlbumScreen() {
                 deleteAlbum(db, id);
               },
             },
-          ]),
+          ],
+          ),
       },
       { text: '취소', style: 'cancel' },
     ]);
@@ -192,17 +247,9 @@ export default function AlbumScreen() {
       options={{
         title: title ?? '',
         // 탭 전환으로 들어온 경우에도 기본 back stack에 의존하지 않고 들어온 사진첩으로 돌아간다.
-        headerLeft: () => (
-          <HeaderIcon
-            icon="chevron-back"
-            label={parentAlbumLabel}
-            onPress={() => router.navigate(parentAlbumRoute)}
-          />
-        ),
+        headerLeft: () => <BackButton label={parentAlbumLabel} onPress={() => router.navigate(parentAlbumRoute)} />,
         headerRight: isCustom
-          ? () => (
-              <HeaderIcon icon="ellipsis-horizontal" label="앨범 메뉴" onPress={showAlbumMenu} />
-            )
+          ? () => <HeaderButton icon="ellipsis-horizontal" label="앨범 메뉴" onPress={showAlbumMenu} />
           : undefined,
       }}
     />
@@ -232,10 +279,12 @@ export default function AlbumScreen() {
         {isCustom ? (
           <>
             <ThemedText themeColor="textSecondary" style={styles.center}>
-              아직 담은 사진이 없어요.{'\n'}나의 순간들에서 고르거나 새 사진을 담아 보세요.
+              {isCloud
+                ? '아직 안전 보관한 사진이 없어요.\n나의 순간들에서 안전 보관할 사진을 골라 보세요.'
+                : '아직 담은 사진이 없어요.\n나의 순간들에서 고르거나 새 사진을 담아 보세요.'}
             </ThemedText>
             <Button
-              label="나의 순간들에서 사진 추가"
+              label={isCloud ? '나의 순간들에서 사진 올리기' : '나의 순간들에서 사진 추가'}
               onPress={() => router.push({ pathname: '/albums/[id]/add', params: { id } })}
             />
             <Button
@@ -244,6 +293,10 @@ export default function AlbumScreen() {
               onPress={pickForAlbum}
             />
           </>
+        ) : id !== ALL_ALBUM_ID ? (
+          <ThemedText themeColor="textSecondary" style={styles.center}>
+            아직 안전 보관한 사진이 없어요.{'\n'}안전 앨범을 만들고 사진을 담으면 여기에 모여요.
+          </ThemedText>
         ) : (
           <>
             <ThemedText themeColor="textSecondary" style={styles.center}>
@@ -270,6 +323,7 @@ export default function AlbumScreen() {
   return (
     <ThemedView style={styles.flex}>
       {header}
+      {album && isCloud && isCustom && <CloudAlbumInfo album={album} onPressQuality={chooseQuality} />}
       <ZoomBar value={zoom} onChange={(next) => changeZoom(next)} />
       <View style={styles.compactControls}>
         {isCustom && (
@@ -293,7 +347,9 @@ export default function AlbumScreen() {
         <View style={[styles.editBar, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
           <View style={styles.flex}>
             <ThemedText type="smallBold">{selectedIds.size}장 선택됨</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">사진과 기록은 남고, 이 앨범에서만 빠져요.</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {isCloud ? '다른 안전 앨범에 없는 사진은 안전 보관에서 삭제돼요.' : '사진과 기록은 남고, 이 앨범에서만 빠져요.'}
+            </ThemedText>
           </View>
           <Button label="앨범에서 빼기" variant="danger" disabled={selectedIds.size === 0} onPress={removeSelected} />
         </View>
@@ -382,6 +438,36 @@ export default function AlbumScreen() {
   );
 }
 
+/** 안전 앨범의 보관 화질과 연결, 아직 올리지 않은 사진 수. 누르면 화질을 바꾼다. */
+function CloudAlbumInfo({ album, onPressQuality }: { album: AlbumInfo; onPressQuality: () => void }) {
+  const db = useSQLiteContext();
+  const theme = useTheme();
+  const { data: pending } = useDbQuery(() => listCloudAlbumPending(db), [db]);
+  const waiting = pending?.get(album.id) ?? 0;
+  return (
+    <Pressable
+      onPress={onPressQuality}
+      accessibilityRole="button"
+      accessibilityLabel="보관 화질 바꾸기"
+      style={({ pressed }) => [styles.cloudInfo, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.8 : 1 }]}>
+      <View style={styles.cloudInfoRow}>
+        {album.photoQuality && <PhotoQualityBadge quality={album.photoQuality} />}
+        {album.sourceAlbumTitle && (
+          <View style={styles.cloudInfoRow}>
+            <Ionicons name="link-outline" size={14} color={theme.textSecondary} />
+            <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+              기기 앨범 ‘{album.sourceAlbumTitle}’과 연결
+            </ThemedText>
+          </View>
+        )}
+      </View>
+      <ThemedText type="small" themeColor="textSecondary">
+        {waiting > 0 ? `올릴 사진 ${waiting}장 · 동기화할 때 올려요` : '담은 사진을 모두 안전 보관했어요'}
+      </ThemedText>
+    </Pressable>
+  );
+}
+
 function ZoomBar({ value, onChange }: { value: AlbumZoom; onChange: (zoom: AlbumZoom) => void }) {
   const theme = useTheme();
   return (
@@ -442,27 +528,6 @@ function AlbumActionButton({
   );
 }
 
-function HeaderIcon({
-  icon,
-  label,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={({ pressed }) => [styles.headerIcon, { backgroundColor: pressed ? theme.backgroundElement : 'transparent' }]}>
-      <Ionicons name={icon} size={24} color={theme.text} />
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   center: { textAlign: 'center' },
@@ -473,7 +538,6 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     padding: Spacing.four,
   },
-  headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   compactControls: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.three, paddingBottom: Spacing.two, gap: Spacing.two },
   albumToolbar: { flexDirection: 'row', gap: Spacing.one },
   albumActionButton: { minHeight: 32, paddingHorizontal: Spacing.two, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },
@@ -491,5 +555,13 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.one,
     borderRadius: Spacing.two - Spacing.half,
   },
+  cloudInfo: {
+    gap: Spacing.one,
+    marginHorizontal: Spacing.three,
+    marginTop: Spacing.two,
+    padding: Spacing.two,
+    borderRadius: Spacing.two,
+  },
+  cloudInfoRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, flexShrink: 1 },
   sortOrder: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: Spacing.two, minHeight: 32 },
 });

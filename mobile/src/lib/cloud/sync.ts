@@ -21,7 +21,7 @@ const PUSH_BATCH = 200;
 const RECORD_TABLES = {
   albums: {
     keys: ['id'],
-    columns: ['id', 'kind', 'title', 'start_date', 'end_date', 'cover_mode', 'cover_moment_id', 'cover_emoji', 'created_at', 'updated_at', 'deleted_at'],
+    columns: ['id', 'kind', 'title', 'start_date', 'end_date', 'cover_mode', 'cover_moment_id', 'cover_emoji', 'photo_quality', 'source_album_id', 'created_at', 'updated_at', 'deleted_at'],
   },
   album_moments: {
     keys: ['album_id', 'moment_id'],
@@ -198,6 +198,9 @@ async function mergeRecord(db: SQLiteDatabase, remote: SyncRecordRow) {
         : 'latest';
     data.cover_moment_id = data.cover_mode === 'photo' ? data.cover_moment_id ?? null : null;
     data.cover_emoji = data.cover_mode === 'design' ? data.cover_emoji ?? '✨' : null;
+    // 화질은 스키마 9에서 추가됐다. 안전 앨범만 값을 갖고, 모르는 값은 원본 보관으로 본다.
+    data.photo_quality = data.kind === 'cloud' ? (data.photo_quality === 'display' ? 'display' : 'original') : null;
+    data.source_album_id = data.kind === 'cloud' ? data.source_album_id ?? null : null;
   }
   const existing = await db.getFirstAsync<{ updated_at: string }>(
     `SELECT updated_at FROM ${remote.kind} WHERE ${keys.map((k) => `${k} = ?`).join(' AND ')}`,
@@ -221,6 +224,7 @@ export async function resetAccountSpace(db: SQLiteDatabase) {
   });
   await setSetting(db, 'cloud_pull_cursor', 0);
   await setSetting(db, 'cloud_links_restored', false);
+  await setSetting(db, 'cloud_photos_adopted', false);
 }
 
 /** 서버에 보낼 변경이 있는지. 데이터가 바뀔 때마다 네트워크를 쓰지 않으려고 먼저 확인한다. */

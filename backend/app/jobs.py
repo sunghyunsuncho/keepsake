@@ -15,7 +15,7 @@ from app.cloud import (
     UserGone,
     delete_account,
     lock_user,
-    purge_cloud_data,
+    purge_photos,
     refresh_from_revenuecat,
 )
 from app.config import get_settings
@@ -177,10 +177,10 @@ def expire_grace(db: Session, now: datetime) -> None:
             ):
                 db.commit()
                 continue
-            purge_cloud_data(db, user_id, now)
+            purge_photos(db, user_id, now)
             entitlement.status = "expired"
             db.commit()
-            log.info("purged cloud data after grace: %s", user_id)
+            log.info("purged cloud photos after grace: %s", user_id)
         except UserGone:
             db.rollback()
         except Exception:

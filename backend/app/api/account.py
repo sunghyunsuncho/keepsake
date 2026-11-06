@@ -4,6 +4,7 @@ from typing import Literal
 
 from fastapi import APIRouter, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
 from app.cloud import (
@@ -17,7 +18,7 @@ from app.cloud import (
     subscription_status,
 )
 from app.config import get_settings
-from app.models.cloud import Device, Entitlement, Usage, User
+from app.models.cloud import Device, Entitlement, Moment, SyncRecord, Usage, User
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +47,9 @@ class AccountResponse(BaseModel):
     email: str | None
     subscription: SubscriptionState
     usage: StorageUsage
+    # 사진 사용량과 별개다. 무료 기록 백업 계정도 이미 기록이 있음을 기기가 알아야 Local 기록을
+    # 자동으로 섞어 올리지 않는다.
+    has_records: bool
 
 
 class DeviceRequest(BaseModel):
@@ -56,6 +60,20 @@ class DeviceRequest(BaseModel):
 def account_response(db: DbSession, user: User) -> AccountResponse:
     entitlement = db.get(Entitlement, user.id)
     usage = db.get(Usage, user.id)
+    # Local 기록을 자동으로 선택해 올릴지는 이 계정이 완전히 비어 있는지에 달려 있다.
+    # moment가 없어도 빈 앨범이나 고르기 이력이 있으면 이미 사용한 계정이므로 SyncRecord도 본다.
+    has_records = any(
+        db.scalar(
+            select(model.id)
+            .where(
+                model.user_id == user.id,
+                model.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+        is not None
+        for model in (Moment, SyncRecord)
+    )
     return AccountResponse(
         user_id=user.id,
         data_generation=user.data_generation,
@@ -72,6 +90,7 @@ def account_response(db: DbSession, user: User) -> AccountResponse:
             object_count=usage.object_count if usage else 0,
             max_bytes=get_settings().cloud_max_bytes,
         ),
+        has_records=has_records,
     )
 
 

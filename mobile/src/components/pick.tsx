@@ -175,49 +175,6 @@ export function BottomBar({
   );
 }
 
-/** 고르기 뒤에만 보이는 사진 정리 제안. 삭제 화면으로 가기 전에는 사진을 전혀 건드리지 않는다. */
-export function CleanupSuggestion({
-  count,
-  onDismiss,
-  onCleanup,
-}: {
-  count: number;
-  onDismiss: () => void;
-  onCleanup: () => void;
-}) {
-  const theme = useTheme();
-  return (
-    <View style={[styles.cleanupSuggestion, { backgroundColor: theme.background, borderColor: theme.border }]}>
-      <View style={styles.cleanupHeading}>
-        <View style={[styles.cleanupIcon, { backgroundColor: theme.accent + '18' }]}>
-          <Ionicons name="leaf-outline" size={20} color={theme.accent} />
-        </View>
-        <View style={styles.flex}>
-          <ThemedText type="smallBold">남기지 않은 사진 {count}장</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            필요한 사진만 남기고, 나머지는 한 번 더 확인해 정리할 수 있어요.
-          </ThemedText>
-        </View>
-        <Pressable onPress={onDismiss} hitSlop={10} accessibilityLabel="정리 제안 닫기">
-          <Ionicons name="close" size={18} color={theme.textSecondary} />
-        </Pressable>
-      </View>
-      <View style={styles.cleanupActions}>
-        <Pressable onPress={onDismiss} style={styles.cleanupSecondary} accessibilityRole="button">
-          <ThemedText type="smallBold" themeColor="textSecondary">이번엔 그냥 둘게요</ThemedText>
-        </Pressable>
-        <Pressable
-          onPress={onCleanup}
-          style={[styles.cleanupPrimary, { backgroundColor: theme.accent }]}
-          accessibilityRole="button">
-          <Ionicons name="options-outline" size={17} color={theme.onAccent} />
-          <ThemedText type="smallBold" style={{ color: theme.onAccent }}>사진 정리</ThemedText>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
 /** 남긴 사진 썸네일 줄. 누르면 기억을 적는 화면으로 간다. */
 export function SavedTray({
   items,
@@ -380,11 +337,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
-  cleanupHeading: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.two },
-  cleanupIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  cleanupActions: { flexDirection: 'row', gap: Spacing.two },
-  cleanupSecondary: { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center' },
-  cleanupPrimary: { flex: 1, minHeight: 42, borderRadius: Spacing.two, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.one },
   tray: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: Spacing.two,

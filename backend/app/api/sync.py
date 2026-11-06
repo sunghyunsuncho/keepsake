@@ -2,6 +2,7 @@
 
 - ID는 기기가 만든 UUID, 충돌은 updated_at 최신 우선, 삭제는 deleted_at.
 - pull 커서는 서버가 매기는 변경 번호(seq)다. 기기 시계가 틀려도 다른 기기의 변경을 놓치지 않는다.
+- 기록(메모·장소·앨범) 백업은 로그인한 사용자 모두에게 준다. 구독은 사진 보관에만 필요하다.
 """
 
 import json
@@ -12,7 +13,7 @@ from fastapi import APIRouter, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select, update
 
-from app.api.deps import CurrentUser, DbSession, require_read, require_write
+from app.api.deps import CurrentUser, DbSession
 from app.cloud import lock_active_user, stored_variants
 from app.models.cloud import CloudObject, DeviceLink, Moment, SyncRecord, Usage
 
@@ -110,7 +111,6 @@ def _encode(row: SyncRow) -> str:
 
 @router.post("/push", response_model=PushResponse)
 def push(payload: PushRequest, user: CurrentUser, db: DbSession) -> PushResponse:
-    require_write(db, user)
     # 사용자 행을 잠가서 같은 사용자의 push가 동시에 와도 seq가 커밋 순서대로 매겨지게 한다.
     locked = lock_active_user(db, user.id)
     seq = locked.sync_seq
@@ -211,7 +211,6 @@ def pull(
     db: DbSession,
     cursor: Annotated[int, Query(ge=0)] = 0,
 ) -> PullResponse:
-    require_read(db, user)
     # 두 테이블의 seq는 같은 번호 공간이라, 합쳐서 seq 순으로 PULL_LIMIT개까지 돌려준다.
     moments = db.scalars(
         select(Moment)
@@ -251,7 +250,6 @@ def pull(
 
 @router.put("/device-links", status_code=status.HTTP_204_NO_CONTENT)
 def put_device_links(payload: PutDeviceLinksRequest, user: CurrentUser, db: DbSession) -> None:
-    require_write(db, user)
     lock_active_user(db, user.id)
     # 서버에 없거나 지워진 기록의 연결은 받지 않는다.
     active = set(
@@ -291,7 +289,6 @@ def get_device_links(
     after: Annotated[str, Query(max_length=36)] = "",
 ) -> DeviceLinksResponse:
     """요청한 기기의 연결만 돌려준다. moment_id 순으로 나눠 받는다."""
-    require_read(db, user)
     rows = db.scalars(
         select(DeviceLink)
         .where(

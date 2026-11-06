@@ -8,7 +8,7 @@ from uuid import uuid4
 from botocore.exceptions import ClientError
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.api.deps import CurrentUser, DbSession, require_read, require_write
 from app.cloud import lock_active_user
@@ -55,6 +55,15 @@ class UploadResponse(BaseModel):
     # PUT에 그대로 붙여야 하는 헤더 (서명에 포함돼 있다)
     headers: dict[str, str]
     expires_at: datetime
+
+
+class PhotoRef(BaseModel):
+    moment_id: str = Field(max_length=36)
+    variant: Variant
+
+
+class DeletePhotosRequest(BaseModel):
+    photos: list[PhotoRef] = Field(max_length=500)
 
 
 class DownloadResponse(BaseModel):
@@ -198,3 +207,44 @@ def download_photo(
         size=obj.size_bytes,
         expires_at=datetime.now(UTC) + DOWNLOAD_URL_TTL,
     )
+
+
+@router.post("/photos/delete", status_code=status.HTTP_204_NO_CONTENT)
+def delete_photos(payload: DeletePhotosRequest, user: CurrentUser, db: DbSession) -> None:
+    """기록은 남기고 사진만 지운다 (안전 앨범에서 빼거나, 앨범을 효율 보관으로 바꿨을 때).
+
+    지우는 것은 구독 상태와 관계없이 허용한다. 사용량은 바로 돌려주고, R2는 정리 작업이 지운다.
+    없는 사진은 건너뛴다 (다른 기기가 먼저 지웠거나 응답을 못 받고 다시 보낸 경우).
+    """
+    locked = lock_active_user(db, user.id)
+    wanted = {(photo.moment_id, photo.variant) for photo in payload.photos}
+    if not wanted:
+        return
+    objects = [
+        obj
+        for obj in db.scalars(
+            select(CloudObject).where(
+                CloudObject.user_id == user.id,
+                CloudObject.moment_id.in_({moment_id for moment_id, _ in wanted}),
+                CloudObject.status.in_(("stored", "pending")),
+            )
+        ).all()
+        if (obj.moment_id, obj.variant) in wanted
+    ]
+    usage = db.get(Usage, user.id)
+    for obj in objects:
+        if obj.status == "stored" and usage is not None:
+            usage.bytes_total -= obj.size_bytes
+            usage.object_count -= 1
+    db.execute(
+        update(CloudObject)
+        .where(CloudObject.id.in_([obj.id for obj in objects]))
+        .values(status="deleting")
+    )
+    # 다른 기기가 다음 pull에서 '올라감' 표시를 버리도록 기록의 변경 번호를 올린다.
+    for moment_id in sorted({obj.moment_id for obj in objects}):
+        moment = db.get(Moment, (user.id, moment_id))
+        if moment is not None:
+            locked.sync_seq += 1
+            moment.seq = locked.sync_seq
+    db.commit()

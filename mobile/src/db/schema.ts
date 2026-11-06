@@ -122,6 +122,30 @@ const MIGRATIONS: string[] = [
   ALTER TABLE albums ADD COLUMN cover_moment_id TEXT;
   ALTER TABLE albums ADD COLUMN cover_emoji TEXT;
   `,
+  // 9: 안전 앨범 (kind 'cloud'). photo_quality: 'original'(원본 + 표시용) | 'display'(표시용만).
+  // source_album_id: 기기 앨범을 연결해 만든 안전 앨범이면 그 기기 앨범. 기기 앨범에 넣은 사진을 따라 담는다.
+  `
+  ALTER TABLE albums ADD COLUMN photo_quality TEXT;
+  ALTER TABLE albums ADD COLUMN source_album_id TEXT;
+  `,
+  // 10: 받은 알림 내역 (알림 화면). 기기 설정처럼 Local DB에만 쓴다 (db/notifications.ts).
+  `
+  CREATE TABLE notification_log (
+    id TEXT PRIMARY KEY NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    url TEXT,
+    received_at TEXT NOT NULL,
+    read_at TEXT
+  );
+  CREATE INDEX notification_log_received ON notification_log (received_at);
+  `,
+  // 11: 안전 사진첩 목록·업로드 후보는 moment_id로 앨범 연결을 자주 찾는다.
+  // 기본키(album_id, moment_id)는 이 방향의 EXISTS 조회를 돕지 못하므로 활성 연결 전용 인덱스를 둔다.
+  `
+  CREATE INDEX idx_album_moments_moment_active
+    ON album_moments (moment_id, album_id) WHERE deleted_at IS NULL;
+  `,
 ];
 
 export async function migrateDb(db: SQLiteDatabase) {

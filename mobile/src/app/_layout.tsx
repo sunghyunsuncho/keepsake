@@ -7,6 +7,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { CloudSync } from '@/components/cloud-sync';
 import { LocalImportPrompt } from '@/components/local-import-prompt';
+import { NotificationInbox } from '@/components/notification-inbox';
+import { ModalHeader, StackHeader } from '@/components/stack-header';
 import { ReviewReminders } from '@/components/review-reminders';
 import { migrateDb } from '@/db/schema';
 import { getLocalDb } from '@/db/spaces';
@@ -44,16 +46,22 @@ function RootLayout() {
               <CloudSync />
               <LocalImportPrompt />
               <ReviewReminders />
+              <NotificationInbox />
+              {/* 뒤로 가기가 있는 화면은 배경 없는 '<'로 통일한다 (components/stack-header.tsx). */}
               <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="moment/[id]" options={{ title: '' }} />
-                <Stack.Screen name="day" options={{ title: '지난 사진' }} />
-                <Stack.Screen name="albums/[id]/index" options={{ title: '' }} />
-                <Stack.Screen name="albums/[id]/add" options={{ title: '', presentation: 'modal' }} />
+                <Stack.Screen name="moment/[id]" options={{ title: '', header: StackHeader }} />
+                <Stack.Screen name="day" options={{ title: '지난 사진', header: StackHeader }} />
+                <Stack.Screen name="albums/[id]/index" options={{ title: '', header: StackHeader }} />
+                <Stack.Screen name="albums/[id]/add" options={{ title: '', presentation: 'modal', header: ModalHeader }} />
                 <Stack.Screen name="viewer" options={{ headerShown: false, animation: 'fade' }} />
-                <Stack.Screen name="cleanup" options={{ title: '사진 정리', presentation: 'modal' }} />
-                <Stack.Screen name="cloud" options={{ title: '안전 보관', presentation: 'modal' }} />
-                <Stack.Screen name="cloud-import" options={{ title: '기기 기록 올리기', presentation: 'modal' }} />
+                <Stack.Screen name="cleanup" options={{ title: '사진 정리', presentation: 'modal', header: ModalHeader }} />
+                <Stack.Screen name="cloud" options={{ title: '안전 보관', presentation: 'modal', header: ModalHeader }} />
+                <Stack.Screen name="notifications" options={{ title: '알림', header: StackHeader }} />
+                <Stack.Screen name="open-source-licenses" options={{ title: '오픈소스 라이선스', header: StackHeader }} />
+                <Stack.Screen name="legal/[doc]" options={{ header: StackHeader }} />
+                <Stack.Screen name="cloud-albums/new" options={{ title: '새 안전 앨범', presentation: 'modal', header: ModalHeader }} />
+                <Stack.Screen name="cloud-import" options={{ title: '기기 기록 올리기', presentation: 'modal', header: ModalHeader }} />
               </Stack>
             </SQLiteProvider>
           </Suspense>

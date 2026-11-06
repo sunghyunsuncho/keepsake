@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react';
 import { accountDatabaseName, DATABASE_NAME } from '@/db/schema';
 import { loadSession, SPACE_KEY, useCloudSession } from '@/lib/cloud/session';
 
-// 지금 어느 공간을 보는지. Cloud를 읽을 수 있는 계정만 계정 공간을 쓴다.
+// 지금 어느 공간을 보는지. 로그인한 계정은 구독과 관계없이 계정 공간을 쓴다 (기록 백업).
 // 오프라인으로 앱을 열어도 같은 공간을 보여주도록 기기에 저장한다.
 
 let space: string | null | undefined; // undefined: 아직 읽지 않음

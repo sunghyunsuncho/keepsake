@@ -13,7 +13,6 @@ from app.models.cloud import (
     Entitlement,
     Moment,
     StorageCleanup,
-    SyncRecord,
     Usage,
     User,
 )
@@ -67,12 +66,12 @@ def subscription_status(entitlement: Entitlement | None) -> str:
 
 
 def can_write(entitlement: Entitlement | None) -> bool:
-    """새 업로드·동기화 push. 스토어 결제 유예 중에는 RevenueCat이 active로 두므로 허용된다."""
+    """새 사진 업로드. 스토어 결제 유예 중에는 RevenueCat이 active로 두므로 허용된다."""
     return subscription_status(entitlement) == "active"
 
 
 def can_read(entitlement: Entitlement | None) -> bool:
-    """pull·다운로드. 만료 후 30일(grace) 동안은 읽기와 전체 다운로드만 허용한다."""
+    """사진 다운로드. 만료 후 30일(grace) 동안은 읽기와 전체 다운로드만 허용한다."""
     return subscription_status(entitlement) in {"active", "grace"}
 
 
@@ -165,17 +164,24 @@ def delete_revenuecat_customer(user_id: str) -> None:
     response.raise_for_status()
 
 
-def purge_cloud_data(db: Session, user_id: str, now: datetime) -> None:
-    """서버 기록(moments, sync_records, cloud_objects)을 지운다. 계정·구독 행은 남긴다.
+def purge_photos(db: Session, user_id: str, now: datetime) -> None:
+    """Cloud에 보관한 사진(cloud_objects)을 지운다. 기록과 계정·구독 행은 남긴다.
 
+    기록 백업은 로그인만으로 쓰는 기능이라 구독이 끝나도 지우지 않는다.
+    사진이 있던 기록은 변경 번호를 올려서, 기기가 다음 pull에서 '올라감' 표시를 버리게 한다.
     R2 객체는 커밋 뒤 정리 작업이 지운다. 먼저 지우면 일부 실패 때 없는 사진이 저장된 것으로 남는다.
     """
     user = lock_user(db, user_id)
-    user.data_generation += 1
     db.merge(StorageCleanup(prefix=user_prefix(user_id), not_before=now))
+    moment_ids = set(
+        db.scalars(select(CloudObject.moment_id).where(CloudObject.user_id == user_id)).all()
+    )
     db.execute(delete(CloudObject).where(CloudObject.user_id == user_id))
-    db.execute(delete(Moment).where(Moment.user_id == user_id))
-    db.execute(delete(SyncRecord).where(SyncRecord.user_id == user_id))
+    for moment_id in sorted(moment_ids):
+        moment = db.get(Moment, (user_id, moment_id))
+        if moment is not None:
+            user.sync_seq += 1
+            moment.seq = user.sync_seq
     usage = db.get(Usage, user_id)
     if usage is not None:
         usage.bytes_total, usage.object_count = 0, 0

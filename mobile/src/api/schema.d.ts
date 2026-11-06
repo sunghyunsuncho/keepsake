@@ -227,6 +227,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/photos/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Photos
+         * @description 기록은 남기고 사진만 지운다 (안전 앨범에서 빼거나, 앨범을 효율 보관으로 바꿨을 때).
+         *
+         *     지우는 것은 구독 상태와 관계없이 허용한다. 사용량은 바로 돌려주고, R2는 정리 작업이 지운다.
+         *     없는 사진은 건너뛴다 (다른 기기가 먼저 지웠거나 응답을 못 받고 다시 보낸 경우).
+         */
+        post: operations["uploads_delete_photos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/billing/revenuecat": {
         parameters: {
             query?: never;
@@ -258,6 +281,8 @@ export interface components {
             email: string | null;
             subscription: components["schemas"]["SubscriptionState"];
             usage: components["schemas"]["StorageUsage"];
+            /** Has Records */
+            has_records: boolean;
         };
         /** CreateUploadRequest */
         CreateUploadRequest: {
@@ -274,6 +299,11 @@ export interface components {
             content_type: string;
             /** Md5 */
             md5: string;
+        };
+        /** DeletePhotosRequest */
+        DeletePhotosRequest: {
+            /** Photos */
+            photos: components["schemas"]["PhotoRef"][];
         };
         /** DeviceLinkRow */
         DeviceLinkRow: {
@@ -327,6 +357,16 @@ export interface components {
              * @constant
              */
             status: "ok";
+        };
+        /** PhotoRef */
+        PhotoRef: {
+            /** Moment Id */
+            moment_id: string;
+            /**
+             * Variant
+             * @enum {string}
+             */
+            variant: "display" | "original";
         };
         /** PullResponse */
         PullResponse: {
@@ -859,6 +899,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DownloadResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    uploads_delete_photos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeletePhotosRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

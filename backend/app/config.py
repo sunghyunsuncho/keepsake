@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ENV_FILE, env_file_encoding="utf-8", extra="ignore")
 
     env: str = "local"
-    database_url: str = "postgresql+psycopg://keepsake:keepsake@localhost:5433/keepsake"
+    database_url: str = "postgresql+psycopg://keepsake:keepsake@localhost:15434/keepsake"
 
     # Cloudflare R2 (로컬에서는 docker-compose의 RustFS). Phase 2에서 사용한다.
     r2_endpoint_url: str = "http://localhost:9010"

@@ -4,8 +4,10 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as MediaLibrary from 'expo-media-library';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { createAlbum, updateAlbumMoments } from '@/db/albums';
 import { notifyChange } from '@/db/changes';
-import { setMomentSource } from '@/db/moments';
+import { inTransaction, setMomentSource } from '@/db/moments';
+import { getSettings, setSetting } from '@/db/settings';
 import { CloudError, cloudApi, unwrap } from '@/lib/cloud/session';
 import { hasLimitedPhotoAccess } from '@/lib/photos';
 import { cacheDir } from '@/lib/storage';
@@ -13,7 +15,9 @@ import { cacheDir } from '@/lib/storage';
 // 사진 업로드·다운로드 (docs/PLAN.md §3.1). 사진 바이트는 서버를 거치지 않고 R2와 직접 오간다.
 //
 // 앱은 사진을 보관하지 않으므로, 올릴 때 기기 사진첩에서 원본을 읽고 표시용 사진은 그때 만들어 올린 뒤 지운다.
-// 올릴 사진은 moments에서 바로 계산한다 (서버에 기록이 있고, 사진이 아직 올라가지 않은 것).
+// 올릴 사진은 moments에서 바로 계산한다 (서버에 기록이 있고, 안전 앨범에 담겼고, 사진이 아직 올라가지 않은 것).
+// 표시용은 안전 앨범에 담긴 기록 모두, 원본은 화질이 '원본'인 안전 앨범에 담긴 기록만 올린다 (db/albums.ts).
+// 반대로 안전 앨범에서 빠졌거나 앨범을 효율 보관으로 바꿔 필요 없어진 사진은 서버에서 지운다 (releaseUnwantedPhotos).
 // upload_queue에는 실패한 사진의 재시도 횟수와 다음 시도 시각만 둔다. 앱을 다시 열어도 이어서 올린다.
 
 type Variant = 'display' | 'original';
@@ -39,18 +43,26 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 // 기기 사진첩에 원본이 있어야 올릴 수 있다. 지워진 사진(source_missing)이나 다른 기기에서 받은 기록은 뺀다.
-const UPLOADABLE = `deleted_at IS NULL AND sync_state = 'synced'
-  AND source_asset_id IS NOT NULL AND source_missing = 0`;
+const ON_DEVICE = 'deleted_at IS NULL AND source_asset_id IS NOT NULL AND source_missing = 0';
+const UPLOADABLE = `${ON_DEVICE} AND sync_state = 'synced'`;
+
+/** 안전 앨범에 담긴 기록 (moments 테이블 기준). originalOnly: 원본을 보관하는 안전 앨범만. */
+function inCloudAlbum(originalOnly: boolean) {
+  return `EXISTS (
+    SELECT 1 FROM album_moments am JOIN albums a ON a.id = am.album_id
+    WHERE am.moment_id = moments.id AND am.deleted_at IS NULL AND a.deleted_at IS NULL AND a.kind = 'cloud'
+      ${originalOnly ? "AND IFNULL(a.photo_quality, 'original') = 'original'" : ''})`;
+}
 
 export async function pendingUploads(db: SQLiteDatabase, now = new Date().toISOString()) {
   // 표시용 사진을 먼저 올린다. 새 기기에서 사진첩을 빨리 보여주기 위해서다.
   return db.getAllAsync<PendingUpload>(
     `SELECT p.id, p.variant FROM (
        SELECT id, 'display' AS variant, 0 AS priority, taken_at FROM moments
-       WHERE ${UPLOADABLE} AND display_uploaded = 0
+       WHERE ${UPLOADABLE} AND display_uploaded = 0 AND ${inCloudAlbum(false)}
        UNION ALL
        SELECT id, 'original', 1, taken_at FROM moments
-       WHERE ${UPLOADABLE} AND original_uploaded = 0
+       WHERE ${UPLOADABLE} AND original_uploaded = 0 AND ${inCloudAlbum(true)}
      ) AS p
      LEFT JOIN upload_queue q ON q.moment_id = p.id AND q.variant = p.variant
      WHERE q.next_attempt_at IS NULL OR q.next_attempt_at <= ?
@@ -62,11 +74,74 @@ export async function pendingUploads(db: SQLiteDatabase, now = new Date().toISOS
 export async function countPendingUploads(db: SQLiteDatabase) {
   const row = await db.getFirstAsync<{ count: number }>(
     `SELECT
-       SUM(CASE WHEN display_uploaded = 0 THEN 1 ELSE 0 END) +
-       SUM(CASE WHEN original_uploaded = 0 THEN 1 ELSE 0 END) AS count
-     FROM moments WHERE deleted_at IS NULL AND source_asset_id IS NOT NULL AND source_missing = 0`,
+       SUM(CASE WHEN display_uploaded = 0 AND ${inCloudAlbum(false)} THEN 1 ELSE 0 END) +
+       SUM(CASE WHEN original_uploaded = 0 AND ${inCloudAlbum(true)} THEN 1 ELSE 0 END) AS count
+     FROM moments WHERE ${ON_DEVICE}`,
   );
   return row?.count ?? 0;
+}
+
+const RELEASE_BATCH = 500;
+
+/** 올라가 있지만 이제 어떤 안전 앨범에도 필요 없는 사진. 표시용은 안전 앨범 밖, 원본은 원본 보관 앨범 밖. */
+function unwantedPhotos(db: SQLiteDatabase) {
+  return db.getAllAsync<PendingUpload>(
+    `SELECT id, 'display' AS variant FROM moments
+     WHERE deleted_at IS NULL AND display_uploaded = 1 AND NOT ${inCloudAlbum(false)}
+     UNION ALL
+     SELECT id, 'original' FROM moments
+     WHERE deleted_at IS NULL AND original_uploaded = 1 AND NOT ${inCloudAlbum(true)}
+     LIMIT ${RELEASE_BATCH}`,
+  );
+}
+
+/**
+ * 안전 앨범에서 빠진 사진을 서버에서 지운다. 기록(메모·장소)은 그대로 남는다.
+ * 앨범 변경을 보내고(push) 다른 기기의 변경을 받은(pull) 뒤에 불러야, 다른 기기가 담은 사진을 지우지 않는다.
+ * 지운 사진 수를 돌려준다.
+ */
+export async function releaseUnwantedPhotos(db: SQLiteDatabase) {
+  let released = 0;
+  for (;;) {
+    const photos = await unwantedPhotos(db);
+    if (photos.length === 0) break;
+    unwrap(
+      await cloudApi.POST('/photos/delete', {
+        body: { photos: photos.map((photo) => ({ moment_id: photo.id, variant: photo.variant })) },
+      }),
+    );
+    await inTransaction(db, async () => {
+      for (const photo of photos) {
+        await db.runAsync(
+          `UPDATE moments SET ${photo.variant === 'display' ? 'display_uploaded' : 'original_uploaded'} = 0 WHERE id = ?`,
+          photo.id,
+        );
+        await db.runAsync('DELETE FROM upload_queue WHERE moment_id = ? AND variant = ?', photo.id, photo.variant);
+      }
+    });
+    released += photos.length;
+  }
+  if (released > 0) notifyChange();
+  return released;
+}
+
+/**
+ * 안전 앨범이 생기기 전에는 계정 공간의 모든 기록을 올렸다. 그 사진이 지워지지 않도록,
+ * 이 계정 공간에서 처음 한 번 어느 안전 앨범에도 없는 올린 사진을 '이전에 보관한 사진' 앨범에 담는다.
+ * 원본이 하나라도 있으면 원본 보관으로 만든다. pull 뒤에 불러야 다른 기기가 이미 담은 앨범을 본다.
+ */
+export async function adoptPhotosWithoutAlbum(db: SQLiteDatabase) {
+  if ((await getSettings(db)).cloud_photos_adopted) return;
+  const rows = await db.getAllAsync<{ id: string; original_uploaded: number }>(
+    `SELECT id, original_uploaded FROM moments
+     WHERE deleted_at IS NULL AND (display_uploaded = 1 OR original_uploaded = 1) AND NOT ${inCloudAlbum(false)}`,
+  );
+  if (rows.length > 0) {
+    const quality = rows.some((row) => row.original_uploaded === 1) ? 'original' : 'display';
+    const albumId = await createAlbum(db, '이전에 보관한 사진', { quality });
+    await updateAlbumMoments(db, albumId, { add: rows.map((row) => row.id) });
+  }
+  await setSetting(db, 'cloud_photos_adopted', true);
 }
 
 /**

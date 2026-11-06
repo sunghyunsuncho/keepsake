@@ -17,13 +17,21 @@ import {
   tileHeightFor,
   useTileWidth,
 } from '@/components/pick';
+import { CloseButton } from '@/components/stack-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useDbQuery } from '@/db/changes';
 import { getSettings, setSetting } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
-import { CLEANUP_GUIDE, DELETE_NOTICE, clearCleanupPhotos, deleteLeftBehindPhotos, loadCleanupPhotos } from '@/lib/cleanup';
+import {
+  CLEANUP_GUIDE,
+  DELETE_NOTICE,
+  clearCleanupPhotos,
+  deleteLeftBehindPhotos,
+  finishCleanup,
+  loadCleanupPhotos,
+} from '@/lib/cleanup';
 import { useCloudSession } from '@/lib/cloud/session';
 
 /** 고르기를 마친 뒤 남기지 않은 사진을 살펴보고 지운다. 누른 사진은 지우지 않는다. */
@@ -43,9 +51,19 @@ export default function CleanupScreen() {
     router.back();
   };
 
+  // 전부 남기기로 고른 뒤 닫는 것도 정리를 마친 것이다. 헤더의 취소와 달리 후보를 비운다.
+  const closeAfterReview = async () => {
+    await finishCleanup();
+    router.back();
+  };
+
   useEffect(() => {
     loadCleanupPhotos()
-      .then(setPhotos)
+      .then((loaded) => {
+        setPhotos(loaded);
+        // 다시 확인해 보니 지울 사진이 없다(그 사이 남겼거나 즐겨찾기). 고르기 화면의 후보도 비운다.
+        if (loaded.length === 0) finishCleanup().catch(() => {});
+      })
       .catch(() => setPhotos([]));
   }, []);
 
@@ -154,7 +172,7 @@ export default function CleanupScreen() {
           action={
             targets.length > 0
               ? { label: '지우기', onPress: remove, loading: deleting }
-              : { label: '닫기', onPress: () => router.back() }
+              : { label: '닫기', onPress: closeAfterReview }
           }
         />
       </>
@@ -165,11 +183,7 @@ export default function CleanupScreen() {
     <ThemedView style={styles.flex}>
       <Stack.Screen
         options={{
-          headerRight: () => (
-            <Pressable onPress={cancel} hitSlop={10} accessibilityRole="button">
-              <ThemedText type="smallBold" style={{ color: theme.accent }}>취소</ThemedText>
-            </Pressable>
-          ),
+          headerRight: () => <CloseButton label="취소" onPress={cancel} />,
         }}
       />
       <SafeAreaView style={styles.flex} edges={['bottom']}>

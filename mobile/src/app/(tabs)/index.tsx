@@ -1,11 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { FlashList, type ViewToken } from '@shopify/flash-list';
 import type { Asset } from 'expo-media-library';
-import { router } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/button';
 import { AlbumNameSheet } from '@/components/album-name-sheet';
@@ -13,7 +12,6 @@ import { DateSheet } from '@/components/date-sheet';
 import { MomentPhoto } from '@/components/moment-photo';
 import {
   BottomBar,
-  CleanupSuggestion,
   Centered,
   ColumnToggle,
   GRID_GAP,
@@ -33,7 +31,13 @@ import { getSettings, setSetting, type Settings } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { dayKeyOf, usePhotoSelection } from '@/hooks/use-photo-selection';
 import { formatDay, formatTime, toDateKey, todayKey } from '@/lib/dates';
-import { photosLeftBehind, setCleanupPhotos, withoutKeptPhotos } from '@/lib/cleanup';
+import {
+  addCleanupCandidates,
+  keepCleanupCandidates,
+  photosLeftBehind,
+  setCleanupPhotos,
+  withoutKeptPhotos,
+} from '@/lib/cleanup';
 import { firstPhotoDate, getPhotosSince, subscribeLibraryChanges, usePhotoAccess } from '@/lib/photos';
 import { checkMissedPhotos, clearMissedPhotos, loadMissedPhotos } from '@/lib/missed-photos';
 import { markReviewed, offerReminders } from '@/lib/reminders';
@@ -56,14 +60,16 @@ export default function PickScreen() {
     }
   }, [db, targetAlbumId, targetAlbumTitle]);
 
+  const loading = access === null || !settings || (targetAlbumId !== null && targetAlbumTitle === undefined);
+  const needsPermission = access === 'undetermined' || access === 'denied';
   let content;
-  if (access === null || !settings || (targetAlbumId !== null && targetAlbumTitle === undefined)) {
+  if (loading) {
     content = (
       <Centered>
         <ActivityIndicator />
       </Centered>
     );
-  } else if (access === 'undetermined' || access === 'denied') {
+  } else if (needsPermission) {
     content = (
       <PermissionIntro denied={access === 'denied'} canAskAgain={canAskAgain} onRequest={request} />
     );
@@ -81,11 +87,8 @@ export default function PickScreen() {
   }
 
   return (
-    <ThemedView style={styles.flex}>
-      <SafeAreaView style={styles.flex} edges={['top']}>
-        {content}
-      </SafeAreaView>
-    </ThemedView>
+    // 머리글(제목·알림 버튼)은 다른 탭과 같은 탭 머리글을 쓴다. 사진 목록은 제목을 바꾼다(Inbox).
+    <ThemedView style={styles.flex}>{content}</ThemedView>
   );
 }
 
@@ -211,16 +214,18 @@ function Inbox({
   targetAlbum: { id: string; title: string } | null;
 }) {
   const db = useSQLiteContext();
-  const theme = useTheme();
+  const navigation = useNavigation();
+  const title = targetAlbum ? `${targetAlbum.title}에 담을 사진` : '새로 찍은 사진';
+  // 제목은 탭 머리글에 둔다. 알림 버튼 위치가 다른 탭과 같아지도록 머리글을 직접 그리지 않는다.
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerTitle: title });
+    return () => navigation.setOptions({ headerTitle: undefined });
+  }, [navigation, title]);
   // 예전에 미래 시각으로 저장된 지점이 있어도 지금 찍는 사진이 숨지 않게 현재 시각을 넘지 않게 한다.
   const cursorMs = useMemo(() => Math.min(new Date(cursor).getTime(), Date.now()), [cursor]);
   const [roll, setRoll] = useState<Roll | null>(null);
   const [libraryVersion, setLibraryVersion] = useState(0);
   const [seenUntil, setSeenUntil] = useState(cursorMs);
-  // 방금 살펴보고 남기지 않은 사진. 지점을 옮기면 목록에서 사라지므로 옮기기 전에 잡아 둔다.
-  const [leftBehind, setLeftBehind] = useState<Asset[]>([]);
-  // 날짜별 확인 때마다 정리 제안을 띄우지 않고, 후보를 모아 사용자가 원할 때 한 번에 연다.
-  const [cleanupReady, setCleanupReady] = useState(false);
   const loadingMore = useRef(false);
   // 다시 읽기를 시작할 때마다 올린다. 늦게 끝난 이전 요청(다시 읽기·다음 쪽)이 결과를 덮지 않게 한다.
   const generation = useRef(0);
@@ -341,11 +346,8 @@ function Inbox({
   };
 
   // 아직 정리하지 않은 사진이 있으면 이어 붙인다. 바꿔 버리면 앞서 살펴본 사진은 정리할 기회가 없어진다.
-  const addLeftBehind = (next: Asset[]) =>
-    setLeftBehind((prev) => {
-      const known = new Set(prev.map((a) => a.id));
-      return [...prev, ...next.filter((a) => !known.has(a.id))];
-    });
+  // 살펴보고 남기지 않은 사진은 정리 후보에 더한다 (기기 설정에 남아 [그대로 두기]나 정리 전까지 유지된다).
+  const addLeftBehind = (next: Asset[]) => addCleanupCandidates(db, next);
 
   const complete = async () => {
     const picked = shown.filter((a) => selection.draft.includes(a.id));
@@ -355,7 +357,7 @@ function Inbox({
     // 실패해서 선택에 남은 사진이 있으면, 그 사진이 사라지지 않도록 지점을 옮기지 않는다.
     if (items.length === picked.length) {
       const seen = Math.max(seenUntil, ...picked.map((a) => a.creationTime));
-      addLeftBehind(
+      await addLeftBehind(
         await withoutKeptPhotos(
           photosLeftBehind(
             shown,
@@ -374,7 +376,7 @@ function Inbox({
   };
 
   const markSeen = async () => {
-    addLeftBehind(await withoutKeptPhotos(photosLeftBehind(shown, saved.keys(), Math.min(seenUntil, Date.now()))));
+    await addLeftBehind(await withoutKeptPhotos(photosLeftBehind(shown, saved.keys(), Math.min(seenUntil, Date.now()))));
     await moveCursor(seenUntil);
     await markReviewed(db);
   };
@@ -391,7 +393,7 @@ function Inbox({
       {
         text: '확인',
         onPress: async () => {
-          addLeftBehind(await withoutKeptPhotos(photosLeftBehind(shown, saved.keys(), through)));
+          await addLeftBehind(await withoutKeptPhotos(photosLeftBehind(shown, saved.keys(), through)));
           setSeenUntil((previous) => Math.max(previous, through));
           await moveCursor(through);
           await markReviewed(db);
@@ -400,24 +402,18 @@ function Inbox({
     ]);
   };
 
-  const header = (
+  // 살펴볼 사진이 있을 때만 사진 수와 보기(한 줄에 몇 장) 버튼을 보여준다. 모두 살펴봤으면 필요 없다.
+  const hasPhotos = !!roll && (assets.length > 0 || missed.length > 0);
+  const header = (hasPhotos || targetAlbum) && (
     <View style={styles.header}>
       <View style={styles.flex}>
-        <ThemedText style={styles.title}>{targetAlbum ? `${targetAlbum.title}에 담을 사진` : '새로 찍은 사진'}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
           {roll && roll.assets.length > 0
             ? `${formatDay(dayKeyOf(roll.assets[0]))}부터 ${roll.totalCount}장`
             : ' '}
         </ThemedText>
       </View>
-      <ColumnToggle value={columns} onChange={(next) => setSetting(db, 'pick_grid_columns', next)} />
-      {leftBehind.length > 0 && !cleanupReady && (
-        <Pressable onPress={() => setCleanupReady(true)} hitSlop={8} accessibilityRole="button">
-          <ThemedText type="smallBold" style={{ color: theme.accent }}>
-            정리 후보 {leftBehind.length}
-          </ThemedText>
-        </Pressable>
-      )}
+      {hasPhotos && <ColumnToggle value={columns} onChange={(next) => setSetting(db, 'pick_grid_columns', next)} />}
       {targetAlbum && (
         <IconButton
           icon="close"
@@ -440,6 +436,19 @@ function Inbox({
   }
 
   const seenLabel = formatMoment(seenUntil);
+  // 정리 후보: 살펴보고 남기지 않은 사진. 지난 사진 다시 보기와 같은 카드로, 정리하거나 넘어갈 수 있다.
+  const candidates = settings.cleanup_candidate_ids;
+  const cleanupCard = candidates.length > 0 && (
+    <CleanupCard
+      count={candidates.length}
+      onKeep={() => keepCleanupCandidates(db)}
+      // 정리 화면에서 취소하고 돌아와도 카드는 남는다. 실제로 정리를 마치면 finishCleanup이 후보에서 뺀다.
+      onCleanup={() => {
+        setCleanupPhotos(candidates);
+        router.push('/cleanup');
+      }}
+    />
+  );
 
   return (
     <View style={styles.flex}>
@@ -447,12 +456,13 @@ function Inbox({
       {limited && <LimitedAccessBanner onChanged={() => setLibraryVersion((v) => v + 1)} />}
 
       {assets.length === 0 && missed.length === 0 ? (
-        <AllCaughtUp cursor={cursorMs} />
+        <AllCaughtUp cursor={cursorMs} cleanup={cleanupCard} />
       ) : (
         <>
           <ThemedText type="small" themeColor="textSecondary" style={styles.prompt}>
             십 년 뒤에도 다시 보고 싶은 사진만 골라 남겨 보세요.
           </ThemedText>
+          {cleanupCard && <View style={styles.inlineCleanup}>{cleanupCard}</View>}
           <FlashList
             // 열 수가 바뀌면 배치를 처음부터 다시 계산한다.
             key={columns}
@@ -503,24 +513,10 @@ function Inbox({
         </>
       )}
 
-      {leftBehind.length > 0 && cleanupReady && selection.draft.length === 0 && !selection.saving && (
-        <CleanupSuggestion
-          count={leftBehind.length}
-          onDismiss={() => { setLeftBehind([]); setCleanupReady(false); }}
-          onCleanup={() => {
-            setCleanupPhotos(leftBehind);
-            setLeftBehind([]);
-            setCleanupReady(false);
-            router.push('/cleanup');
-          }}
-        />
-      )}
-
       {assets.length === 0 &&
         missed.length === 0 &&
         selection.draft.length === 0 &&
-        !selection.saving &&
-        !cleanupReady && <SavedMomentsLink />}
+        !selection.saving && <SavedMomentsLink />}
 
       {selection.draft.length > 0 || selection.saving ? (
         <BottomBar
@@ -614,7 +610,7 @@ function MissedHeader({ count }: { count: number }) {
   );
 }
 
-function AllCaughtUp({ cursor }: { cursor: number }) {
+function AllCaughtUp({ cursor, cleanup }: { cursor: number; cleanup: React.ReactNode }) {
   const theme = useTheme();
   return (
     <Centered>
@@ -632,11 +628,49 @@ function AllCaughtUp({ cursor }: { cursor: number }) {
         </View>
         <View style={styles.flex}>
           <ThemedText type="smallBold">지난 사진 다시 보기</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">예전에 찍은 사진도 다시 골라 남길 수 있어요.</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+            예전 사진도 다시 골라 남겨요
+          </ThemedText>
         </View>
         <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
       </Pressable>
+      {cleanup}
     </Centered>
+  );
+}
+
+/** 살펴보고 남기지 않은 사진을 정리할지 묻는 카드. 지난 사진 다시 보기 카드와 같은 모양이다. 정리 화면으로 가기 전에는 사진을 전혀 건드리지 않는다. */
+function CleanupCard({ count, onCleanup, onKeep }: { count: number; onCleanup: () => void; onKeep: () => void }) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.pastPhotosCard, styles.cleanupCard, { backgroundColor: theme.backgroundElement }]}>
+      <View style={styles.cleanupHeading}>
+        <View style={[styles.pastPhotosIcon, { backgroundColor: theme.accent + '18' }]}>
+          <Ionicons name="leaf-outline" size={20} color={theme.accent} />
+        </View>
+        <View style={styles.flex}>
+          <ThemedText type="smallBold">정리 후보 {count}장</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+            남기지 않은 사진을 정리해요
+          </ThemedText>
+        </View>
+      </View>
+      <View style={styles.cleanupActions}>
+        <Pressable onPress={onKeep} style={styles.cleanupButton} accessibilityRole="button">
+          <ThemedText type="smallBold" themeColor="textSecondary">
+            그대로 두기
+          </ThemedText>
+        </Pressable>
+        <Pressable
+          onPress={onCleanup}
+          style={[styles.cleanupButton, { backgroundColor: theme.accent }]}
+          accessibilityRole="button">
+          <ThemedText type="smallBold" style={{ color: theme.onAccent }}>
+            정리하기
+          </ThemedText>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
@@ -749,13 +783,11 @@ const styles = StyleSheet.create({
   startOptions: { alignSelf: 'stretch', gap: Spacing.two },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: Spacing.two,
     paddingLeft: Spacing.three,
     paddingRight: Spacing.two,
-    paddingTop: Spacing.two,
   },
-  title: { fontSize: 22, lineHeight: 30, fontWeight: 700 },
   prompt: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.two },
   dayHeader: {
     flexDirection: 'row',
@@ -800,4 +832,9 @@ const styles = StyleSheet.create({
   bookPageLower: { width: 28 },
   momentsGalleryTitle: { marginTop: Spacing.one },
   pastPhotosIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  inlineCleanup: { paddingHorizontal: Spacing.three, paddingBottom: Spacing.two },
+  cleanupCard: { flexDirection: 'column', alignItems: 'stretch', gap: Spacing.three },
+  cleanupHeading: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  cleanupActions: { flexDirection: 'row', gap: Spacing.two },
+  cleanupButton: { flex: 1, minHeight: 40, borderRadius: Spacing.two, alignItems: 'center', justifyContent: 'center' },
 });

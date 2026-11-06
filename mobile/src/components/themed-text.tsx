@@ -14,21 +14,22 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
   return <Text style={[{ color: theme[themeColor ?? 'text'] }, styles[type], style]} {...rest} />;
 }
 
+// 굵기는 Vernissage와 같은 결: 본문 보통(400), 강조 600. 제목·숫자처럼 더 굵어야 하는 곳은 각 화면에서 정한다.
 const styles = StyleSheet.create({
   small: {
     fontSize: 14,
     lineHeight: 20,
-    fontWeight: 500,
+    fontWeight: 400,
   },
   smallBold: {
     fontSize: 14,
     lineHeight: 20,
-    fontWeight: 700,
+    fontWeight: 600,
   },
   default: {
     fontSize: 16,
     lineHeight: 24,
-    fontWeight: 500,
+    fontWeight: 400,
   },
   title: {
     fontSize: 48,

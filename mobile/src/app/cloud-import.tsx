@@ -26,8 +26,9 @@ export default function CloudImportScreen() {
   const params = useLocalSearchParams<{ all?: string }>();
   const includeSkipped = params.all === '1';
   const { account } = useCloudState();
-  // 처음 쓰는 Cloud면 모두 고른 채로, 이미 내용이 있는 계정이면 다른 사람의 기록이 섞이지 않게 아무것도 고르지 않고 시작한다.
-  const selectAll = (account?.usage.object_count ?? 0) === 0;
+  // 사진 사용량은 무료 기록 백업 계정에서 항상 0일 수 있다. 서버가 알려 준 기록 존재 여부로만
+  // 빈 계정을 판단해, 이미 내용이 있는 다른 계정에 Local 기록을 자동으로 섞지 않는다.
+  const selectAll = account?.has_records === false;
   const [moments, setMoments] = useState<Moment[] | null>(null);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
   const [saving, setSaving] = useState(false);
@@ -89,10 +90,13 @@ export default function CloudImportScreen() {
     content = (
       <>
         <View style={styles.header}>
-          <ThemedText type="small">이 기기의 기록을 이 계정의 Cloud에 복사할까요?</ThemedText>
+          <ThemedText type="small">이 기기의 기록을 이 계정에 백업할까요?</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            고른 기록의 사진 원본과 메모가 Cloud에 복사돼요. 기기의 기록은 그대로 남고, 올린 뒤에는 서로 따로
+            고른 기록의 메모·장소·날짜가 이 계정에 백업돼요. 기기의 기록은 그대로 남고, 올린 뒤에는 서로 따로
             고쳐져요. 앱을 다시 설치해도 사진첩 원본을 찾을 수 있도록 이 기기의 사진 연결 정보도 함께 저장해요.
+            {account?.subscription.can_upload
+              ? ' 사진까지 보관하려면 안전 사진첩의 안전 앨범에 담아 주세요.'
+              : ' 구독하면 안전 앨범에 담은 사진까지 보관할 수 있어요.'}
           </ThemedText>
         </View>
         <FlashList

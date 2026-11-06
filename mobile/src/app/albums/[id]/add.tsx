@@ -6,10 +6,12 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet } from 'react-native';
 
 import { Button } from '@/components/button';
 import { GalleryHeader, TileRow } from '@/components/gallery';
+import { PHOTO_QUALITY } from '@/components/photo-quality';
+import { CloseButton } from '@/components/stack-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { albumMomentIds, getAlbumTitle, updateAlbumMoments } from '@/db/albums';
+import { albumMomentIds, getAlbum, updateAlbumMoments } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
 import { listMoments } from '@/db/moments';
 import { setSetting } from '@/db/settings';
@@ -17,12 +19,13 @@ import { useTheme } from '@/hooks/use-theme';
 import { galleryRows } from '@/lib/gallery';
 
 // 앨범에 넣을 기록을 고른다. 남긴 기록 전체에서 고르고, 이미 들어 있는 것은 체크된 채로 시작한다.
-// 체크를 풀면 앨범에서 빠진다 (기록은 그대로).
+// 체크를 풀면 앨범에서 빠진다 (기록은 그대로). 안전 앨범이면 고른 사진을 그 앨범의 화질로 Cloud에 올린다.
 export default function AlbumAddScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const db = useSQLiteContext();
   const theme = useTheme();
-  const { data: title } = useDbQuery(() => getAlbumTitle(db, id), [db, id]);
+  const { data: album } = useDbQuery(() => getAlbum(db, id), [db, id]);
+  const title = album?.title;
   const { data: moments } = useDbQuery(() => listMoments(db), [db]);
   const { data: initial } = useDbQuery(() => albumMomentIds(db, id), [db, id]);
   const [checked, setChecked] = useState<Set<string> | null>(null);
@@ -74,11 +77,7 @@ export default function AlbumAddScreen() {
       <Stack.Screen
         options={{
           title: title ?? '',
-          headerLeft: () => (
-            <Pressable onPress={() => router.back()} hitSlop={8}>
-              <ThemedText>취소</ThemedText>
-            </Pressable>
-          ),
+          headerLeft: () => <CloseButton label="취소" onPress={() => router.back()} />,
           headerRight: () =>
             saving ? (
               <ActivityIndicator />
@@ -105,7 +104,10 @@ export default function AlbumAddScreen() {
       ) : (
         <>
           <ThemedText type="small" themeColor="textSecondary" style={styles.guide}>
-            이 앨범에 넣을 사진을 골라 주세요. 사진은 복사되지 않고, 앨범에서 빼도 기록은 그대로 남아요.
+            {album?.photoQuality
+              ? `안전 보관할 사진을 골라 주세요. 이 앨범은 ${PHOTO_QUALITY[album.photoQuality].label}로 보관해요` +
+                (album.photoQuality === 'display' ? ' (긴 변 1600px).' : ' (보기용 사진도 함께).')
+              : '이 앨범에 넣을 사진을 골라 주세요. 사진은 복사되지 않고, 앨범에서 빼도 기록은 그대로 남아요.'}
           </ThemedText>
           <FlashList
             data={rows}

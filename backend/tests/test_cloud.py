@@ -163,13 +163,60 @@ def status_of(client: TestClient, headers: dict) -> str:
     return client.get("/account", headers=headers).json()["subscription"]["status"]
 
 
-def test_requires_subscription_before_backup(client):
+def test_signed_in_users_back_up_records_but_need_subscription_for_photos(client):
     _, headers = sign_in(client)
+    moment_id = str(uuid4())
 
     assert status_of(client, headers) == "none"
-    assert client.post("/sync/push", headers=headers, json={"moments": []}).status_code == 403
-    assert client.get("/sync/pull", headers=headers).status_code == 403
+    assert client.get("/account", headers=headers).json()["has_records"] is False
+    pushed = client.post(
+        "/sync/push", headers=headers, json={"moments": [moment(moment_id, "2026-10-01T00:00:00Z")]}
+    )
+    assert pushed.status_code == 200
+    assert [m["id"] for m in client.get("/sync/pull", headers=headers).json()["moments"]] == [
+        moment_id
+    ]
+    # 무료 기록 백업 계정은 사진이 없어도 빈 계정이 아니다. 기기는 이 값으로 Local 기록의
+    # 자동 선택 여부를 결정해 다른 계정의 기록을 섞지 않는다.
+    account = client.get("/account", headers=headers).json()
+    assert account["has_records"] is True
+    assert account["usage"]["object_count"] == 0
+    created = client.post(
+        "/uploads",
+        headers=headers,
+        json={
+            "moment_id": moment_id,
+            "variant": "display",
+            "size": 5,
+            "content_type": "image/jpeg",
+            "md5": hashlib.md5(b"photo").hexdigest(),
+        },
+    )
+    assert created.status_code == 403
     assert client.get("/account").status_code == 401
+
+
+def test_account_with_only_sync_records_is_not_empty(client):
+    """빈 앨범도 사용자가 만든 기록이라 Local 기록을 자동 선택하면 안 된다."""
+    _, headers = sign_in(client)
+    assert (
+        client.post(
+            "/sync/push",
+            headers=headers,
+            json={
+                "records": [
+                    {
+                        "kind": "albums",
+                        "id": "album-1",
+                        "updated_at": "2026-10-01T00:00:00Z",
+                        "data": {"id": "album-1", "kind": "custom", "title": "빈 앨범"},
+                    }
+                ]
+            },
+        ).status_code
+        == 200
+    )
+    assert client.get("/account", headers=headers).json()["has_records"] is True
 
 
 def test_billing_off_lets_signed_in_users_back_up(client, monkeypatch):
@@ -179,10 +226,10 @@ def test_billing_off_lets_signed_in_users_back_up(client, monkeypatch):
     assert status_of(client, headers) == "active"
     assert client.post("/sync/push", headers=headers, json={"moments": []}).status_code == 200
 
-    # 결제를 켜면 저장된 상태(none) 그대로 원래 규칙을 따른다.
+    # 결제를 켜면 저장된 상태(none) 그대로 원래 규칙을 따른다. 기록 백업은 계속된다.
     monkeypatch.setattr(get_settings(), "cloud_billing_enabled", True)
     assert status_of(client, headers) == "none"
-    assert client.post("/sync/push", headers=headers, json={"moments": []}).status_code == 403
+    assert client.post("/sync/push", headers=headers, json={"moments": []}).status_code == 200
 
 
 def test_same_device_can_back_up_to_two_accounts(client):
@@ -425,6 +472,51 @@ def test_deleting_a_moment_releases_its_photos(client, db):
     assert prefix_keys(user_id) == []
 
 
+def test_deleting_photos_keeps_the_record(client, db):
+    user_id, headers = sign_in(client)
+    webhook(client, user_id, "INITIAL_PURCHASE")
+    moment_id = str(uuid4())
+    client.post(
+        "/sync/push", headers=headers, json={"moments": [moment(moment_id, "2026-10-01T00:00:00Z")]}
+    )
+    for variant, body in (("display", b"small"), ("original", b"original")):
+        upload_id = upload(client, headers, moment_id, variant, body)
+        client.post(f"/uploads/{upload_id}/complete", headers=headers)
+    cursor = client.get("/sync/pull", headers=headers).json()["cursor"]
+
+    deleted = client.post(
+        "/photos/delete",
+        headers=headers,
+        json={"photos": [{"moment_id": moment_id, "variant": "original"}]},
+    )
+
+    assert deleted.status_code == 204
+    usage = client.get("/account", headers=headers).json()["usage"]
+    assert usage["object_count"] == 1 and usage["bytes_total"] == len(b"small")
+    # 다른 기기가 원본이 지워진 것을 받는다.
+    changed = client.get("/sync/pull", params={"cursor": cursor}, headers=headers).json()
+    assert [(m["id"], m["stored_variants"]) for m in changed["moments"]] == [
+        (moment_id, ["display"])
+    ]
+    original = client.get(
+        f"/moments/{moment_id}/photo", params={"variant": "original"}, headers=headers
+    )
+    assert original.status_code == 404
+    # 다시 보내도 문제없고, 다시 올릴 수 있다.
+    again = client.post(
+        "/photos/delete",
+        headers=headers,
+        json={"photos": [{"moment_id": moment_id, "variant": "original"}]},
+    )
+    assert again.status_code == 204
+    upload_id = upload(client, headers, moment_id, "original", b"original")
+    assert client.post(f"/uploads/{upload_id}/complete", headers=headers).status_code == 204
+    later = datetime.now(UTC) + UPLOAD_SETTLE_AFTER + timedelta(seconds=1)
+    jobs.clean_objects(db, later)
+    jobs.sweep_storage_cleanups(db, later)
+    assert len(prefix_keys(user_id)) == 2
+
+
 def test_store_billing_retry_and_cancellation_keep_access(client):
     user_id, headers = sign_in(client)
     webhook(client, user_id, "INITIAL_PURCHASE")
@@ -463,7 +555,20 @@ def test_expiry_is_read_only_and_resubscribe_restores_immediately(client):
     account = client.get("/account", headers=headers).json()["subscription"]
     assert account["status"] == "grace"
     assert account["can_upload"] is False and account["can_download"] is True
-    assert client.post("/sync/push", headers=headers, json={"moments": []}).status_code == 403
+    # 기록 백업은 로그인 기능이라 계속된다. 새 사진은 올릴 수 없다.
+    assert client.post("/sync/push", headers=headers, json={"moments": []}).status_code == 200
+    blocked = client.post(
+        "/uploads",
+        headers=headers,
+        json={
+            "moment_id": moment_id,
+            "variant": "display",
+            "size": 5,
+            "content_type": "image/jpeg",
+            "md5": hashlib.md5(b"photo").hexdigest(),
+        },
+    )
+    assert blocked.status_code == 403
     assert client.get("/sync/pull", headers=headers).status_code == 200
     photo = client.get(
         f"/moments/{moment_id}/photo", params={"variant": "original"}, headers=headers
@@ -505,14 +610,20 @@ def test_grace_notifications_then_deletion_after_30_days(client, db):
     db.expire_all()
     assert db.get(Entitlement, user_id).status == "expired"
     assert prefix_keys(user_id) == []
-    assert client.get("/sync/pull", headers=headers).status_code == 403
     account = client.get("/account", headers=headers).json()
     assert account["usage"]["object_count"] == 0
-    # 기기가 '이미 올렸다'는 표시를 버리고 재구독 때 처음부터 다시 올리도록 알린다.
-    assert account["data_generation"] == 1
+    # 사진만 지운다. 기록 백업은 로그인 기능이라 남고, 기기는 '올라감' 표시를 버린다.
+    assert account["data_generation"] == 0
+    pulled = client.get("/sync/pull", headers=headers).json()["moments"]
+    assert [(m["id"], m["stored_variants"]) for m in pulled] == [(moment_id, [])]
 
     webhook(client, user_id, "INITIAL_PURCHASE")
-    assert client.get("/sync/pull", headers=headers).json()["moments"] == []
+    assert (
+        client.get(
+            f"/moments/{moment_id}/photo", params={"variant": "display"}, headers=headers
+        ).status_code
+        == 404
+    )
 
 
 def test_account_deletion_removes_server_and_r2_data(client, db):

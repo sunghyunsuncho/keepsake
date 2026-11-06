@@ -9,6 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { ALL_ALBUM_TITLE, createAlbum, listCustomAlbums, momentAlbumIds, updateAlbumMoments } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
+import { useCloudState } from '@/lib/cloud/engine';
 import { useTheme } from '@/hooks/use-theme';
 
 /** 기록 화면의 '앨범' 줄. 누르면 이 기록을 넣을 앨범을 고른다 (누르는 즉시 넣고 뺀다). */
@@ -19,9 +20,12 @@ export function AlbumChooserRow({ momentId }: { momentId: string }) {
   const [open, setOpen] = useState(false);
   const [naming, setNaming] = useState(false);
   const { data: albums } = useDbQuery(() => listCustomAlbums(db), [db]);
+  // 구독 중이면 안전 앨범에도 바로 넣는다 (넣은 사진은 그 앨범의 화질로 안전 보관된다).
+  const canUpload = useCloudState().account?.subscription.can_upload ?? false;
+  const { data: cloudAlbums } = useDbQuery(() => listCustomAlbums(db, 'cloud'), [db]);
   const { data: memberOf } = useDbQuery(() => momentAlbumIds(db, momentId), [db, momentId]);
 
-  const names = albums?.filter((a) => memberOf?.has(a.id)).map((a) => a.title) ?? [];
+  const names = [...(albums ?? []), ...(cloudAlbums ?? [])].filter((a) => memberOf?.has(a.id)).map((a) => a.title);
   const toggle = (albumId: string) =>
     updateAlbumMoments(db, albumId, memberOf?.has(albumId) ? { remove: [momentId] } : { add: [momentId] });
 
@@ -50,6 +54,11 @@ export function AlbumChooserRow({ momentId }: { momentId: string }) {
             한 기록을 여러 앨범에 넣어도 사진은 하나예요. 이 기록은 언제나 {ALL_ALBUM_TITLE}에도 있어요.
           </ThemedText>
           <ScrollView style={styles.list}>
+            {canUpload && !!cloudAlbums?.length && (
+              <ThemedText type="small" themeColor="textSecondary" style={styles.group}>
+                기기 앨범
+              </ThemedText>
+            )}
             {albums?.map((album) => {
               const checked = !!memberOf?.has(album.id);
               return (
@@ -70,6 +79,34 @@ export function AlbumChooserRow({ momentId }: { momentId: string }) {
                 </Pressable>
               );
             })}
+            {canUpload && !!cloudAlbums?.length && (
+              <>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.group}>
+                  안전 앨범
+                </ThemedText>
+                {cloudAlbums.map((album) => {
+                  const checked = !!memberOf?.has(album.id);
+                  return (
+                    <Pressable
+                      key={album.id}
+                      onPress={() => toggle(album.id)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked }}
+                      style={[styles.option, { borderColor: theme.border }]}>
+                      <Ionicons name="cloud-outline" size={18} color={theme.textSecondary} />
+                      <ThemedText style={styles.flex} numberOfLines={1}>
+                        {album.title}
+                      </ThemedText>
+                      <Ionicons
+                        name={checked ? 'checkmark-circle' : 'ellipse-outline'}
+                        size={24}
+                        color={checked ? theme.accent : theme.textSecondary}
+                      />
+                    </Pressable>
+                  );
+                })}
+              </>
+            )}
             <Pressable onPress={() => setNaming(true)} style={styles.option}>
               <Ionicons name="add" size={22} color={theme.accent} />
               <ThemedText style={{ color: theme.accent, fontWeight: 700 }}>새 앨범 만들기</ThemedText>
@@ -112,6 +149,7 @@ const styles = StyleSheet.create({
   },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   list: { marginTop: Spacing.two },
+  group: { marginTop: Spacing.three },
   option: {
     flexDirection: 'row',
     alignItems: 'center',

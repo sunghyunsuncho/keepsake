@@ -3,9 +3,9 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { useSyncExternalStore } from 'react';
 
 import { getSettings, setSetting } from '@/db/settings';
-import { isAccountDb, keepAccountSpace, purgeRetiredSpaces, retireAccountSpace } from '@/db/spaces';
+import { isAccountDb, keepAccountSpace, retireAccountSpace } from '@/db/spaces';
 import { pushDeviceLinks, restoreDeviceLinks } from '@/lib/cloud/device-links';
-import { countPendingUploads, uploadPending } from '@/lib/cloud/photos';
+import { adoptPhotosWithoutAlbum, countPendingUploads, releaseUnwantedPhotos, uploadPending } from '@/lib/cloud/photos';
 import { clearPurchasesUser, setPurchasesUser } from '@/lib/cloud/purchases';
 import { registerPushToken } from '@/lib/cloud/push';
 import {
@@ -22,8 +22,9 @@ import { signOutProviders } from '@/lib/cloud/sign-in';
 import { setCloudSpace } from '@/lib/cloud/space';
 import { hasLocalChanges, pullChanges, pushChanges, resetAccountSpace } from '@/lib/cloud/sync';
 
-// Cloud 동기화 한 바퀴: 구독 상태 확인 → 바뀐 기록 push → 다른 기기 변경 pull → 사진 업로드.
-// 계정 공간의 DB만 서버와 맞춘다. Local DB는 사용자가 골라서 복사할 때(cloud/imports.ts)만 Cloud에 들어간다.
+// Cloud 동기화 한 바퀴: 계정 확인 → 바뀐 기록 push → 다른 기기 변경 pull → 필요 없어진 사진 지우기 → 사진 업로드.
+// 등급: 로그인하지 않으면 Local만 쓰고 백업은 없다. 로그인하면 기록(메모·장소·앨범)을 계정에 백업하고,
+// 구독하면 안전 앨범에 담은 사진까지 보관한다. 계정 공간의 DB만 서버와 맞춘다. Local DB는 사용자가 골라서 복사할 때(cloud/imports.ts)만 Cloud에 들어간다.
 // 사진 받기는 볼 때 한 장씩 한다 (components/moment-photo.tsx).
 // 화면은 cloudState만 보여주고, 허용 여부는 서버가 준 subscription 값을 그대로 따른다.
 
@@ -132,21 +133,13 @@ async function runOnce(db: SQLiteDatabase, onlyIfLocalChanges: boolean) {
     }
     update({ account, problem: null });
     const { subscription } = account;
-    // 읽을 수 없는 계정(구독 전, 만료)은 Local을 쓴다. 공간을 바꾸면 CloudSync가 새 DB로 다시 부른다.
-    if (!subscription.can_download) {
-      if (onAccountSpace) await setCloudSpace(null);
-      else if (subscription.status === 'expired') {
-        await retireAccountSpace(session.userId);
-        await purgeRetiredSpaces();
-      }
-      return;
-    }
+    // 로그인한 계정은 구독과 관계없이 계정 공간을 쓴다 (기록 백업). 공간을 바꾸면 CloudSync가 새 DB로 다시 부른다.
     if (!onAccountSpace) {
       await setCloudSpace(session.userId);
       return;
     }
     await keepAccountSpace(session.userId);
-    // 서버가 유예 만료로 데이터를 지웠으면 이 공간의 기록도 더는 Cloud에 없다.
+    // 서버 데이터가 새로 시작됐으면(data_generation) 이 공간의 기록도 더는 Cloud에 없다.
     const accountKey = `${account.user_id}:${account.data_generation}`;
     const savedKey = (await getSettings(db)).cloud_account_key;
     if (savedKey !== accountKey) {
@@ -162,16 +155,20 @@ async function runOnce(db: SQLiteDatabase, onlyIfLocalChanges: boolean) {
     let pushed = 0;
     let uploaded = 0;
 
-    if (subscription.can_upload) pushed = await pushChanges(db);
+    // 기록 백업은 로그인한 계정 모두에게 준다.
+    pushed = await pushChanges(db);
     // 사진을 올리기 전에 받는다: 이미 Cloud에 있는 사진(다시 로그인한 계정, 다른 기기가 올린 사진)은
     // pull이 '올라감'으로 표시하므로 다시 올리지 않는다.
-    if (subscription.can_download) {
-      await pullChanges(db);
-      // 연결은 없어도 사진을 Cloud에서 볼 수 있으므로, 실패해도 백업을 멈추지 않고 다음에 다시 한다.
-      await restoreDeviceLinks(db, session.userId).catch(() => {});
-    }
+    await pullChanges(db);
+    // 연결은 없어도 사진을 Cloud에서 볼 수 있으므로, 실패해도 백업을 멈추지 않고 다음에 다시 한다.
+    await restoreDeviceLinks(db, session.userId).catch(() => {});
+    await pushDeviceLinks(db, session.userId).catch(() => {});
+    // 안전 앨범에서 빠진 사진은 구독 상태와 관계없이 지운다 (용량을 돌려받는 일이라 막지 않는다).
+    // 이 마이그레이션은 서버 사진을 지우지 않기 위한 로컬 정리다. 만료 상태에서도 먼저
+    // 실행해야, 아직 안전 앨범으로 옮기지 못한 이전 버전의 사진을 release가 지우지 않는다.
+    await adoptPhotosWithoutAlbum(db);
+    const released = await releaseUnwantedPhotos(db);
     if (subscription.can_upload) {
-      await pushDeviceLinks(db, session.userId).catch(() => {});
       const settings = await getSettings(db);
       const cellular = network.type === Network.NetworkStateType.CELLULAR;
       if (settings.wifi_only_upload && cellular) {
@@ -187,7 +184,7 @@ async function runOnce(db: SQLiteDatabase, onlyIfLocalChanges: boolean) {
       }
     }
     // 보낸 기록(삭제 포함)이나 올린 사진이 있으면 사용량이 바뀌었으므로 다시 받는다.
-    const refreshed = pushed > 0 || uploaded > 0 ? unwrap(await cloudApi.GET('/account')) : account;
+    const refreshed = pushed > 0 || uploaded > 0 || released > 0 ? unwrap(await cloudApi.GET('/account')) : account;
     update({ account: refreshed, problem, lastSyncedAt: new Date().toISOString() });
   } catch (e) {
     update({ problem: describe(e) });

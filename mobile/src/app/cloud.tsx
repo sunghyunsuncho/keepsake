@@ -2,7 +2,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
 import type { PurchasesPackage } from 'react-native-purchases';
 
 import { Button } from '@/components/button';
@@ -20,6 +20,7 @@ import {
 import { useCloudSession } from '@/lib/cloud/session';
 import {
   appleSignInAvailable,
+  describeSignInError,
   googleSignInAvailable,
   SignInCancelled,
   signInWithApple,
@@ -27,12 +28,10 @@ import {
 } from '@/lib/cloud/sign-in';
 
 // 소개·가격 → [구독하기]를 누르면 로그인 → 구매 → 올릴 기기 기록 고르기 (docs/PLAN.md §2.4).
+// 로그인만 해도 기록(메모·장소·앨범)을 백업하고, 구독하면 안전 앨범의 사진까지 보관한다.
 // 가격은 로그인 없이 볼 수 있다. 이미 구독한 사용자가 새 기기에서 로그인하면 구매 없이 바로 복원이 시작된다.
 // 결제를 연결하기 전(RevenueCat 키 없음)에는 서버가 로그인한 계정을 구독 중으로 보므로 로그인만 받는다.
 
-// 도메인을 연결하면 이 주소만 바꾼다.
-const PRIVACY_URL = 'https://uneven-currency-d61.notion.site/40cd097ccf6f807fa242ed798772e4fc';
-const TERMS_URL = 'https://uneven-currency-d61.notion.site/40cd097ccf6f8072a743ef0227a3803c';
 
 // 계정 공간으로 바뀌면 내비게이션이 처음으로 돌아가 이미 닫혀 있을 수 있다.
 function closeScreen() {
@@ -57,7 +56,7 @@ export default function CloudScreen() {
       await task();
     } catch (e) {
       if (!(e instanceof SignInCancelled)) {
-        Alert.alert('문제가 생겼어요', '잠시 후 다시 시도해 주세요.');
+        Alert.alert('문제가 생겼어요', describeSignInError(e));
       }
     } finally {
       setBusy(false);
@@ -97,7 +96,11 @@ export default function CloudScreen() {
         closeScreen();
         return;
       }
-      if (next?.kind === 'purchase' && (await purchase(next.pkg))) await afterPurchase();
+      if (next?.kind === 'purchase') {
+        if (await purchase(next.pkg)) await afterPurchase();
+        return;
+      }
+      Alert.alert('로그인했어요', '이제 메모·장소·앨범을 이 계정에 백업해요. 사진까지 안전 보관하려면 구독해 주세요.');
     });
 
   const subscribed = account?.subscription.can_upload ?? false;
@@ -107,7 +110,8 @@ export default function CloudScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.pitch}>
           <ThemedText type="subtitle">남긴 사진은 지키고, 휴대폰은 가볍게</ThemedText>
-          <Feature text="사진 전체가 아니라 직접 남긴 사진의 원본과 메모만 안전하게 보관해요." />
+          <Feature text="로그인만 해도 메모·장소·앨범을 계정에 백업해요. 로그인하지 않으면 이 기기에만 남아요." />
+          <Feature text="구독하면 안전 앨범에 담은 사진을 보관해요. 앨범마다 원본 그대로, 또는 용량을 아끼는 효율 보관을 골라요." />
           <Feature text="안전 보관이 끝난 사진은 기기 사진첩에서 지워도 Keepsake에 그대로 남아요. 휴대폰을 비워도 돼요." />
           <Feature text="기기를 바꿔도 로그인만 하면 그대로 돌아와요." />
           <Feature text="여러 기기에서 같은 사진첩을 볼 수 있어요." />
@@ -264,19 +268,19 @@ function Paywall({
       {signedIn ? (
         <Button label="구매 복원" variant="secondary" disabled={busy} onPress={onRestore} />
       ) : (
-        <Button label="이미 구독 중이에요" variant="secondary" disabled={busy} onPress={onSignIn} />
+        <Button label="로그인만 하기 · 이미 구독 중이에요" variant="secondary" disabled={busy} onPress={onSignIn} />
       )}
       <ThemedText type="small" themeColor="textSecondary">
         구독은 기간이 끝나기 24시간 전까지 해지하지 않으면 자동으로 갱신돼요. 해지는 스토어의 구독 관리에서 할
-        수 있어요. 구독이 끝나면 30일 동안 백업한 사진을 내려받을 수 있고, 그 뒤 Cloud의 데이터는 삭제돼요.
+        수 있어요. 구독이 끝나면 30일 동안 보관한 사진을 내려받을 수 있고, 그 뒤 사진은 삭제돼요. 기록 백업은 로그인한 동안 계속돼요.
       </ThemedText>
       <View style={styles.legal}>
-        <Pressable onPress={() => Linking.openURL(TERMS_URL)} hitSlop={8}>
+        <Pressable onPress={() => router.push({ pathname: '/legal/[doc]', params: { doc: 'terms' } })} hitSlop={8}>
           <ThemedText type="small" themeColor="textSecondary" style={styles.link}>
             이용약관
           </ThemedText>
         </Pressable>
-        <Pressable onPress={() => Linking.openURL(PRIVACY_URL)} hitSlop={8}>
+        <Pressable onPress={() => router.push({ pathname: '/legal/[doc]', params: { doc: 'privacy' } })} hitSlop={8}>
           <ThemedText type="small" themeColor="textSecondary" style={styles.link}>
             개인정보처리방침
           </ThemedText>
