@@ -11,7 +11,7 @@
 ```
 backend/   FastAPI (Python 3.13, uv) — 계정, 구독 상태, 백업·동기화
 mobile/    Expo (SDK 54, TypeScript, expo-router) — vernissage와 같은 버전 — iOS / Android 앱
-  modules/ 앱 안의 로컬 네이티브 모듈 (photo-meta: 사진 좌표 → 주소, 원본 EXIF의 촬영 시간대)
+  modules/ 앱 안의 로컬 네이티브 모듈 (photo-meta: 사진 좌표 → 주소, 원본 EXIF 시간대, 동영상 변환·파일 해시)
 docs/      계획, QA 체크리스트, 스토어 등록 정보(store/)
 ```
 
@@ -76,20 +76,20 @@ API 주소(`mobile/.env`의 `EXPO_PUBLIC_API_URL`):
 
 ## Cloud 백업 (Phase 2)
 
-로그인한 사용자는 무료로 기록(메모·장소·앨범)을 서버에 백업한다. 유료 구독은 안전 앨범에 담은 사진을 보관하는 기능에만 필요하다.
+로그인한 사용자는 무료로 기록(메모·장소·앨범)을 서버에 백업한다. 유료 구독은 안전 앨범에 담은 사진과 동영상을 보관하는 기능에만 필요하다.
 앱은 로그인 상태에서 앱을 열 때·앞으로 돌아올 때·기록이 바뀐 뒤 동기화한다
-(기록 push → 다른 기기 변경 pull → 더는 필요 없는 사진 정리 → 사진 업로드. 사진은 기기 사진첩에 없을 때 볼 때마다 한 장씩 받는다). 구독 여부는 서버가 RevenueCat webhook과 REST 조회로만 판단한다.
+(기록 push → 다른 기기 변경 pull → 더는 필요 없는 파일 정리 → 사진·동영상 업로드. 다른 기기에서는 사진은 표시용 이미지를 받고, 동영상은 원본 또는 효율 보관본을 재생한다). 구독 여부는 서버가 RevenueCat webhook과 REST 조회로만 판단한다.
 
 결제 연결은 출시 직전으로 미뤘다 (docs/PLAN.md Phase 3). 그때까지 서버는 `CLOUD_BILLING_ENABLED=false`로 두고, 로그인한 계정을 구독 중으로 취급한다. 아래 외부 설정 중 1·2번은 그때 한다.
 
 | 위치 | 내용 |
 |---|---|
-| `backend/app/cloud.py` | 구독 규칙 (사진 쓰기·읽기 허용, 만료 → 30일 유예, 사진 삭제) |
+| `backend/app/cloud.py` | 구독 규칙 (사진·동영상 쓰기·읽기 허용, 만료 → 30일 유예, 파일 삭제) |
 | `backend/app/api/` | `auth`(Apple/Google 로그인), `account`(상태·기기 등록·계정 삭제), `sync`, `uploads`, `billing`(webhook) |
 | `backend/app/jobs.py` | 주기 작업: 유예 알림 3회, 30일 뒤 삭제, 계정 삭제 마무리, 미완료 업로드 정리 |
 | `mobile/src/db/spaces.ts` | Local과 계정별 공간(DB 파일) 관리 |
-| `mobile/src/lib/cloud/` | 세션, 계정 공간, 기기 기록 올리기, 사진 연결, 동기화, 사진 업로드·다운로드, RevenueCat, 로그인, 푸시 토큰 |
-| `mobile/src/app/cloud.tsx` | 소개·가격(로그인 없이) → 로그인(기록 백업) → 구매 / 구매 복원(사진 보관) |
+| `mobile/src/lib/cloud/` | 세션, 계정 공간, 기기 기록 올리기, 사진 연결, 동기화, 사진·동영상 업로드·다운로드, RevenueCat, 로그인, 푸시 토큰 |
+| `mobile/src/app/cloud.tsx` | 소개·가격(로그인 없이) → 로그인(기록 백업) → 구매 / 구매 복원(사진·동영상 보관) |
 
 로컬에서 Cloud 흐름 시험:
 

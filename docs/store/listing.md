@@ -64,9 +64,9 @@ Keepsake는 매일 찍은 사진 중에서 정말 남기고 싶은 몇 장만 �
 · 로그인하면 메모, 장소, 앨범을 새 휴대폰과 다른 기기에도 이어서 볼 수 있어요
 
 ■ Keepsake 안전 보관 (선택, 유료 구독)
-· 사진 전체가 아니라 안전 앨범에 담은 사진만 보관해요
-· 백업이 끝난 사진은 휴대폰 사진첩에서 지워도 남으니, 휴대폰을 비워도 돼요
-· 새 휴대폰에서 로그인하면 기록이 돌아오고, 안전 보관을 구독하면 사진도 다시 볼 수 있어요 (iPhone ↔ Android는 Google 계정으로 가능)
+· 사진·동영상 전체가 아니라 안전 앨범에 담은 순간만 보관해요
+· 백업이 끝난 파일은 휴대폰 사진첩에서 지워도 남으니, 휴대폰을 비워도 돼요
+· 새 휴대폰에서 로그인하면 기록이 돌아오고, 안전 보관을 구독하면 사진과 동영상도 다시 볼 수 있어요 (iPhone ↔ Android는 Google 계정으로 가능)
 · 여러 기기에서 같은 사진첩을 써요
 
 구독 안내
@@ -74,7 +74,7 @@ Keepsake는 매일 찍은 사진 중에서 정말 남기고 싶은 몇 장만 �
 · 결제는 구매 확인 시 Apple ID(또는 Google 계정)로 청구돼요
 · 현재 기간이 끝나기 24시간 전까지 해지하지 않으면 자동으로 갱신돼요
 · 구독 관리와 해지는 기기의 계정 설정에서 할 수 있어요
-· 구독이 끝나면 30일 동안 보관한 사진을 내려받을 수 있고, 이후 사진은 삭제돼요. 기록 백업은 로그인한 동안 계속돼요
+· 구독이 끝나면 30일 동안 보관한 파일을 내려받을 수 있고, 이후 파일은 삭제돼요. 기록 백업은 로그인한 동안 계속돼요
 
 개인정보처리방침: https://keepsake.atelierlabs.co.kr/legal/privacy-policy
 이용약관: https://keepsake.atelierlabs.co.kr/legal/terms-of-service
@@ -133,11 +133,11 @@ Android의 OS Geocoder(Google)도 개발자가 받는 데이터가 아니므로 
 ## 8. 심사 메모 (App Review Information)
 
 ```
-Keepsake works without an account. All core features (selecting photos,
+Keepsake works without an account. All core features (selecting photos and videos,
 writing memos, albums) are available for free and store data only on the device.
 
 Keepsake Cloud is an optional auto-renewing subscription for backing up
-original photos. Sign in with Apple or Google is required only when subscribing.
+selected photos and videos. Sign in with Apple or Google is required only when subscribing.
 Account deletion: Settings > Cloud > Delete account.
 
 Demo account for Cloud: {{심사용 Apple 샌드박스 계정 또는 데모 로그인 방법}}
