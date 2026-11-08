@@ -9,6 +9,7 @@ import { notifyChange } from '@/db/changes';
 import { inTransaction } from '@/db/moments';
 import { getSettings, setSetting } from '@/db/settings';
 import { cloudApi, unwrap } from '@/lib/cloud/session';
+import { MEDIA_PERMISSIONS, MEDIA_TYPES } from '@/lib/photos';
 
 // 기록과 이 기기 사진의 연결을 계정·기기별로 서버에 둔다. 앱을 다시 설치해도 원본을 다시 가리키기 위해서다.
 // 복구하지 못해도 잃는 것은 없다. 사진은 Cloud에서 받아 보여준다.
@@ -76,14 +77,14 @@ const LIMITED_RECHECK_MS = 60 * 60 * 1000;
 export async function restoreDeviceLinks(db: SQLiteDatabase, userId: string) {
   if ((await getSettings(db)).cloud_links_restored) return;
   // 권한을 받기 전이면 확인할 수 없으니 다음 동기화에서 다시 한다.
-  const { granted, accessPrivileges } = await MediaLibrary.getPermissionsAsync(false, ['photo']);
+  const { granted, accessPrivileges } = await MediaLibrary.getPermissionsAsync(false, MEDIA_PERMISSIONS);
   if (!granted) return;
   // 일부 사진만 허용했으면 볼 수 있는 사진 수가 달라졌을 때나 한 시간에 한 번만 다시 본다.
   // 동기화마다 전체를 받지 않는다. 수가 같게 바꾼 경우는 다음 확인 때 이어진다.
   const limited = accessPrivileges === 'limited';
   let visible = 0;
   if (limited) {
-    visible = (await MediaLibrary.getAssetsAsync({ mediaType: MediaLibrary.MediaType.photo, first: 1 })).totalCount;
+    visible = (await MediaLibrary.getAssetsAsync({ mediaType: MEDIA_TYPES, first: 1 })).totalCount;
     if (
       limitedChecked?.userId === userId &&
       limitedChecked.visible === visible &&

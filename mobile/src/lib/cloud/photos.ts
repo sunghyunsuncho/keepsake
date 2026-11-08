@@ -1,15 +1,18 @@
 import { File } from 'expo-file-system';
-import { FileSystemUploadType, getInfoAsync, uploadAsync } from 'expo-file-system/legacy';
+import { FileSystemUploadType, uploadAsync } from 'expo-file-system/legacy';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as MediaLibrary from 'expo-media-library';
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { getThumbnailAsync } from 'expo-video-thumbnails';
+
+import { md5File, transcodeVideo } from '@modules/photo-meta';
 
 import { createAlbum, updateAlbumMoments } from '@/db/albums';
 import { notifyChange } from '@/db/changes';
 import { inTransaction, setMomentSource } from '@/db/moments';
 import { getSettings, setSetting } from '@/db/settings';
 import { CloudError, cloudApi, unwrap } from '@/lib/cloud/session';
-import { hasLimitedPhotoAccess } from '@/lib/photos';
+import { assetFileUri, hasLimitedPhotoAccess, MEDIA_PERMISSIONS, MEDIA_TYPES } from '@/lib/photos';
 import { cacheDir } from '@/lib/storage';
 
 // 사진 업로드·다운로드 (docs/PLAN.md §3.1). 사진 바이트는 서버를 거치지 않고 R2와 직접 오간다.
@@ -18,9 +21,14 @@ import { cacheDir } from '@/lib/storage';
 // 올릴 사진은 moments에서 바로 계산한다 (서버에 기록이 있고, 안전 앨범에 담겼고, 사진이 아직 올라가지 않은 것).
 // 표시용은 안전 앨범에 담긴 기록 모두, 원본은 화질이 '원본'인 안전 앨범에 담긴 기록만 올린다 (db/albums.ts).
 // 반대로 안전 앨범에서 빠졌거나 앨범을 효율 보관으로 바꿔 필요 없어진 사진은 서버에서 지운다 (releaseUnwantedPhotos).
+//
+// 동영상: 표시용(display)은 대표 장면 이미지라 목록·표지는 사진과 똑같이 그린다. 원본 보관 앨범은 영상 원본을,
+// 효율 보관 앨범은 720p로 줄인 영상(compact)을 올린다. 원본 보관 앨범에 함께 담겨 원본이 올라가 있으면 compact는 필요 없다.
+// 효율 보관으로 바꿔도 영상 원본은 compact가 올라간 뒤에 지운다. 그 사이 Cloud에 영상이 없는 때가 없게 하려는 것이고,
+// 기기 사진첩에서 지워져 compact를 만들 수 없으면 원본을 남긴다 (Cloud에 남은 유일한 영상이다).
 // upload_queue에는 실패한 사진의 재시도 횟수와 다음 시도 시각만 둔다. 앱을 다시 열어도 이어서 올린다.
 
-type Variant = 'display' | 'original';
+type Variant = 'display' | 'original' | 'compact';
 type PendingUpload = { id: string; variant: Variant };
 
 const MAX_BACKOFF_MS = 6 * 60 * 60 * 1000;
@@ -28,6 +36,17 @@ const MAX_BACKOFF_MS = 6 * 60 * 60 * 1000;
 // 표시용 리사이즈본: 긴 변 기준. 1장 약 0.5MB를 목표로 한다 (docs/PLAN.md §2.2).
 const DISPLAY_LONG_EDGE = 1600;
 const DISPLAY_QUALITY = 0.8;
+
+// R2 한 번의 PUT 한도(5GiB) 안에서 서버가 받는 크기 (backend/app/api/uploads.py MAX_UPLOAD_BYTES)
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024;
+// 4GB를 넘는 동영상은 올릴 수 없다. 다시 시도해도 같으므로 하루에 한 번만 다시 본다 (영상을 잘랐을 수 있다).
+const TOO_LARGE_RETRY_MS = 24 * 60 * 60 * 1000;
+
+const UPLOADED_COLUMN: Record<Variant, string> = {
+  display: 'display_uploaded',
+  original: 'original_uploaded',
+  compact: 'compact_uploaded',
+};
 
 const CONTENT_TYPES: Record<string, string> = {
   jpg: 'image/jpeg',
@@ -40,6 +59,12 @@ const CONTENT_TYPES: Record<string, string> = {
   dng: 'image/x-adobe-dng',
   tif: 'image/tiff',
   tiff: 'image/tiff',
+  mp4: 'video/mp4',
+  mov: 'video/quicktime',
+  m4v: 'video/x-m4v',
+  '3gp': 'video/3gpp',
+  webm: 'video/webm',
+  mkv: 'video/x-matroska',
 };
 
 // 기기 사진첩에 원본이 있어야 올릴 수 있다. 지워진 사진(source_missing)이나 다른 기기에서 받은 기록은 뺀다.
@@ -54,6 +79,9 @@ function inCloudAlbum(originalOnly: boolean) {
       ${originalOnly ? "AND IFNULL(a.photo_quality, 'original') = 'original'" : ''})`;
 }
 
+/** 효율 보관 동영상(720p)이 필요한 기록: 안전 앨범에 담겼지만 원본을 보관하는 안전 앨범에는 없는 동영상 */
+const WANTS_COMPACT = `media_type = 'video' AND ${inCloudAlbum(false)} AND NOT ${inCloudAlbum(true)}`;
+
 export async function pendingUploads(db: SQLiteDatabase, now = new Date().toISOString()) {
   // 표시용 사진을 먼저 올린다. 새 기기에서 사진첩을 빨리 보여주기 위해서다.
   return db.getAllAsync<PendingUpload>(
@@ -63,6 +91,9 @@ export async function pendingUploads(db: SQLiteDatabase, now = new Date().toISOS
        UNION ALL
        SELECT id, 'original', 1, taken_at FROM moments
        WHERE ${UPLOADABLE} AND original_uploaded = 0 AND ${inCloudAlbum(true)}
+       UNION ALL
+       SELECT id, 'compact', 1, taken_at FROM moments
+       WHERE ${UPLOADABLE} AND ${WANTS_COMPACT} AND compact_uploaded = 0
      ) AS p
      LEFT JOIN upload_queue q ON q.moment_id = p.id AND q.variant = p.variant
      WHERE q.next_attempt_at IS NULL OR q.next_attempt_at <= ?
@@ -75,7 +106,8 @@ export async function countPendingUploads(db: SQLiteDatabase) {
   const row = await db.getFirstAsync<{ count: number }>(
     `SELECT
        SUM(CASE WHEN display_uploaded = 0 AND ${inCloudAlbum(false)} THEN 1 ELSE 0 END) +
-       SUM(CASE WHEN original_uploaded = 0 AND ${inCloudAlbum(true)} THEN 1 ELSE 0 END) AS count
+       SUM(CASE WHEN original_uploaded = 0 AND ${inCloudAlbum(true)} THEN 1 ELSE 0 END) +
+       SUM(CASE WHEN compact_uploaded = 0 AND ${WANTS_COMPACT} THEN 1 ELSE 0 END) AS count
      FROM moments WHERE ${ON_DEVICE}`,
   );
   return row?.count ?? 0;
@@ -83,7 +115,10 @@ export async function countPendingUploads(db: SQLiteDatabase) {
 
 const RELEASE_BATCH = 500;
 
-/** 올라가 있지만 이제 어떤 안전 앨범에도 필요 없는 사진. 표시용은 안전 앨범 밖, 원본은 원본 보관 앨범 밖. */
+/**
+ * 올라가 있지만 이제 어떤 안전 앨범에도 필요 없는 파일. 표시용은 안전 앨범 밖, 원본은 원본 보관 앨범 밖.
+ * 효율 보관 앨범에 남은 동영상의 원본은 compact가 올라간 뒤에 지운다. compact는 원본이 올라가 있으면 지운다.
+ */
 function unwantedPhotos(db: SQLiteDatabase) {
   return db.getAllAsync<PendingUpload>(
     `SELECT id, 'display' AS variant FROM moments
@@ -91,6 +126,11 @@ function unwantedPhotos(db: SQLiteDatabase) {
      UNION ALL
      SELECT id, 'original' FROM moments
      WHERE deleted_at IS NULL AND original_uploaded = 1 AND NOT ${inCloudAlbum(true)}
+       AND (media_type != 'video' OR compact_uploaded = 1 OR NOT ${inCloudAlbum(false)})
+     UNION ALL
+     SELECT id, 'compact' FROM moments
+     WHERE deleted_at IS NULL AND compact_uploaded = 1
+       AND (NOT ${inCloudAlbum(false)} OR (original_uploaded = 1 AND ${inCloudAlbum(true)}))
      LIMIT ${RELEASE_BATCH}`,
   );
 }
@@ -112,10 +152,7 @@ export async function releaseUnwantedPhotos(db: SQLiteDatabase) {
     );
     await inTransaction(db, async () => {
       for (const photo of photos) {
-        await db.runAsync(
-          `UPDATE moments SET ${photo.variant === 'display' ? 'display_uploaded' : 'original_uploaded'} = 0 WHERE id = ?`,
-          photo.id,
-        );
+        await db.runAsync(`UPDATE moments SET ${UPLOADED_COLUMN[photo.variant]} = 0 WHERE id = ?`, photo.id);
         await db.runAsync('DELETE FROM upload_queue WHERE moment_id = ? AND variant = ?', photo.id, photo.variant);
       }
     });
@@ -156,7 +193,7 @@ export async function uploadPending(db: SQLiteDatabase, shouldStop: () => boolea
       if (await uploadOne(db, item)) uploaded++;
     } catch (e) {
       if (e instanceof CloudError && (e.status === 403 || e.status === 413 || e.status === 401)) throw e;
-      await recordFailure(db, item, e);
+      await recordFailure(db, item, e, e instanceof TooLargeError ? TOO_LARGE_RETRY_MS : undefined);
     }
   }
   // 화면의 'Cloud에 보관됨' 표시와 Cloud에만 있는 원본 수가 달라진다.
@@ -164,12 +201,16 @@ export async function uploadPending(db: SQLiteDatabase, shouldStop: () => boolea
   return uploaded;
 }
 
+class TooLargeError extends Error {}
+
 /** 올렸으면 true. 기기 사진첩에서 원본이 지워졌으면 지워진 사진으로 표시하고 false. */
 async function uploadOne(db: SQLiteDatabase, { id, variant }: PendingUpload) {
-  const row = await db.getFirstAsync<{ source_asset_id: string; width: number | null; height: number | null }>(
-    'SELECT source_asset_id, width, height FROM moments WHERE id = ? AND deleted_at IS NULL',
-    id,
-  );
+  const row = await db.getFirstAsync<{
+    source_asset_id: string;
+    media_type: string;
+    width: number | null;
+    height: number | null;
+  }>('SELECT source_asset_id, media_type, width, height FROM moments WHERE id = ? AND deleted_at IS NULL', id);
   if (!row) return false; // 올리는 동안 기록에서 뺐다.
   // iCloud에만 있는 원본은 받아야 파일이 생긴다 (OS가 관리하는 사진첩 캐시라 앱 용량은 늘지 않는다).
   // 사진이 없으면 null이고, 예외는 권한 문제 같은 일시적 실패라 재시도로 넘긴다 (지워진 사진으로 표시하지 않는다).
@@ -181,22 +222,29 @@ async function uploadOne(db: SQLiteDatabase, { id, variant }: PendingUpload) {
     await setMomentSource(db, id, { missing: true });
     return false;
   }
-  const sourceUri = info.localUri;
-  if (!sourceUri?.startsWith('file://')) throw new Error('원본 사진을 받지 못했어요');
+  const sourceUri = assetFileUri(info);
+  if (!sourceUri) throw new Error('원본 사진을 받지 못했어요');
 
+  const width = row.width || info.width;
+  const height = row.height || info.height;
+  const video = row.media_type === 'video';
+  // 동영상 원본은 몇 GB일 수 있어 복사하지 않고 사진첩 파일을 그대로 올린다. 올리는 동안 파일이 바뀌면
+  // MD5가 달라 저장소가 거절하고 다음에 다시 올린다. 사진첩 파일이므로 다 올린 뒤에도 지우지 않는다.
+  const temporary = !(video && variant === 'original');
   const file =
-    variant === 'display'
-      ? await makeDisplayImage(sourceUri, row.width || info.width, row.height || info.height)
-      : copyToUploadDir(sourceUri, info.filename);
+    variant === 'compact'
+      ? await makeCompactVideo(sourceUri)
+      : variant === 'display'
+        ? await (video ? makeVideoPoster(sourceUri, width, height) : makeDisplayImage(sourceUri, width, height))
+        : video
+          ? new File(sourceUri)
+          : copyToUploadDir(sourceUri, info.filename);
   try {
-    await uploadFile(id, variant, file);
+    await uploadFile(id, variant, file, video);
   } finally {
-    if (file.exists) file.delete();
+    if (temporary && file.exists) file.delete();
   }
-  await db.runAsync(
-    `UPDATE moments SET ${variant === 'display' ? 'display_uploaded' : 'original_uploaded'} = 1 WHERE id = ?`,
-    id,
-  );
+  await db.runAsync(`UPDATE moments SET ${UPLOADED_COLUMN[variant]} = 1 WHERE id = ?`, id);
   await db.runAsync('DELETE FROM upload_queue WHERE moment_id = ? AND variant = ?', id, variant);
   return true;
 }
@@ -209,15 +257,15 @@ function copyToUploadDir(sourceUri: string, filename: string) {
   return file;
 }
 
-async function uploadFile(id: string, variant: Variant, file: File) {
-  const ext = variant === 'display' ? 'jpg' : (extensionOf(file.name) ?? 'jpg');
-  const contentType = CONTENT_TYPES[ext] ?? `image/${ext}`;
-  // 큰 원본을 JS 메모리에 올리지 않도록 해시는 네이티브로 계산하고 업로드도 네이티브로 한다.
-  // file.md5는 계산이 끝날 때까지 화면을 멈추므로 비동기 API를 쓴다.
+async function uploadFile(id: string, variant: Variant, file: File, video: boolean) {
+  const ext = variant === 'display' ? 'jpg' : variant === 'compact' ? 'mp4' : (extensionOf(file.name) ?? 'jpg');
+  const contentType = CONTENT_TYPES[ext] ?? (video && variant === 'original' ? `video/${ext}` : `image/${ext}`);
+  if (file.size > MAX_UPLOAD_BYTES) throw new TooLargeError('4GB보다 큰 동영상은 보관할 수 없어요');
+  // 큰 원본을 JS 메모리에 올리지 않도록 해시는 네이티브로 조금씩 읽어 계산하고 업로드도 네이티브로 한다.
+  // (expo-file-system의 md5는 iOS에서 파일 전체를 메모리에 올려 큰 동영상에서 앱이 멈춘다.)
   // 저장소가 이 MD5로 받은 내용을 확인한다 (Content-MD5).
-  const info = await getInfoAsync(file.uri, { md5: true });
-  const md5 = info.exists ? info.md5 : undefined;
-  if (!md5) throw new Error('사진 파일을 읽을 수 없어요');
+  const md5 = await md5File(file.uri).catch(() => null);
+  if (!md5) throw new Error('파일을 읽을 수 없어요');
 
   const created = await cloudApi.POST('/uploads', {
     body: { moment_id: id, variant, size: file.size, content_type: contentType, md5 },
@@ -238,6 +286,34 @@ async function uploadFile(id: string, variant: Variant, file: File) {
   );
 }
 
+/** 동영상의 대표 장면을 표시용 이미지로 만든다 (첫 장면은 검은 화면일 때가 많아 1초 쯤에서). */
+async function makeVideoPoster(uri: string, width: number, height: number) {
+  const frame = await getThumbnailAsync(uri, { time: POSTER_TIME_MS }).catch(() =>
+    // 1초보다 짧은 영상
+    getThumbnailAsync(uri, { time: 0 }),
+  );
+  try {
+    return await makeDisplayImage(frame.uri, frame.width || width, frame.height || height);
+  } finally {
+    const file = new File(frame.uri);
+    if (file.exists) file.delete();
+  }
+}
+
+const POSTER_TIME_MS = 1000;
+
+/** 효율 보관 동영상: 짧은 변 720px 이하의 H.264 mp4 */
+async function makeCompactVideo(uri: string) {
+  const file = new File(cacheDir('upload'), `${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`);
+  try {
+    await transcodeVideo(uri, file.uri);
+  } catch (e) {
+    if (file.exists) file.delete();
+    throw e;
+  }
+  return file;
+}
+
 async function makeDisplayImage(uri: string, width: number, height: number) {
   const context = ImageManipulator.manipulate(uri);
   if (Math.max(width, height) > DISPLAY_LONG_EDGE) {
@@ -256,7 +332,7 @@ async function makeDisplayImage(uri: string, width: number, height: number) {
   }
 }
 
-async function recordFailure(db: SQLiteDatabase, item: PendingUpload, error: unknown) {
+async function recordFailure(db: SQLiteDatabase, item: PendingUpload, error: unknown, retryAfterMs?: number) {
   const row = await db.getFirstAsync<{ attempts: number }>(
     'SELECT attempts FROM upload_queue WHERE moment_id = ? AND variant = ?',
     item.id,
@@ -264,7 +340,7 @@ async function recordFailure(db: SQLiteDatabase, item: PendingUpload, error: unk
   );
   const attempts = (row?.attempts ?? 0) + 1;
   // 1분, 2분, 4분 … 최대 6시간 간격으로 다시 시도한다.
-  const delay = Math.min(60_000 * 2 ** (attempts - 1), MAX_BACKOFF_MS);
+  const delay = retryAfterMs ?? Math.min(60_000 * 2 ** (attempts - 1), MAX_BACKOFF_MS);
   const now = new Date();
   await db.runAsync(
     `INSERT INTO upload_queue (moment_id, variant, attempts, last_error, next_attempt_at, created_at)
@@ -302,11 +378,14 @@ async function fetchDisplay(momentId: string) {
   return file.uri;
 }
 
-/** 크게 볼 때 쓰는 Cloud 원본 주소 (짧게 유효한 서명 URL). 파일로 받지 않는다. */
-export async function cloudOriginalUrl(momentId: string) {
+/**
+ * 크게 볼 때 쓰는 Cloud 원본 주소 (짧게 유효한 서명 URL). 파일로 받지 않는다.
+ * 동영상은 원본이나 효율 보관 영상(compact)을 이 주소로 바로 재생한다.
+ */
+export async function cloudOriginalUrl(momentId: string, variant: 'original' | 'compact' = 'original') {
   const info = unwrap(
     await cloudApi.GET('/moments/{moment_id}/photo', {
-      params: { path: { moment_id: momentId }, query: { variant: 'original' } },
+      params: { path: { moment_id: momentId }, query: { variant } },
     }),
   );
   return info.download_url;
@@ -335,7 +414,7 @@ export async function saveOriginalsToLibrary(
 ) {
   // 읽기 권한까지 받는다. iOS의 '추가만 허용'으로는 저장한 사진을 다시 읽지 못해 기록에 이을 수 없고,
   // 저장은 됐는데 실패로 처리되어 다시 시도할 때 사진이 중복된다.
-  const permission = await MediaLibrary.requestPermissionsAsync(false, ['photo']);
+  const permission = await MediaLibrary.requestPermissionsAsync(false, MEDIA_PERMISSIONS);
   if (!permission.granted) throw new PhotoSaveError('사진을 저장하려면 사진 접근을 허용해 주세요.');
 
   const rows = await db.getAllAsync<{ id: string; original_filename: string | null; taken_at: string }>(
@@ -389,7 +468,7 @@ async function findSameAsset(row: { original_filename: string | null; taken_at: 
   if (!row.original_filename) return null;
   const taken = new Date(row.taken_at).getTime();
   const page = await MediaLibrary.getAssetsAsync({
-    mediaType: MediaLibrary.MediaType.photo,
+    mediaType: MEDIA_TYPES,
     createdAfter: taken - 2000,
     createdBefore: taken + 2001,
     first: 20,

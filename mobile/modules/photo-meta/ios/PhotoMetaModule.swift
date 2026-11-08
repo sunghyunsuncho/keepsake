@@ -1,9 +1,12 @@
+import AVFoundation
 import CoreLocation
+import CryptoKit
 import ExpoModulesCore
 import ImageIO
 
 // 사진에 들어 있는 좌표·촬영 시간대를 읽는다.
 // 기기 위치를 읽는 게 아니라 사진의 좌표를 주소로 바꾸기만 하므로 위치 권한이 필요 없다.
+// Cloud에 올릴 파일의 MD5와 효율 보관용 동영상도 여기서 만든다.
 public class PhotoMetaModule: Module {
   public func definition() -> ModuleDefinition {
     Name("PhotoMeta")
@@ -47,6 +50,50 @@ public class PhotoMetaModule: Module {
       let value =
         (exif["OffsetTimeOriginal"] ?? exif["OffsetTimeDigitized"] ?? exif["OffsetTime"]) as? String
       return value.flatMap(parseOffset)
+    }
+
+    // 파일의 MD5(hex). 몇 GB짜리 동영상도 올리므로 파일 전체를 메모리에 올리지 않고 조금씩 읽는다.
+    AsyncFunction("md5File") { (uri: String) throws -> String in
+      guard let url = URL(string: uri) else {
+        throw Exception(name: "InvalidUri", description: "Invalid file uri: \(uri)")
+      }
+      let handle = try FileHandle(forReadingFrom: url)
+      defer { try? handle.close() }
+      var hash = Insecure.MD5()
+      while true {
+        let chunk = autoreleasepool { handle.readData(ofLength: 1024 * 1024) }
+        if chunk.isEmpty { break }
+        hash.update(data: chunk)
+      }
+      return hash.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    // 동영상을 짧은 변 720px 이하의 H.264 mp4로 줄인다 (효율 보관). 원래 작으면 키우지 않는다.
+    AsyncFunction("transcodeVideo") { (inputUri: String, outputUri: String) async throws in
+      guard let input = URL(string: inputUri), let output = URL(string: outputUri) else {
+        throw Exception(name: "InvalidUri", description: "Invalid file uri")
+      }
+      try? FileManager.default.removeItem(at: output)
+      let asset = AVURLAsset(url: input)
+      guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPreset1280x720)
+      else {
+        throw Exception(name: "ExportUnavailable", description: "Cannot export this video")
+      }
+      session.outputURL = output
+      session.outputFileType = .mp4
+      session.shouldOptimizeForNetworkUse = true
+      // iOS 15.5를 지원하므로 async export(iOS 18) 대신 완료 콜백을 쓴다.
+      try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        session.exportAsynchronously {
+          if session.status == .completed {
+            continuation.resume()
+          } else {
+            continuation.resume(
+              throwing: session.error
+                ?? Exception(name: "ExportFailed", description: "Video export did not complete"))
+          }
+        }
+      }
     }
   }
 }

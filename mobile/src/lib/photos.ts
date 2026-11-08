@@ -1,20 +1,32 @@
 import * as MediaLibrary from 'expo-media-library';
 import { useCallback, useEffect, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { dayRange } from '@/lib/dates';
 
 export type PhotoAccess = 'undetermined' | 'denied' | 'limited' | 'all';
 
-// 사진(photo)만 요청한다. Android 13+에서 동영상 권한을 따로 묻지 않도록 app.json의
+// 사진과 동영상을 함께 다룬다. Android 13+는 두 권한을 따로 묻으므로 app.json의
 // granularPermissions와 맞춘다.
-const GRANULAR: MediaLibrary.GranularPermission[] = ['photo'];
+export const MEDIA_PERMISSIONS: MediaLibrary.GranularPermission[] = ['photo', 'video'];
+/** 고르기·정리·놓친 사진 등 보관함을 찾을 때 함께 보는 종류 */
+export const MEDIA_TYPES = [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video];
+const GRANULAR = MEDIA_PERMISSIONS;
 
 function toAccess(response: MediaLibrary.PermissionResponse): PhotoAccess {
   if (response.status === 'undetermined') return 'undetermined';
   if (!response.granted) return 'denied';
   // iOS 14+ "선택한 사진만", Android 14+ "일부 사진만 허용"
   return response.accessPrivileges === 'limited' ? 'limited' : 'all';
+}
+
+/**
+ * 원본 파일 주소 (file://). Android expo-media-library는 이미지에만 localUri를 채우고,
+ * 동영상은 uri가 곧 파일 경로다. iOS uri(ph://)는 파일이 아니라서 localUri만 쓴다.
+ */
+export function assetFileUri(info: MediaLibrary.AssetInfo) {
+  const uri = info.localUri ?? (Platform.OS === 'android' ? info.uri : undefined);
+  return uri?.startsWith('file://') ? uri : null;
 }
 
 /** 일부 사진만 허용한 상태면 사진을 찾지 못해도 지워졌다고 볼 수 없다. */
@@ -37,7 +49,16 @@ export function usePhotoAccess() {
   }, []);
 
   const refresh = useCallback(async () => {
-    apply(await MediaLibrary.getPermissionsAsync(false, GRANULAR));
+    const response = await MediaLibrary.getPermissionsAsync(false, GRANULAR);
+    // 사진만 묻던 이전 버전에서 사진을 모두 허용한 사용자. Android 13+는 사진과 동영상이 같은 권한 묶음이라
+    // 창 없이 허용되므로, 처음 화면으로 돌려보내지 않고 바로 다시 요청한다.
+    if (!response.granted && response.canAskAgain) {
+      const photos = await MediaLibrary.getPermissionsAsync(false, ['photo']);
+      if (photos.granted && photos.accessPrivileges === 'all') {
+        return apply(await MediaLibrary.requestPermissionsAsync(false, GRANULAR));
+      }
+    }
+    apply(response);
   }, [apply]);
 
   const request = useCallback(async () => {
@@ -57,7 +78,7 @@ export function usePhotoAccess() {
 
 /** 제한된 접근 상태에서 사용자가 보여줄 사진을 더 고르게 한다 (iOS, Android 14+). */
 export function presentLimitedPicker() {
-  return MediaLibrary.presentPermissionsPickerAsync(['photo']);
+  return MediaLibrary.presentPermissionsPickerAsync(['photo', 'video']);
 }
 
 /**
@@ -90,7 +111,7 @@ const LIBRARY_CHANGE_DELAY_MS = 500;
  */
 export async function getPhotosSince(since: Date, after?: string) {
   const page = await MediaLibrary.getAssetsAsync({
-    mediaType: MediaLibrary.MediaType.photo,
+    mediaType: MEDIA_TYPES,
     // createdAfter가 경계 시각을 포함할 수 있어 1ms 뒤부터 찾는다.
     createdAfter: since.getTime() + 1,
     sortBy: [[MediaLibrary.SortBy.creationTime, true]],
@@ -108,7 +129,7 @@ export async function getPhotosSince(since: Date, after?: string) {
 /** 지난 사진 화면: 기준 시각보다 앞선 사진을 최신 것부터 한 쪽씩 가져온다. */
 export async function getPhotosBefore(before: Date, after?: string) {
   const page = await MediaLibrary.getAssetsAsync({
-    mediaType: MediaLibrary.MediaType.photo,
+    mediaType: MEDIA_TYPES,
     createdBefore: before.getTime(),
     sortBy: [[MediaLibrary.SortBy.creationTime, false]],
     first: INBOX_PAGE_SIZE,
@@ -127,7 +148,7 @@ export async function countPhotosSince(since: Date) {
   const { granted } = await MediaLibrary.getPermissionsAsync(false, GRANULAR);
   if (!granted) return null;
   const page = await MediaLibrary.getAssetsAsync({
-    mediaType: MediaLibrary.MediaType.photo,
+    mediaType: MEDIA_TYPES,
     createdAfter: since.getTime() + 1,
     first: 1,
   });
@@ -137,7 +158,7 @@ export async function countPhotosSince(since: Date) {
 /** 사진 보관함에서 가장 오래된 사진의 촬영 시각. 과거 사진을 처음부터 이어 볼 때 쓴다. */
 export async function firstPhotoDate() {
   const page = await MediaLibrary.getAssetsAsync({
-    mediaType: MediaLibrary.MediaType.photo,
+    mediaType: MEDIA_TYPES,
     sortBy: [[MediaLibrary.SortBy.creationTime, true]],
     first: 1,
   });
@@ -167,7 +188,7 @@ async function getPhotosBetween(start: Date, end: Date) {
   // 하루치는 보통 수십~수백 장이라 모두 불러오고, 화면에서는 썸네일만 그린다.
   for (;;) {
     const page = await MediaLibrary.getAssetsAsync({
-      mediaType: MediaLibrary.MediaType.photo,
+      mediaType: MEDIA_TYPES,
       createdAfter: start,
       createdBefore: end,
       sortBy: [[MediaLibrary.SortBy.creationTime, true]],

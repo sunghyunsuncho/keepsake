@@ -20,6 +20,7 @@ import {
 import { CloseButton } from '@/components/stack-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { VideoBadge } from '@/components/video-badge';
 import { Spacing } from '@/constants/theme';
 import { useDbQuery } from '@/db/changes';
 import { getSettings, setSetting } from '@/db/settings';
@@ -215,6 +216,7 @@ function CleanupTile({
       accessibilityLabel={marked ? '지울 사진' : '지우지 않을 사진'}
       style={{ width, height, margin: GRID_GAP / 2 }}>
       <Image source={{ uri: asset.uri }} style={styles.fill} contentFit="cover" recyclingKey={asset.id} />
+      {asset.mediaType === 'video' && <VideoBadge duration={asset.duration} />}
       {marked && (
         <View style={[styles.fill, styles.markedOverlay]}>
           <View style={[styles.badge, { backgroundColor: theme.danger }]}>

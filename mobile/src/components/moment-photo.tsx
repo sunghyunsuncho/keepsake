@@ -5,7 +5,9 @@ import { useSQLiteContext, type SQLiteDatabase } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import { StyleSheet, View, type ImageStyle, type StyleProp, type ViewStyle } from 'react-native';
 
+import { MomentVideo } from '@/components/moment-video';
 import { ThemedText } from '@/components/themed-text';
+import { VideoBadge } from '@/components/video-badge';
 import { Spacing } from '@/constants/theme';
 import { setMomentSource, type Moment } from '@/db/moments';
 import { useTheme } from '@/hooks/use-theme';
@@ -13,20 +15,32 @@ import { cloudDisplayUri, cloudOriginalUrl } from '@/lib/cloud/photos';
 import { useCloudSession } from '@/lib/cloud/session';
 import { hasLimitedPhotoAccess } from '@/lib/photos';
 
-type PhotoMoment = Pick<
+export type PhotoMoment = Pick<
   Moment,
-  'id' | 'source_asset_id' | 'source_uri' | 'source_missing' | 'display_uploaded' | 'original_uploaded'
+  | 'id'
+  | 'source_asset_id'
+  | 'source_uri'
+  | 'source_missing'
+  | 'media_type'
+  | 'duration'
+  | 'display_uploaded'
+  | 'original_uploaded'
+  | 'compact_uploaded'
 >;
 
 type Props = {
   moment: PhotoMoment;
-  /** original: 크게 볼 때. 사진첩 원본이 없으면 Cloud 원본을 받는다. */
+  /** original: 크게 볼 때. 사진첩 원본이 없으면 Cloud 원본을 받는다. 동영상은 재생한다. */
   variant?: 'display' | 'original';
   style: StyleProp<ImageStyle>;
   contentFit?: ImageContentFit;
   transition?: number;
   /** 지워진 사진일 때 설명 문구까지 보여줄지 (작은 카드는 아이콘만) */
   explainMissing?: boolean;
+  /** 동영상 썸네일에 재생 시간 표시를 붙일지 (기본 true) */
+  badge?: boolean;
+  /** 옆으로 넘겨 보는 화면에서 지금 보이는 페이지인지. 동영상은 보이는 페이지만 재생한다. */
+  active?: boolean;
 };
 
 /**
@@ -34,7 +48,34 @@ type Props = {
  * 원본이 없으면(지워진 사진, 다른 기기에서 남긴 기록) Cloud에 있는 사진을 받아 그린다.
  * 둘 다 없으면 지워진 사진으로 보여준다.
  */
-export function MomentPhoto({ moment, variant = 'display', style, contentFit = 'cover', transition, explainMissing }: Props) {
+export function MomentPhoto({ moment, variant = 'display', ...props }: Props) {
+  if (moment.media_type === 'video' && variant === 'original') {
+    return (
+      <MomentVideo
+        moment={moment}
+        style={props.style as StyleProp<ViewStyle>}
+        contentFit={props.contentFit === 'cover' ? 'cover' : 'contain'}
+        active={props.active}
+        poster={<MomentImage moment={moment} {...props} style={StyleSheet.absoluteFill} />}
+      />
+    );
+  }
+  if (moment.media_type !== 'video' || props.badge === false) {
+    return <MomentImage moment={moment} variant={variant} {...props} />;
+  }
+  // 동영상 썸네일(대표 장면) 위에 재생 시간을 겹친다. 크기는 바깥 칸이 정한다.
+  return (
+    <View style={[props.style as StyleProp<ViewStyle>, styles.clip]}>
+      <MomentImage moment={moment} variant={variant} {...props} style={StyleSheet.absoluteFill} />
+      <VideoBadge duration={moment.duration} />
+    </View>
+  );
+}
+
+/**
+ * 사진(동영상은 대표 장면)을 그린다.
+ */
+function MomentImage({ moment, variant = 'display', style, contentFit = 'cover', transition, explainMissing }: Props) {
   const db = useSQLiteContext();
   const session = useCloudSession();
   // 이번에 사진첩 원본을 그리지 못했으면 true. 지워진 사진으로 표시돼 있어도 한 번은 사진첩을 먼저 시도한다
@@ -145,4 +186,5 @@ function MissingPhoto({ style, explain }: { style: StyleProp<ViewStyle>; explain
 const styles = StyleSheet.create({
   missing: { alignItems: 'center', justifyContent: 'center', gap: Spacing.two, padding: Spacing.three },
   center: { textAlign: 'center' },
+  clip: { overflow: 'hidden' },
 });

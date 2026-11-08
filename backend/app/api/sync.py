@@ -35,6 +35,7 @@ DEVICE_ONLY_FIELDS = frozenset(
         "sync_state",
         "original_uploaded",
         "display_uploaded",
+        "compact_uploaded",
     }
 )
 
@@ -55,8 +56,8 @@ class SyncRow(BaseModel):
 
 class SyncMoment(SyncRow):
     id: str = Field(max_length=36)
-    # pull 응답에서만 채운다. 클라우드에 저장된 사진 종류 ('display', 'original').
-    stored_variants: list[Literal["display", "original"]] = Field(default_factory=list)
+    # pull 응답에서만 채운다. 클라우드에 저장된 파일 종류 ('display', 'original', 'compact').
+    stored_variants: list[Literal["display", "original", "compact"]] = Field(default_factory=list)
 
 
 class SyncRecordRow(SyncRow):

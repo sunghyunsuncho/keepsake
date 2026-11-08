@@ -11,6 +11,7 @@ import { Button } from '@/components/button';
 import { BottomBar, Centered, GRID_GAP, useTileWidth } from '@/components/pick';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { VideoBadge } from '@/components/video-badge';
 import { Spacing } from '@/constants/theme';
 import type { Moment } from '@/db/moments';
 import { useTheme } from '@/hooks/use-theme';
@@ -119,6 +120,7 @@ export default function CloudImportScreen() {
                   contentFit="cover"
                   recyclingKey={item.id}
                 />
+                {item.media_type === 'video' && <VideoBadge duration={item.duration} />}
                 {checked && (
                   <View style={[styles.fill, styles.checked]}>
                     <Ionicons name="checkmark-circle" size={24} color={theme.accent} />

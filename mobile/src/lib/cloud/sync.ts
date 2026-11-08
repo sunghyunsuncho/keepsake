@@ -111,7 +111,8 @@ export async function pullChanges(db: SQLiteDatabase) {
       await db.runAsync(
         `DELETE FROM upload_queue WHERE EXISTS (
            SELECT 1 FROM moments m WHERE m.id = upload_queue.moment_id
-             AND (CASE upload_queue.variant WHEN 'display' THEN m.display_uploaded ELSE m.original_uploaded END) = 1
+             AND (CASE upload_queue.variant WHEN 'display' THEN m.display_uploaded
+                    WHEN 'compact' THEN m.compact_uploaded ELSE m.original_uploaded END) = 1
          )`,
       );
     });
@@ -148,12 +149,14 @@ async function mergeMoment(db: SQLiteDatabase, remote: SyncMoment) {
   const stored = remote.stored_variants ?? [];
   const displayUploaded = stored.includes('display') ? 1 : 0;
   const originalUploaded = stored.includes('original') ? 1 : 0;
+  const compactUploaded = stored.includes('compact') ? 1 : 0;
   if (local && local.updated_at >= remote.updated_at) {
     // 내용은 이 기기 쪽이 같거나 최신이다. 사진이 Cloud에 올라갔는지만 반영한다.
     await db.runAsync(
-      'UPDATE moments SET display_uploaded = ?, original_uploaded = ? WHERE id = ?',
+      'UPDATE moments SET display_uploaded = ?, original_uploaded = ?, compact_uploaded = ? WHERE id = ?',
       displayUploaded,
       originalUploaded,
+      compactUploaded,
       remote.id,
     );
     return;
@@ -163,12 +166,15 @@ async function mergeMoment(db: SQLiteDatabase, remote: SyncMoment) {
     ...Object.fromEntries(SYNCED_MOMENT_COLUMNS.map((c) => [c, data[c] ?? null])),
     id: remote.id,
     memo: typeof data.memo === 'string' ? data.memo : '',
+    // 스키마 12 전에 올린 기록에는 없다. 그때는 사진만 남길 수 있었다.
+    media_type: data.media_type === 'video' ? 'video' : 'photo',
     updated_at: remote.updated_at,
     deleted_at: remote.deleted_at ?? null,
     created_at: data.created_at ?? remote.updated_at,
     sync_state: 'synced',
     display_uploaded: displayUploaded,
     original_uploaded: originalUploaded,
+    compact_uploaded: compactUploaded,
   };
   const columns = Object.keys(values);
   await db.runAsync(

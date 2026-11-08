@@ -38,13 +38,15 @@ export async function importMoments(accountDb: SQLiteDatabase, selected: Moment[
       );
       if (!existing) {
         await accountDb.runAsync(
-          `INSERT INTO moments (id, source_asset_id, source_uri, original_filename, width, height,
+          `INSERT INTO moments (id, source_asset_id, source_uri, original_filename, media_type, duration, width, height,
              taken_at, taken_tz_offset, lat, lng, place_name, memo, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           randomUUID(),
           moment.source_asset_id,
           moment.source_uri,
           moment.original_filename,
+          moment.media_type,
+          moment.duration,
           moment.width,
           moment.height,
           moment.taken_at,

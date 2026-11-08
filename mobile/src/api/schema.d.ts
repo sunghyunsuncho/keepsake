@@ -238,7 +238,7 @@ export interface paths {
         put?: never;
         /**
          * Delete Photos
-         * @description 기록은 남기고 사진만 지운다 (안전 앨범에서 빼거나, 앨범을 효율 보관으로 바꿨을 때).
+         * @description 기록은 남기고 파일만 지운다 (안전 앨범에서 빼거나, 앨범을 효율 보관으로 바꿨을 때).
          *
          *     지우는 것은 구독 상태와 관계없이 허용한다. 사용량은 바로 돌려주고, R2는 정리 작업이 지운다.
          *     없는 사진은 건너뛴다 (다른 기기가 먼저 지웠거나 응답을 못 받고 다시 보낸 경우).
@@ -292,7 +292,7 @@ export interface components {
              * Variant
              * @enum {string}
              */
-            variant: "display" | "original";
+            variant: "display" | "original" | "compact";
             /** Size */
             size: number;
             /** Content Type */
@@ -366,7 +366,7 @@ export interface components {
              * Variant
              * @enum {string}
              */
-            variant: "display" | "original";
+            variant: "display" | "original" | "compact";
         };
         /** PullResponse */
         PullResponse: {
@@ -466,7 +466,7 @@ export interface components {
                 [key: string]: unknown;
             };
             /** Stored Variants */
-            stored_variants?: ("display" | "original")[];
+            stored_variants?: ("display" | "original" | "compact")[];
         };
         /** SyncRecordRow */
         SyncRecordRow: {
@@ -881,7 +881,7 @@ export interface operations {
     uploads_download_photo: {
         parameters: {
             query: {
-                variant: "display" | "original";
+                variant: "display" | "original" | "compact";
             };
             header?: never;
             path: {

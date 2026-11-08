@@ -507,7 +507,8 @@
             "schema": {
               "enum": [
                 "display",
-                "original"
+                "original",
+                "compact"
               ],
               "type": "string",
               "title": "Variant"
@@ -544,7 +545,7 @@
           "uploads"
         ],
         "summary": "Delete Photos",
-        "description": "기록은 남기고 사진만 지운다 (안전 앨범에서 빼거나, 앨범을 효율 보관으로 바꿨을 때).\n\n지우는 것은 구독 상태와 관계없이 허용한다. 사용량은 바로 돌려주고, R2는 정리 작업이 지운다.\n없는 사진은 건너뛴다 (다른 기기가 먼저 지웠거나 응답을 못 받고 다시 보낸 경우).",
+        "description": "기록은 남기고 파일만 지운다 (안전 앨범에서 빼거나, 앨범을 효율 보관으로 바꿨을 때).\n\n지우는 것은 구독 상태와 관계없이 허용한다. 사용량은 바로 돌려주고, R2는 정리 작업이 지운다.\n없는 사진은 건너뛴다 (다른 기기가 먼저 지웠거나 응답을 못 받고 다시 보낸 경우).",
         "operationId": "uploads_delete_photos",
         "requestBody": {
           "content": {
@@ -677,19 +678,20 @@
             "type": "string",
             "enum": [
               "display",
-              "original"
+              "original",
+              "compact"
             ],
             "title": "Variant"
           },
           "size": {
             "type": "integer",
-            "maximum": 1073741824.0,
+            "maximum": 4294967296.0,
             "exclusiveMinimum": 0.0,
             "title": "Size"
           },
           "content_type": {
             "type": "string",
-            "pattern": "^image/[a-zA-Z0-9.+-]+$",
+            "pattern": "^(image|video)/[a-zA-Z0-9.+-]+$",
             "title": "Content Type"
           },
           "md5": {
@@ -862,7 +864,8 @@
             "type": "string",
             "enum": [
               "display",
-              "original"
+              "original",
+              "compact"
             ],
             "title": "Variant"
           }
@@ -1148,7 +1151,8 @@
               "type": "string",
               "enum": [
                 "display",
-                "original"
+                "original",
+                "compact"
               ]
             },
             "type": "array",

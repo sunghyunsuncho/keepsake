@@ -146,6 +146,13 @@ const MIGRATIONS: string[] = [
   CREATE INDEX idx_album_moments_moment_active
     ON album_moments (moment_id, album_id) WHERE deleted_at IS NULL;
   `,
+  // 12: 동영상. media_type: 'photo' | 'video', duration: 재생 시간(초, 동영상만).
+  // compact_uploaded: 효율 보관 동영상(720p)이 Cloud에 올라가 있는지 (기기 전용, display/original_uploaded와 같다).
+  `
+  ALTER TABLE moments ADD COLUMN media_type TEXT NOT NULL DEFAULT 'photo';
+  ALTER TABLE moments ADD COLUMN duration REAL;
+  ALTER TABLE moments ADD COLUMN compact_uploaded INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 export async function migrateDb(db: SQLiteDatabase) {

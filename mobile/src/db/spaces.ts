@@ -122,7 +122,8 @@ async function existingAssets(db: SQLiteDatabase, assetIds: string[]) {
 export async function keepLinkedMomentsInLocal(accountDb: SQLiteDatabase) {
   const localDb = await getLocalDb();
   const rows = await accountDb.getAllAsync<Record<string, string | number | null>>(
-    `SELECT source_asset_id, source_uri, source_missing, original_filename, width, height, taken_at, taken_tz_offset,
+    `SELECT source_asset_id, source_uri, source_missing, original_filename, media_type, duration, width, height,
+       taken_at, taken_tz_offset,
        lat, lng, place_name, memo, created_at, updated_at
      FROM moments WHERE deleted_at IS NULL AND source_asset_id IS NOT NULL`,
   );

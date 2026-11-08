@@ -6,7 +6,7 @@ import { Spacing } from '@/constants/theme';
 import type { PhotoQuality } from '@/db/albums';
 import { useTheme } from '@/hooks/use-theme';
 
-// 안전 앨범의 보관 화질. 숫자는 docs/PLAN.md §2.2의 추정치다.
+// 안전 앨범의 보관 화질. 숫자는 docs/PLAN.md §2.2의 추정치다 (사진 기준. 동영상은 길이에 따라 크게 다르다).
 export const PHOTO_QUALITY: Record<
   PhotoQuality,
   { label: string; badge: string; icon: keyof typeof Ionicons.glyphMap; description: string; size: string }
@@ -15,14 +15,14 @@ export const PHOTO_QUALITY: Record<
     label: '원본 그대로',
     badge: '원본 보관',
     icon: 'diamond-outline',
-    description: '찍은 그대로의 원본과 보기용 사진을 함께 보관해요. 인화하거나 원본을 다시 내려받을 때 좋아요.',
+    description: '찍은 그대로의 원본과 보기용 사진을 함께 보관해요. 동영상도 원본 그대로예요. 인화하거나 원본을 다시 내려받을 때 좋아요.',
     size: '1장에 약 3~5MB',
   },
   display: {
     label: '효율 보관',
     badge: '효율 보관',
     icon: 'leaf-outline',
-    description: '휴대폰에서 볼 때 뭉개지지 않는 크기(긴 변 1600px)로만 보관해요. 같은 용량에 훨씬 많이 담을 수 있어요.',
+    description: '휴대폰에서 볼 때 뭉개지지 않는 크기(사진은 긴 변 1600px, 동영상은 720p)로만 보관해요. 같은 용량에 훨씬 많이 담을 수 있어요.',
     size: '1장에 약 0.5MB',
   },
 };

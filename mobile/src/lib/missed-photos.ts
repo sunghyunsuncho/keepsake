@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { momentIdsByAsset } from '@/db/moments';
 import { getSettings, setSetting } from '@/db/settings';
+import { MEDIA_TYPES } from '@/lib/photos';
 
 // 놓친 사진: 고르기 지점보다 이전 시각으로 나중에 보관함에 들어온 사진 (다른 기기에서 받은 사진,
 // 메신저로 받은 사진, 가져온 사진). 고르기 화면은 지점 이후만 보여주므로 따로 찾아서 위쪽에 묶어 보여준다.
@@ -37,7 +38,7 @@ async function check(db: SQLiteDatabase, limited: boolean) {
   const checkedAt = Date.now();
   const createdBefore = Math.min(new Date(cursor).getTime(), checkedAt) + 1;
   const { totalCount } = await MediaLibrary.getAssetsAsync({
-    mediaType: MediaLibrary.MediaType.photo,
+    mediaType: MEDIA_TYPES,
     createdBefore,
     first: 1,
   });
@@ -53,7 +54,7 @@ async function check(db: SQLiteDatabase, limited: boolean) {
   if (added < 0 || added > MAX_MISSED_AT_ONCE) return resetBaseline();
 
   const page = await MediaLibrary.getAssetsAsync({
-    mediaType: MediaLibrary.MediaType.photo,
+    mediaType: MEDIA_TYPES,
     createdBefore,
     sortBy: [[MediaLibrary.SortBy.modificationTime, false]],
     first: added,

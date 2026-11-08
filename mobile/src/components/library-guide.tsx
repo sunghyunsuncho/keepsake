@@ -24,7 +24,7 @@ const CLOUD_LINES: GuideLine[] = [
   {
     icon: PHOTO_QUALITY.original.icon,
     title: '앨범마다 보관 화질',
-    text: `${PHOTO_QUALITY.original.label}는 원본과 보기용 사진을, ${PHOTO_QUALITY.display.label}은 긴 변 1600px 보기용만 보관해 용량을 아껴요.`,
+    text: `${PHOTO_QUALITY.original.label}는 원본과 보기용 사진을, ${PHOTO_QUALITY.display.label}은 보기용(사진은 긴 변 1600px, 동영상은 720p)만 보관해 용량을 아껴요.`,
   },
   {
     icon: 'trash-outline',

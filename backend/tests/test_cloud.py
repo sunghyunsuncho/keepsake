@@ -517,6 +517,124 @@ def test_deleting_photos_keeps_the_record(client, db):
     assert len(prefix_keys(user_id)) == 2
 
 
+def test_video_keeps_poster_compact_and_original(client):
+    user_id, headers = sign_in(client)
+    webhook(client, user_id, "INITIAL_PURCHASE")
+    moment_id = str(uuid4())
+    client.post(
+        "/sync/push",
+        headers=headers,
+        json={"moments": [moment(moment_id, "2026-10-01T00:00:00Z", media_type="video")]},
+    )
+    for variant, content_type, body in (
+        ("display", "image/jpeg", b"poster"),
+        ("compact", "video/mp4", b"compact video"),
+        ("original", "video/quicktime", b"original video"),
+    ):
+        created = client.post(
+            "/uploads",
+            headers=headers,
+            json={
+                "moment_id": moment_id,
+                "variant": variant,
+                "size": len(body),
+                "content_type": content_type,
+                "md5": hashlib.md5(body).hexdigest(),
+            },
+        )
+        assert created.status_code == 200, created.text
+        info = created.json()
+        assert httpx.put(info["upload_url"], content=body, headers=info["headers"]).is_success
+        assert client.post(f"/uploads/{info['id']}/complete", headers=headers).status_code == 204
+
+    pulled = client.get("/sync/pull", headers=headers).json()["moments"]
+    assert pulled[0]["data"]["media_type"] == "video"
+    assert sorted(pulled[0]["stored_variants"]) == ["compact", "display", "original"]
+    original = client.get(
+        f"/moments/{moment_id}/photo", params={"variant": "original"}, headers=headers
+    ).json()
+    assert original["extension"] == "mov" and original["content_type"] == "video/quicktime"
+    # 재생하는 동안 구간마다 다시 요청하므로 동영상 URL은 사진보다 오래 간다.
+    expires = datetime.fromisoformat(original["expires_at"])
+    assert expires - datetime.now(UTC) > timedelta(hours=2)
+    assert httpx.get(original["download_url"]).content == b"original video"
+
+
+def test_upload_rejects_files_over_4gb_and_other_types(client):
+    user_id, headers = sign_in(client)
+    webhook(client, user_id, "INITIAL_PURCHASE")
+    moment_id = str(uuid4())
+    client.post(
+        "/sync/push", headers=headers, json={"moments": [moment(moment_id, "2026-10-01T00:00:00Z")]}
+    )
+    base = {"moment_id": moment_id, "variant": "original", "md5": "0" * 32}
+    too_big = {**base, "size": 4 * 1024**3 + 1, "content_type": "video/mp4"}
+    assert client.post("/uploads", headers=headers, json=too_big).status_code == 422
+    audio = {**base, "size": 10, "content_type": "audio/mpeg"}
+    assert client.post("/uploads", headers=headers, json=audio).status_code == 422
+
+
+def test_upload_rejects_a_file_type_that_does_not_match_its_variant(client):
+    user_id, headers = sign_in(client)
+    webhook(client, user_id, "INITIAL_PURCHASE")
+    moment_id = str(uuid4())
+    client.post(
+        "/sync/push",
+        headers=headers,
+        json={"moments": [moment(moment_id, "2026-10-01T00:00:00Z", media_type="video")]},
+    )
+    base = {"moment_id": moment_id, "size": 10, "md5": "0" * 32}
+    # display는 모든 기기에서 이미지로 그리고 compact는 mp4로 재생한다.
+    assert (
+        client.post(
+            "/uploads",
+            headers=headers,
+            json={**base, "variant": "display", "content_type": "video/mp4"},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/uploads",
+            headers=headers,
+            json={**base, "variant": "compact", "content_type": "image/jpeg"},
+        ).status_code
+        == 422
+    )
+    # 동영상 기록의 original도 동영상이어야 한다.
+    assert (
+        client.post(
+            "/uploads",
+            headers=headers,
+            json={**base, "variant": "original", "content_type": "image/jpeg"},
+        ).status_code
+        == 422
+    )
+
+
+def test_photo_cannot_store_a_compact_video(client):
+    user_id, headers = sign_in(client)
+    webhook(client, user_id, "INITIAL_PURCHASE")
+    moment_id = str(uuid4())
+    client.post(
+        "/sync/push", headers=headers, json={"moments": [moment(moment_id, "2026-10-01T00:00:00Z")]}
+    )
+    assert (
+        client.post(
+            "/uploads",
+            headers=headers,
+            json={
+                "moment_id": moment_id,
+                "variant": "compact",
+                "size": 10,
+                "content_type": "video/mp4",
+                "md5": "0" * 32,
+            },
+        ).status_code
+        == 422
+    )
+
+
 def test_store_billing_retry_and_cancellation_keep_access(client):
     user_id, headers = sign_in(client)
     webhook(client, user_id, "INITIAL_PURCHASE")

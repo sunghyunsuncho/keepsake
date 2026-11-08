@@ -106,7 +106,7 @@ export default function AlbumAddScreen() {
           <ThemedText type="small" themeColor="textSecondary" style={styles.guide}>
             {album?.photoQuality
               ? `안전 보관할 사진을 골라 주세요. 이 앨범은 ${PHOTO_QUALITY[album.photoQuality].label}로 보관해요` +
-                (album.photoQuality === 'display' ? ' (긴 변 1600px).' : ' (보기용 사진도 함께).')
+                (album.photoQuality === 'display' ? ' (사진은 긴 변 1600px, 동영상은 720p).' : ' (보기용 사진도 함께).')
               : '이 앨범에 넣을 사진을 골라 주세요. 사진은 복사되지 않고, 앨범에서 빼도 기록은 그대로 남아요.'}
           </ThemedText>
           <FlashList

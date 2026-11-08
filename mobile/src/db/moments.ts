@@ -5,6 +5,7 @@ import { notifyChange } from '@/db/changes';
 import { dayRange, localDateKey } from '@/lib/dates';
 
 export type SyncState = 'local_only' | 'pending' | 'synced';
+export type MediaType = 'photo' | 'video';
 
 export type Moment = {
   id: string;
@@ -15,6 +16,9 @@ export type Moment = {
   /** 기기 사진첩에서 원본을 찾지 못함 (0|1). 지워진 사진 */
   source_missing: number;
   original_filename: string | null;
+  media_type: MediaType;
+  /** 동영상 재생 시간(초). 사진은 null */
+  duration: number | null;
   width: number | null;
   height: number | null;
   taken_at: string;
@@ -28,9 +32,11 @@ export type Moment = {
   updated_at: string;
   deleted_at: string | null;
   sync_state: SyncState;
-  /** Cloud에 원본/표시용 사진이 올라가 있는지 (0|1) */
+  /** Cloud에 원본/표시용 사진(동영상은 대표 장면)이 올라가 있는지 (0|1) */
   original_uploaded: number;
   display_uploaded: number;
+  /** Cloud에 효율 보관 동영상(720p)이 올라가 있는지 (0|1). 동영상만 */
+  compact_uploaded: number;
   /** 사진첩 연결을 서버에 보냈는지 (0|1) */
   source_link_synced: number;
 };
@@ -41,6 +47,8 @@ export type NewMoment = Pick<
   | 'source_asset_id'
   | 'source_uri'
   | 'original_filename'
+  | 'media_type'
+  | 'duration'
   | 'width'
   | 'height'
   | 'taken_at'
@@ -57,6 +65,8 @@ export const MOMENT_COLUMNS = [
   'source_uri',
   'source_missing',
   'original_filename',
+  'media_type',
+  'duration',
   'width',
   'height',
   'taken_at',
@@ -71,6 +81,7 @@ export const MOMENT_COLUMNS = [
   'sync_state',
   'original_uploaded',
   'display_uploaded',
+  'compact_uploaded',
 ] as const satisfies readonly (keyof Moment)[];
 
 /** 이 기기에서만 의미가 있는 값 (사진첩 연결, Cloud 동기화 상태). 서버로 보내지 않는다. */
@@ -81,6 +92,7 @@ export const DEVICE_ONLY_COLUMNS = [
   'sync_state',
   'original_uploaded',
   'display_uploaded',
+  'compact_uploaded',
 ] as const;
 export const SYNCED_MOMENT_COLUMNS = MOMENT_COLUMNS.filter(
   (c): c is Exclude<(typeof MOMENT_COLUMNS)[number], (typeof DEVICE_ONLY_COLUMNS)[number]> =>
@@ -158,13 +170,15 @@ export async function insertMoment(db: SQLiteDatabase, moment: NewMoment, review
   await inTransaction(db, async () => {
     await db.runAsync(
       `INSERT INTO moments (id, source_asset_id, source_uri,
-         original_filename, width, height, taken_at, taken_tz_offset, lat, lng,
+         original_filename, media_type, duration, width, height, taken_at, taken_tz_offset, lat, lng,
          created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       moment.id,
       moment.source_asset_id,
       moment.source_uri,
       moment.original_filename,
+      moment.media_type,
+      moment.duration,
       moment.width,
       moment.height,
       moment.taken_at,

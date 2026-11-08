@@ -15,7 +15,7 @@ import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.providers.AppContextProvider
 import java.io.Serializable
 
-// 사진을 기기 휴지통으로 옮기는 시스템 확인 창 (Android 11+). 사용자가 허용하면 시스템이 바로 옮긴다.
+// 사진·동영상을 기기 휴지통으로 옮기는 시스템 확인 창 (Android 11+). 사용자가 허용하면 시스템이 바로 옮긴다.
 class TrashContract(
   private val appContextProvider: AppContextProvider
 ) : AppContextActivityResultContract<TrashContractInput, Boolean> {
@@ -23,8 +23,11 @@ class TrashContract(
   override fun createIntent(context: Context, input: TrashContractInput): Intent {
     val contentResolver = appContextProvider.appContext.reactContext?.contentResolver
       ?: throw Exceptions.ReactContextLost()
-    val uris = input.assetIds.map {
+    // 휴지통 요청은 사진·동영상 각자의 MediaStore 모음 주소를 받는다.
+    val uris = input.photoIds.map {
       ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, it.toLong())
+    } + input.videoIds.map {
+      ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, it.toLong())
     }
     val request = MediaStore.createTrashRequest(contentResolver, uris, true)
     val intentSenderRequest = IntentSenderRequest.Builder(request.intentSender).build()
@@ -36,4 +39,4 @@ class TrashContract(
   }
 }
 
-data class TrashContractInput(val assetIds: List<String>) : Serializable
+data class TrashContractInput(val photoIds: List<String>, val videoIds: List<String>) : Serializable

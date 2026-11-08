@@ -132,7 +132,8 @@ export async function deleteLeftBehindPhotos(assets: MediaLibrary.Asset[]) {
     return 0;
   }
   if (canTrash) {
-    if (!(await trashPhotos(targets.map((asset) => asset.id)))) throw new Error('cancelled');
+    const ids = (video: boolean) => targets.filter((a) => (a.mediaType === 'video') === video).map((a) => a.id);
+    if (!(await trashPhotos(ids(false), ids(true)))) throw new Error('cancelled');
   } else {
     await MediaLibrary.deleteAssetsAsync(targets);
   }

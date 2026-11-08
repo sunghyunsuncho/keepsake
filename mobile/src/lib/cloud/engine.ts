@@ -167,7 +167,7 @@ async function runOnce(db: SQLiteDatabase, onlyIfLocalChanges: boolean) {
     // 이 마이그레이션은 서버 사진을 지우지 않기 위한 로컬 정리다. 만료 상태에서도 먼저
     // 실행해야, 아직 안전 앨범으로 옮기지 못한 이전 버전의 사진을 release가 지우지 않는다.
     await adoptPhotosWithoutAlbum(db);
-    const released = await releaseUnwantedPhotos(db);
+    let released = await releaseUnwantedPhotos(db);
     if (subscription.can_upload) {
       const settings = await getSettings(db);
       const cellular = network.type === Network.NetworkStateType.CELLULAR;
@@ -176,6 +176,8 @@ async function runOnce(db: SQLiteDatabase, onlyIfLocalChanges: boolean) {
       } else {
         try {
           uploaded = await uploadPending(db, () => stopRequested);
+          // 효율 보관으로 바꾼 동영상의 원본은 720p 영상(compact)이 올라간 뒤에야 지울 수 있다.
+          if (uploaded > 0) released += await releaseUnwantedPhotos(db);
         } catch (e) {
           if (e instanceof CloudError && e.status === 413) {
             problem = '안전 보관함 용량이 가득 찼어요. 새 사진은 올리지 않고, 이미 올린 사진은 그대로 있어요.';

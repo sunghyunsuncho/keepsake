@@ -14,6 +14,7 @@ import {
 
 import { Button } from '@/components/button';
 import { ThemedText } from '@/components/themed-text';
+import { VideoBadge } from '@/components/video-badge';
 import { Spacing } from '@/constants/theme';
 import { GRID_COLUMN_OPTIONS, type GridColumns } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
@@ -59,7 +60,7 @@ export function PhotoTile({
       onPress={onPress}
       accessibilityRole="checkbox"
       accessibilityState={{ checked: state !== 'none' }}
-      accessibilityLabel={state === 'saved' ? '남긴 사진' : '사진'}
+      accessibilityLabel={`${state === 'saved' ? '남긴 ' : ''}${asset.mediaType === 'video' ? '동영상' : '사진'}`}
       style={{ width, height, margin: GRID_GAP / 2 }}>
       <Image
         source={{ uri: asset.uri }}
@@ -67,6 +68,7 @@ export function PhotoTile({
         contentFit="cover"
         recyclingKey={asset.id}
       />
+      {asset.mediaType === 'video' && <VideoBadge duration={asset.duration} />}
       {state === 'picked' && (
         <View style={[styles.fill, styles.pickedFrame, { borderColor: theme.accent }]} />
       )}

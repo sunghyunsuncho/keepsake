@@ -16,7 +16,7 @@ import { DEFAULT_SETTINGS, getSettings } from '@/db/settings';
 import { formatFullDate } from '@/lib/dates';
 import { sortForGallery } from '@/lib/gallery';
 
-// 전체 화면으로 보기: 앨범(또는 '몇 년 전 오늘')의 사진을 옆으로 넘겨 본다.
+// 전체 화면으로 보기: 앨범(또는 '몇 년 전 오늘')의 사진을 옆으로 넘겨 본다. 동영상은 보이는 페이지만 재생한다.
 // 사진을 누르면 위아래 정보가 숨고, [기록 보기]로 메모를 열 수 있다.
 export default function ViewerScreen() {
   const params = useLocalSearchParams<{ album?: string; onThisDay?: string; moment: string }>();
@@ -57,6 +57,7 @@ export default function ViewerScreen() {
         <Pager
           moments={moments}
           initialId={params.moment}
+          currentIndex={currentIndex}
           onIndexChange={setIndex}
           onTap={() => setChrome((v) => !v)}
         />
@@ -104,15 +105,18 @@ export default function ViewerScreen() {
 function Pager({
   moments,
   initialId,
+  currentIndex,
   onIndexChange,
   onTap,
 }: {
   moments: Moment[];
   initialId: string;
+  currentIndex: number;
   onIndexChange: (index: number) => void;
   onTap: () => void;
 }) {
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   // 처음 연 사진에서 시작한다. 그 사이 기록이 지워져 없으면 맨 앞에서.
   const [start] = useState(() => Math.max(moments.findIndex((m) => m.id === initialId), 0));
   useEffect(() => onIndexChange(start), [start, onIndexChange]);
@@ -132,14 +136,33 @@ function Pager({
       // 넘기는 도중 반을 넘으면 바뀐 사진으로 친다 (같은 값이면 다시 그리지 않는다).
       scrollEventThrottle={32}
       onScroll={(e) => onIndexChange(Math.round(e.nativeEvent.contentOffset.x / width))}
-      renderItem={({ item }) => (
-        <Pressable onPress={onTap} style={{ width, height }}>
-          <MomentPhoto moment={item} variant="original" style={{ width, height }} contentFit="contain" explainMissing />
-        </Pressable>
-      )}
+      // 지금 보이는 페이지가 바뀌면 동영상을 멈추고 새 페이지를 재생하도록 다시 그린다.
+      extraData={currentIndex}
+      renderItem={({ item, index }) =>
+        item.media_type === 'video' ? (
+          // 재생 막대가 위아래 정보에 가리지 않도록 그 사이에 둔다. 누르면 재생 막대가 받으므로 정보를 숨기지 않는다.
+          <View
+            style={{
+              width,
+              height,
+              paddingTop: insets.top + VIDEO_TOP_SPACE,
+              paddingBottom: insets.bottom + VIDEO_BOTTOM_SPACE,
+            }}>
+            <MomentPhoto moment={item} variant="original" style={styles.flex} contentFit="contain" active={index === currentIndex} />
+          </View>
+        ) : (
+          <Pressable onPress={onTap} style={{ width, height }}>
+            <MomentPhoto moment={item} variant="original" style={{ width, height }} contentFit="contain" explainMissing />
+          </Pressable>
+        )
+      }
     />
   );
 }
+
+// 동영상 페이지의 위(닫기·쪽수)와 아래(날짜·메모·[기록 보기]) 정보 자리
+const VIDEO_TOP_SPACE = 48;
+const VIDEO_BOTTOM_SPACE = 104;
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },

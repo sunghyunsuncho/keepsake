@@ -16,7 +16,7 @@ import { lookupPlace } from '@/lib/place';
 export class CaptureError extends Error {}
 
 /**
- * 고른 사진을 기록으로 남긴다. 사진은 앱에 복사하지 않고 기기 사진첩의 원본을 가리키기만 한다
+ * 고른 사진·동영상을 기록으로 남긴다. 파일은 앱에 복사하지 않고 기기 사진첩의 원본을 가리키기만 한다
  * (docs/PLAN.md §0 '사진 보관'). 기기 사진첩에서 지우면 기록의 사진도 보이지 않는다.
  */
 export async function captureAsset(
@@ -35,14 +35,19 @@ export async function captureAsset(
   } catch {
     throw new CaptureError('사진 정보를 읽지 못했어요. 잠시 후 다시 시도해 주세요.');
   }
+  const video = asset.mediaType === 'video';
   // 촬영지 시간대는 원본 EXIF에서 읽는다. 원본이 기기에 없으면 장소를 찾을 때 그 지역 시간대로 채운다.
-  const tzOffset = info.localUri?.startsWith('file://') ? readCaptureOffset(info.localUri) : null;
+  // 동영상은 EXIF가 없어 장소의 시간대로 채운다.
+  const tzOffset =
+    !video && info.localUri?.startsWith('file://') ? readCaptureOffset(info.localUri) : null;
 
   const moment: NewMoment = {
     id: randomUUID(),
     source_asset_id: asset.id,
     source_uri: asset.uri,
     original_filename: asset.filename,
+    media_type: video ? 'video' : 'photo',
+    duration: video && asset.duration > 0 ? asset.duration : null,
     width: asset.width || null,
     height: asset.height || null,
     // creationTime은 ms. 촬영 시각이 없으면 지금으로 둔다.

@@ -1,6 +1,7 @@
-"""사진 업로드·다운로드 (docs/PLAN.md §3.1). 사진 바이트는 서버를 거치지 않고 R2와 직접 오간다."""
+"""사진·동영상 업로드·다운로드 (docs/PLAN.md §3.1). 파일은 서버를 거치지 않고 R2와 직접 오간다."""
 
 import base64
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import uuid4
@@ -24,8 +25,14 @@ from app.storage import (
 router = APIRouter(tags=["uploads"])
 
 DOWNLOAD_URL_TTL = timedelta(minutes=10)
+# 동영상은 재생하면서 구간마다 다시 요청하므로, 긴 영상을 보는 동안 URL이 끝나지 않게 한다.
+VIDEO_DOWNLOAD_URL_TTL = timedelta(hours=3)
+# R2는 한 번의 PUT으로 5GiB까지 받는다. 여유를 두고 4GiB까지만 받는다.
+MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024
 
-Variant = Literal["display", "original"]
+# display: 목록에 그리는 이미지 (동영상은 대표 장면) / original: 원본 파일
+# compact: 효율 보관 동영상 (720p로 줄인 mp4)
+Variant = Literal["display", "original", "compact"]
 
 EXTENSIONS = {
     "image/jpeg": "jpg",
@@ -36,14 +43,50 @@ EXTENSIONS = {
     "image/gif": "gif",
     "image/x-adobe-dng": "dng",
     "image/tiff": "tiff",
+    "video/mp4": "mp4",
+    "video/quicktime": "mov",
+    "video/x-m4v": "m4v",
+    "video/3gpp": "3gp",
+    "video/webm": "webm",
+    "video/x-matroska": "mkv",
 }
+
+
+def validate_upload_kind(moment: Moment, variant: Variant, content_type: str) -> None:
+    """변형별 MIME 형식을 고정해 목록/재생 경로가 깨지는 것을 막는다.
+
+    presigned URL은 사용자가 지정한 Content-Type까지 서명한다. 따라서 여기서 제한하지
+    않으면 display 자리에 동영상이, compact 자리에 이미지가 저장될 수 있고 다른 기기는
+    이를 썸네일 또는 재생 파일로 해석하지 못한다.
+    """
+    if content_type not in EXTENSIONS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "unsupported file type")
+    # 스키마 추가 전의 기록은 사진으로 해석한다. 손상된 과거 JSON도 업로드 경로를
+    # 막지 않도록 같은 안전한 기본값을 쓴다.
+    try:
+        media_type = json.loads(moment.data).get("data", {}).get("media_type", "photo")
+    except (TypeError, json.JSONDecodeError):
+        media_type = "photo"
+    if variant == "display":
+        valid = content_type == "image/jpeg"
+    elif variant == "compact":
+        # compact는 동영상의 효율 보관본이다. 사진에 이를 허용하면 사용되지 않는
+        # 객체가 저장되고, 다른 기기의 업로드 상태도 실제 보관 상태와 어긋난다.
+        valid = media_type == "video" and content_type == "video/mp4"
+    else:
+        prefix = "video/" if media_type == "video" else "image/"
+        valid = content_type.startswith(prefix)
+    if not valid:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "file type does not match variant"
+        )
 
 
 class CreateUploadRequest(BaseModel):
     moment_id: str = Field(max_length=36)
     variant: Variant
-    size: int = Field(gt=0, le=1024 * 1024 * 1024)
-    content_type: str = Field(pattern=r"^image/[a-zA-Z0-9.+-]+$")
+    size: int = Field(gt=0, le=MAX_UPLOAD_BYTES)
+    content_type: str = Field(pattern=r"^(image|video)/[a-zA-Z0-9.+-]+$")
     # 파일의 MD5(hex). 기기는 파일을 메모리에 올리지 않고 네이티브로 계산할 수 있다.
     # presigned URL에 Content-MD5로 서명해서, 내용이 다르면 저장소가 업로드를 거절한다.
     md5: str = Field(pattern=r"^[a-fA-F0-9]{32}$")
@@ -101,6 +144,7 @@ def create_upload(payload: CreateUploadRequest, user: CurrentUser, db: DbSession
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Cloud storage limit reached")
 
     content_type = payload.content_type.lower()
+    validate_upload_kind(moment, payload.variant, content_type)
     ext = EXTENSIONS.get(content_type, "bin")
     key = object_key(user.id, payload.moment_id, payload.variant, uuid4().hex, ext)
     if current is None:
@@ -195,23 +239,24 @@ def download_photo(
     )
     if obj is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "photo not found")
+    ttl = VIDEO_DOWNLOAD_URL_TTL if obj.content_type.startswith("video/") else DOWNLOAD_URL_TTL
     url = r2_client().generate_presigned_url(
         "get_object",
         Params={"Bucket": get_settings().r2_bucket, "Key": obj.r2_key},
-        ExpiresIn=int(DOWNLOAD_URL_TTL.total_seconds()),
+        ExpiresIn=int(ttl.total_seconds()),
     )
     return DownloadResponse(
         download_url=url,
         content_type=obj.content_type,
         extension=EXTENSIONS.get(obj.content_type, "bin"),
         size=obj.size_bytes,
-        expires_at=datetime.now(UTC) + DOWNLOAD_URL_TTL,
+        expires_at=datetime.now(UTC) + ttl,
     )
 
 
 @router.post("/photos/delete", status_code=status.HTTP_204_NO_CONTENT)
 def delete_photos(payload: DeletePhotosRequest, user: CurrentUser, db: DbSession) -> None:
-    """기록은 남기고 사진만 지운다 (안전 앨범에서 빼거나, 앨범을 효율 보관으로 바꿨을 때).
+    """기록은 남기고 파일만 지운다 (안전 앨범에서 빼거나, 앨범을 효율 보관으로 바꿨을 때).
 
     지우는 것은 구독 상태와 관계없이 허용한다. 사용량은 바로 돌려주고, R2는 정리 작업이 지운다.
     없는 사진은 건너뛴다 (다른 기기가 먼저 지웠거나 응답을 못 받고 다시 보낸 경우).

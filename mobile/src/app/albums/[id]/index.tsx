@@ -182,7 +182,7 @@ export default function AlbumScreen() {
       '보관 화질',
       `${PHOTO_QUALITY.original.label}: ${PHOTO_QUALITY.original.description}\n\n${PHOTO_QUALITY.display.label}: ${PHOTO_QUALITY.display.description}` +
         (current === 'original'
-          ? '\n\n효율 보관으로 바꾸면 다른 원본 보관 앨범에 없는 사진의 원본은 안전 보관에서 삭제돼요.'
+          ? '\n\n효율 보관으로 바꾸면 다른 원본 보관 앨범에 없는 사진의 원본은 안전 보관에서 삭제돼요. 동영상 원본은 720p 영상을 올린 뒤에 지워요.'
           : ''),
       [
         ...PHOTO_QUALITIES.map((quality) => ({

@@ -4,11 +4,13 @@
 """
 
 import logging
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.cloud import (
@@ -19,7 +21,7 @@ from app.cloud import (
     refresh_from_revenuecat,
 )
 from app.config import get_settings
-from app.db import SessionLocal
+from app.db import SessionLocal, engine
 from app.models.cloud import BillingEvent, CloudObject, Device, Entitlement, StorageCleanup, User
 from app.monitoring import init_sentry
 from app.storage import UPLOAD_SETTLE_AFTER, delete_object, delete_prefix
@@ -327,8 +329,24 @@ def run(db: Session, now: datetime | None = None, notify: Notifier = send_push) 
             db.rollback()
 
 
+def wait_for_db(attempts: int = 12, delay: float = 5) -> None:
+    """cron 컨테이너가 막 뜬 직후에는 Railway 내부 주소(postgres.railway.internal)가
+    아직 풀리지 않을 수 있다. 단계마다 같은 연결 오류를 내지 않도록 먼저 연결을 기다린다."""
+    for attempt in range(1, attempts + 1):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return
+        except OperationalError:
+            if attempt == attempts:
+                raise
+            log.warning("database not reachable yet (%d/%d)", attempt, attempts)
+            time.sleep(delay)
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     init_sentry()
+    wait_for_db()
     with SessionLocal() as session:
         run(session)
