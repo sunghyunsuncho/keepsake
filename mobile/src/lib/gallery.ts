@@ -6,7 +6,10 @@ import { formatDay, formatMonth, localDateKey } from '@/lib/dates';
 //   year: 해마다 몇 장만 (많으면 고르게 뽑는다)   month: 달마다 전부, 작게
 //   day: 날마다 크게                            story: 메모와 함께 한 장씩
 
-export type GalleryRow =
+/** 날짜로 묶을 수 있는 것. 내 기록(Moment)과 공유 앨범 항목이 함께 쓴다. */
+export type Dated = { id: string; taken_at: string; taken_tz_offset: number | null };
+
+export type GalleryRow<T extends Dated = Moment> =
   | {
       type: 'header';
       key: string;
@@ -17,32 +20,32 @@ export type GalleryRow =
       /** 이 묶음에서 가장 최근 날짜. 다른 단계로 바꿀 때 위치를 맞추는 데 쓴다. */
       firstDay: string;
     }
-  | { type: 'tiles'; key: string; moments: Moment[]; columns: number; firstDay: string }
-  | { type: 'card'; key: string; moment: Moment; firstDay: string };
+  | { type: 'tiles'; key: string; moments: T[]; columns: number; firstDay: string }
+  | { type: 'card'; key: string; moment: T; firstDay: string };
 
 export const ZOOM_COLUMNS: Record<Exclude<AlbumZoom, 'story'>, number> = { year: 6, month: 5, day: 3 };
 /** 해 단계에서 한 해에 보여줄 최대 줄 수 */
 const YEAR_ROWS = 3;
 
-type Keyed = { moment: Moment; day: string };
+type Keyed<T> = { moment: T; day: string };
 
 /**
  * 사용자가 고른 방향으로, 촬영지 날짜 기준으로 정렬한다. DB는 UTC 시각순이라 시간대가 다른 사진이 섞이면
  * 같은 날이 두 번 나뉠 수 있다 (같은 날 안에서는 UTC 시각순 유지).
  */
-function byLocalDay(moments: Moment[], order: AlbumSortOrder): Keyed[] {
+function byLocalDay<T extends Dated>(moments: T[], order: AlbumSortOrder): Keyed<T>[] {
   return moments
     .map((moment) => ({ moment, day: localDateKey(moment.taken_at, moment.taken_tz_offset) }))
     .sort((a, b) => (a.day === b.day ? 0 : order === 'newest' ? (a.day < b.day ? 1 : -1) : (a.day < b.day ? -1 : 1)));
 }
 
 /** 앨범 화면과 같은 순서. 전체 화면으로 넘겨 볼 때 쓴다. */
-export function sortForGallery(moments: Moment[], order: AlbumSortOrder = 'newest') {
+export function sortForGallery<T extends Dated>(moments: T[], order: AlbumSortOrder = 'newest') {
   return byLocalDay(moments, order).map((k) => k.moment);
 }
 
-function groupBy(items: Keyed[], keyOf: (day: string) => string) {
-  const groups: { key: string; items: Keyed[] }[] = [];
+function groupBy<T>(items: Keyed<T>[], keyOf: (day: string) => string) {
+  const groups: { key: string; items: Keyed<T>[] }[] = [];
   for (const item of items) {
     const key = keyOf(item.day);
     const last = groups[groups.length - 1];
@@ -52,8 +55,8 @@ function groupBy(items: Keyed[], keyOf: (day: string) => string) {
   return groups;
 }
 
-function tileRows(items: Keyed[], columns: number, keyPrefix: string): GalleryRow[] {
-  const rows: GalleryRow[] = [];
+function tileRows<T extends Dated>(items: Keyed<T>[], columns: number, keyPrefix: string): GalleryRow<T>[] {
+  const rows: GalleryRow<T>[] = [];
   for (let i = 0; i < items.length; i += columns) {
     const chunk = items.slice(i, i + columns);
     rows.push({
@@ -73,15 +76,21 @@ function sample<T>(items: T[], count: number) {
   return Array.from({ length: count }, (_, i) => items[Math.round((i * (items.length - 1)) / (count - 1))]);
 }
 
-export function galleryRows(moments: Moment[], zoom: AlbumZoom, order: AlbumSortOrder = 'newest'): GalleryRow[] {
+/** sampleYears: 해 단계에서 많으면 고르게 몇 장만 보여 준다 (고르는 화면은 모두 보여야 고를 수 있어 끈다). */
+export function galleryRows<T extends Dated>(
+  moments: T[],
+  zoom: AlbumZoom,
+  order: AlbumSortOrder = 'newest',
+  { sampleYears = true }: { sampleYears?: boolean } = {},
+): GalleryRow<T>[] {
   const keyed = byLocalDay(moments, order);
-  const rows: GalleryRow[] = [];
+  const rows: GalleryRow<T>[] = [];
 
   if (zoom === 'year') {
     const columns = ZOOM_COLUMNS.year;
     const max = columns * YEAR_ROWS;
     for (const group of groupBy(keyed, (day) => day.slice(0, 4))) {
-      const shown = sample(group.items, max);
+      const shown = sampleYears ? sample(group.items, max) : group.items;
       rows.push({
         type: 'header',
         key: `y-${group.key}`,
@@ -143,7 +152,7 @@ export function galleryRows(moments: Moment[], zoom: AlbumZoom, order: AlbumSort
 }
 
 /** 줄에 들어 있는 첫 기록 (머리글이면 null) */
-export function firstMomentOf(row: GalleryRow) {
+export function firstMomentOf<T extends Dated>(row: GalleryRow<T>) {
   if (row.type === 'tiles') return row.moments[0];
   if (row.type === 'card') return row.moment;
   return null;
@@ -153,7 +162,7 @@ export function firstMomentOf(row: GalleryRow) {
  * 다른 단계로 바꿨을 때 보던 기록이 있는 줄. 해 단계처럼 그 기록이 보이지 않으면
  * 그 기록이 속한 묶음(그 날짜 이후로 시작하는 마지막 줄)으로 간다.
  */
-export function anchorIndex(rows: GalleryRow[], anchor: { id: string; day: string } | null) {
+export function anchorIndex<T extends Dated>(rows: GalleryRow<T>[], anchor: { id: string; day: string } | null) {
   if (!anchor) return 0;
   const exact = rows.findIndex((row) =>
     row.type === 'tiles' ? row.moments.some((m) => m.id === anchor.id) : row.type === 'card' && row.moment.id === anchor.id,

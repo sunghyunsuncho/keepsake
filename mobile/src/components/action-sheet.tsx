@@ -8,15 +8,16 @@ import { useTheme } from '@/hooks/use-theme';
 
 // 선택지가 많은 메뉴. 안드로이드의 Alert는 버튼을 3개까지만 보여 줘서(나머지는 사라진다) 메뉴는 이 시트로 연다.
 // Alert.alert와 같은 모양으로 부른다: showActionSheet(제목, 설명, [{ text, style, onPress }]).
-// 화면 맨 위(app/_layout.tsx)에 ActionSheetHost를 하나 둔다.
+// 화면 맨 위(app/_layout.tsx)에 ActionSheetHost를 하나 둔다. 전체 화면 Modal 안에서 열 때는 그 Modal 안에도 하나 둔다
+// (iOS는 떠 있는 Modal 위에 다른 Modal을 형제로 띄우지 못한다). 가장 나중에 붙은 호스트가 연다.
 
 export type SheetAction = { text: string; style?: 'default' | 'destructive' | 'cancel'; onPress?: () => void };
 type Sheet = { title?: string; message?: string; actions: SheetAction[] };
 
-let show: ((sheet: Sheet) => void) | null = null;
+const hosts: ((sheet: Sheet) => void)[] = [];
 
 export function showActionSheet(title: string | undefined, message: string | undefined, actions: SheetAction[]) {
-  show?.({ title, message, actions });
+  hosts[hosts.length - 1]?.({ title, message, actions });
 }
 
 export function ActionSheetHost() {
@@ -25,9 +26,9 @@ export function ActionSheetHost() {
   const [sheet, setSheet] = useState<Sheet | null>(null);
 
   useEffect(() => {
-    show = setSheet;
+    hosts.push(setSheet);
     return () => {
-      show = null;
+      hosts.splice(hosts.indexOf(setSheet), 1);
     };
   }, []);
 
