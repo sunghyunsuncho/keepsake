@@ -44,11 +44,13 @@ from app.models.cloud import (
 )
 from app.plans import default_plan
 from app.shared import (
+    ITEM_QUALITY,
     album_limit,
     author_usage,
     can_own_more,
     capacity,
     is_counted,
+    item_quality,
     items_of_author,
     lock_album_row,
     member_count,
@@ -81,6 +83,7 @@ MIN_OWNER_ALLOCATION = GIB
 Relation = Literal["family", "friends", "partner", "other"]
 Role = Literal["admin", "member"]
 Quality = Literal["original", "display"]
+CoverMode = Literal["latest", "photo", "design"]
 DisplayName = Annotated[str, Field(min_length=1, max_length=20)]
 Allocation = Annotated[int, Field(ge=0, le=10 * 1024 * GIB)]
 
@@ -103,6 +106,8 @@ class CreateSharedAlbumRequest(BaseModel):
     allocated_bytes: Allocation
     # 나만 보던 안전 앨범을 바꿀 때 그 앨범의 기록. 파일은 다시 올리지 않고 앨범 용량으로 옮겨 센다.
     moment_ids: list[str] = Field(default_factory=list, max_length=5000)
+    # 그 기록 중 사진마다 따로 고른 화질 {기록: 화질}. 없는 기록은 앨범 화질을 따른다.
+    photo_qualities: dict[str, Quality] = Field(default_factory=dict, max_length=5000)
 
     @field_validator("title", "display_name")
     @classmethod
@@ -114,6 +119,10 @@ class UpdateSharedAlbumRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=40)
     relation: Relation | None = None
     photo_quality: Quality | None = None
+    # 표지를 바꿀 때만 보낸다. 'photo'면 cover_item_id, 'design'이면 cover_emoji를 함께 보낸다.
+    cover_mode: CoverMode | None = None
+    cover_item_id: str | None = Field(default=None, max_length=36)
+    cover_emoji: str | None = Field(default=None, min_length=1, max_length=16)
 
     @field_validator("title")
     @classmethod
@@ -145,8 +154,12 @@ class SharedAlbumSummary(BaseModel):
     is_owner: bool
     member_count: int
     item_count: int
-    # 표지로 쓸 가장 최근 항목 (표시용 사진이 올라간 것)
+    cover_mode: CoverMode
+    # 표지로 쓸 항목 (표시용 사진이 올라간 것). 고른 항목이 빠졌거나 아직 올라가지 않았으면
+    # 가장 최근 항목.
     cover_item_id: str | None
+    # cover_mode가 'design'일 때 그릴 이모지
+    cover_emoji: str | None
     storage: AlbumStorage
     # 새 사진을 담을 수 있는지
     writable: bool
@@ -215,7 +228,11 @@ class SharedItemOut(BaseModel):
     taken_tz_offset: int | None
     width: int | None
     height: int | None
-    stored_variants: list[Literal["display", "original", "compact"]]
+    stored_variants: list[Variant]
+    # 이 사진의 화질 (사진마다 고른 화질, 없으면 앨범 화질)
+    photo_quality: Quality
+    # 사진마다 따로 고른 화질인지
+    quality_chosen: bool
     added_at: datetime
 
 
@@ -227,10 +244,22 @@ class SharedItemsPage(BaseModel):
 
 class AddItemsRequest(BaseModel):
     moment_ids: list[str] = Field(min_length=1, max_length=500)
+    # 담는 사진에 따로 고른 화질. None이면 앨범 화질을 따른다.
+    photo_quality: Quality | None = None
+
+
+class ItemQualityRequest(BaseModel):
+    item_ids: list[str] = Field(min_length=1, max_length=500)
+    # None이면 앨범 화질을 따르게 되돌린다.
+    photo_quality: Quality | None
 
 
 class AddItemsResponse(BaseModel):
     added: int
+
+
+class RemoveItemsRequest(BaseModel):
+    item_ids: list[str] = Field(min_length=1, max_length=500)
 
 
 class MyItemRow(BaseModel):
@@ -378,6 +407,12 @@ def _summaries(
             .group_by(SharedAlbumItem.album_id)
         ).all()
     )
+    has_display = (
+        (CloudObject.user_id == SharedAlbumItem.author_id)
+        & (CloudObject.moment_id == SharedAlbumItem.moment_id)
+        & (CloudObject.variant == "display")
+        & (CloudObject.status == "stored")
+    )
     latest = (
         select(
             SharedAlbumItem.album_id,
@@ -386,19 +421,27 @@ def _summaries(
             .over(partition_by=SharedAlbumItem.album_id, order_by=SharedAlbumItem.seq.desc())
             .label("rank"),
         )
-        .join(
-            CloudObject,
-            (CloudObject.user_id == SharedAlbumItem.author_id)
-            & (CloudObject.moment_id == SharedAlbumItem.moment_id)
-            & (CloudObject.variant == "display")
-            & (CloudObject.status == "stored"),
-        )
+        .join(CloudObject, has_display)
         .where(SharedAlbumItem.album_id.in_(ids))
         .subquery()
     )
     covers = dict(
         db.execute(select(latest.c.album_id, latest.c.id).where(latest.c.rank == 1)).all()
     )
+    # 고른 표지가 아직 앨범에 있고 표시용 사진이 올라갔을 때만 그 항목을 쓴다.
+    chosen = [
+        album.cover_item_id
+        for album, _ in rows
+        if album.cover_mode == "photo" and album.cover_item_id is not None
+    ]
+    if chosen:
+        covers.update(
+            db.execute(
+                select(SharedAlbumItem.album_id, SharedAlbumItem.id)
+                .join(CloudObject, has_display)
+                .where(SharedAlbumItem.id.in_(chosen), SharedAlbumItem.album_id.in_(ids))
+            ).all()
+        )
     result = []
     for album, role in rows:
         storage = _storage(db, album, user_id)
@@ -412,7 +455,9 @@ def _summaries(
                 is_owner=album.owner_id == user_id,
                 member_count=member_count(db, album.id),
                 item_count=item_counts.get(album.id, 0),
+                cover_mode=album.cover_mode,  # type: ignore[arg-type]
                 cover_item_id=covers.get(album.id),
+                cover_emoji=album.cover_emoji if album.cover_mode == "design" else None,
                 storage=storage,
                 writable=storage.bytes_total < storage.capacity_bytes,
                 updated_at=album.updated_at,
@@ -491,8 +536,16 @@ def _int(value: object) -> int | None:
     return int(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
 
 
-def _add_items(db: Session, album: SharedAlbum, user_id: str, moment_ids: list[str]) -> int:
-    """내 기록을 항목으로 넣는다 (커밋하지 않는다). 서버에 없거나 지운 기록은 건너뛴다."""
+def _add_items(
+    db: Session,
+    album: SharedAlbum,
+    user_id: str,
+    moment_ids: list[str],
+    qualities: dict[str, str] | None = None,
+) -> int:
+    """내 기록을 항목으로 넣는다 (커밋하지 않는다). 서버에 없거나 지운 기록은 건너뛴다.
+    qualities: 사진마다 고른 화질 {기록: 화질}.
+    """
     wanted = list(dict.fromkeys(moment_ids))
     moments = {
         row.id: row
@@ -525,6 +578,7 @@ def _add_items(db: Session, album: SharedAlbum, user_id: str, moment_ids: list[s
                 author_id=user_id,
                 moment_id=moment_id,
                 seq=album.item_seq,
+                photo_quality=(qualities or {}).get(moment_id),
                 media_type="video" if data.get("media_type") == "video" else "photo",
                 duration=_number(data.get("duration")),
                 taken_at=data.get("taken_at") if isinstance(data.get("taken_at"), str) else None,
@@ -539,6 +593,22 @@ def _add_items(db: Session, album: SharedAlbum, user_id: str, moment_ids: list[s
         # 이미 안전 보관한 파일은 담는 순간 앨범 사용량이 된다.
         recount(db, user_id, wanted, [album])
     return added
+
+
+def _set_cover(db: Session, album: SharedAlbum, payload: UpdateSharedAlbumRequest) -> None:
+    """표지를 바꾼다 (커밋하지 않는다). 고른 항목은 이 앨범에 있어야 한다."""
+    item_id = None
+    emoji = None
+    if payload.cover_mode == "photo":
+        item = db.get(SharedAlbumItem, payload.cover_item_id) if payload.cover_item_id else None
+        if item is None or item.album_id != album.id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "cover item not in album")
+        item_id = item.id
+    elif payload.cover_mode == "design":
+        emoji = (payload.cover_emoji or "").strip() or "✨"
+    album.cover_mode = payload.cover_mode  # type: ignore[assignment]
+    album.cover_item_id = item_id
+    album.cover_emoji = emoji
 
 
 # ---------------------------------------------------------------------------
@@ -595,7 +665,7 @@ def create_album(
         )
     )
     db.flush()
-    _add_items(db, album, user.id, payload.moment_ids)
+    _add_items(db, album, user.id, payload.moment_ids, dict(payload.photo_qualities))
     _require_room(db, album)
     _require_my_space(db, user.id)
     db.commit()
@@ -605,7 +675,7 @@ def create_album(
 @router.get("/my-items", response_model=MyItemsResponse)
 def my_items(user: CurrentUser, db: DbSession) -> MyItemsResponse:
     rows = db.execute(
-        select(SharedAlbumItem.album_id, SharedAlbumItem.moment_id, SharedAlbum.photo_quality)
+        select(SharedAlbumItem.album_id, SharedAlbumItem.moment_id, ITEM_QUALITY)
         .join(SharedAlbum, SharedAlbum.id == SharedAlbumItem.album_id)
         .where(SharedAlbumItem.author_id == user.id)
         .order_by(SharedAlbumItem.album_id, SharedAlbumItem.moment_id)
@@ -712,6 +782,11 @@ def update_album(
         # 필요 없어진 원본은 지금부터 앨범이 아니라 올린 사람의 개인 사용량에서 센다.
         album.photo_quality = payload.photo_quality
         recount_album(db, album)
+        # 이미 올린 원본을 다시 앨범 사용량으로 세면 할당을 넘을 수 있다. 새 항목을 담을 때와
+        # 마찬가지로 이 변경 전체를 거절해야, 기본 화질만 바꿔 앨범을 초과 상태로 만들 수 없다.
+        _require_room(db, album)
+    if payload.cover_mode is not None:
+        _set_cover(db, album, payload)
     album.updated_at = datetime.now(UTC)
     refresh_funding(db, album)
     db.commit()
@@ -940,15 +1015,17 @@ def list_items(
                 taken_tz_offset=item.taken_tz_offset,
                 width=item.width,
                 height=item.height,
-                # 효율 보관 앨범은 원본이 개인 Cloud에 남아 있어도 공유하지 않는다.
+                # 효율 보관 사진은 원본이 개인 Cloud에 남아 있어도 공유하지 않는다.
                 stored_variants=sorted(
                     stored.get((item.author_id, item.moment_id), set())
                     & wanted_variants(
-                        album.photo_quality,
+                        item_quality(item, album),
                         item.media_type,
                         stored.get((item.author_id, item.moment_id), set()),
                     )
                 ),  # type: ignore[arg-type]
+                photo_quality=item_quality(item, album),  # type: ignore[arg-type]
+                quality_chosen=item.photo_quality is not None,
                 added_at=item.added_at,
             )
         )
@@ -968,10 +1045,45 @@ def add_items(
     """
     album = _lock_album(db, album_id)
     _membership(db, album_id, user.id)
-    added = _add_items(db, album, user.id, payload.moment_ids)
+    quality = payload.photo_quality
+    qualities = dict.fromkeys(payload.moment_ids, quality) if quality else None
+    added = _add_items(db, album, user.id, payload.moment_ids, qualities)
     _require_room(db, album)
     db.commit()
     return AddItemsResponse(added=added)
+
+
+@router.post("/{album_id}/items/quality", status_code=status.HTTP_204_NO_CONTENT)
+def set_item_quality(
+    album_id: str, payload: ItemQualityRequest, user: CurrentUser, db: DbSession
+) -> None:
+    """사진마다 화질을 바꾼다. 빼기와 같이 올린 사람이나 관리자만 바꾼다.
+
+    원본이 필요해지면 올린 사람의 기기가 다음 동기화에서 올리고(앨범 용량에서 확인한다),
+    필요 없어진 원본은 그 기기가 정리한다.
+    """
+    album = _lock_album(db, album_id)
+    me = _membership(db, album_id, user.id)
+    found = db.scalars(
+        select(SharedAlbumItem).where(
+            SharedAlbumItem.album_id == album_id, SharedAlbumItem.id.in_(payload.item_ids)
+        )
+    ).all()
+    if me.role != "admin" and any(item.author_id != user.id for item in found):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "only the uploader or an admin can change")
+    by_author: dict[str, set[str]] = {}
+    for item in found:
+        item.photo_quality = payload.photo_quality
+        by_author.setdefault(item.author_id, set()).add(item.moment_id)
+    for author_id in sorted(by_author):
+        recount(db, author_id, by_author[author_id], [album])
+    # 이미 개인 Cloud에 있던 원본을 이 앨범에서도 쓰게 만들면 사용량이 즉시 늘어난다.
+    # 항목 추가와 같은 제한을 적용하지 않으면 사진별 화질 변경으로 할당을 우회할 수 있다.
+    _require_room(db, album)
+    album.updated_at = datetime.now(UTC)
+    # 사용량이 바뀌었으니 용량이 없는 앨범 표시도 다시 본다 (update_album과 같다).
+    refresh_funding(db, album)
+    db.commit()
 
 
 @router.delete("/{album_id}/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -985,6 +1097,25 @@ def remove_item(album_id: str, item_id: str, user: CurrentUser, db: DbSession) -
     if item.author_id != user.id and me.role != "admin":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "only the uploader or an admin can remove")
     remove_items(db, album, [item_id])
+    db.commit()
+
+
+@router.post("/{album_id}/items/remove", status_code=status.HTTP_204_NO_CONTENT)
+def remove_selected_items(
+    album_id: str, payload: RemoveItemsRequest, user: CurrentUser, db: DbSession
+) -> None:
+    """여러 장을 한 번에 뺀다. 하나라도 뺄 수 없는 사진이 있으면 아무것도 빼지 않는다."""
+    album = _lock_album(db, album_id)
+    me = _membership(db, album_id, user.id)
+    found = db.scalars(
+        select(SharedAlbumItem).where(
+            SharedAlbumItem.album_id == album_id, SharedAlbumItem.id.in_(payload.item_ids)
+        )
+    ).all()
+    # 없는 항목은 다른 구성원이 먼저 뺐다.
+    if me.role != "admin" and any(item.author_id != user.id for item in found):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "only the uploader or an admin can remove")
+    remove_items(db, album, [item.id for item in found])
     db.commit()
 
 
@@ -1020,8 +1151,8 @@ def download_item(
             )
         )
     )
-    if variant not in wanted_variants(album.photo_quality, item.media_type, stored):
-        # 효율 보관 앨범에서 개인 원본을 유추하거나 내려받지 못하게, 없는 파일과 같은 응답을 준다.
+    if variant not in wanted_variants(item_quality(item, album), item.media_type, stored):
+        # 효율 보관 사진에서 개인 원본을 유추하거나 내려받지 못하게, 없는 파일과 같은 응답을 준다.
         raise HTTPException(status.HTTP_404_NOT_FOUND, "photo not found")
     obj = db.scalar(
         select(CloudObject).where(

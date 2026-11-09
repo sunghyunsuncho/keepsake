@@ -507,6 +507,7 @@
             "schema": {
               "enum": [
                 "display",
+                "thumb",
                 "original",
                 "compact"
               ],
@@ -1401,6 +1402,57 @@
         }
       }
     },
+    "/shared-albums/{album_id}/items/quality": {
+      "post": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Set Item Quality",
+        "description": "사진마다 화질을 바꾼다. 빼기와 같이 올린 사람이나 관리자만 바꾼다.\n\n원본이 필요해지면 올린 사람의 기기가 다음 동기화에서 올리고(앨범 용량에서 확인한다),\n필요 없어진 원본은 그 기기가 정리한다.",
+        "operationId": "shared_albums_set_item_quality",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemQualityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/shared-albums/{album_id}/items/{item_id}": {
       "delete": {
         "tags": [
@@ -1434,6 +1486,57 @@
             }
           }
         ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shared-albums/{album_id}/items/remove": {
+      "post": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Remove Selected Items",
+        "description": "여러 장을 한 번에 뺀다. 하나라도 뺄 수 없는 사진이 있으면 아무것도 빼지 않는다.",
+        "operationId": "shared_albums_remove_selected_items",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveItemsRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "204": {
             "description": "Successful Response"
@@ -1540,6 +1643,7 @@
             "schema": {
               "enum": [
                 "display",
+                "thumb",
                 "original",
                 "compact"
               ],
@@ -1670,6 +1774,21 @@
             "maxItems": 500,
             "minItems": 1,
             "title": "Moment Ids"
+          },
+          "photo_quality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "original",
+                  "display"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Quality"
           }
         },
         "type": "object",
@@ -1830,6 +1949,18 @@
             "type": "array",
             "maxItems": 5000,
             "title": "Moment Ids"
+          },
+          "photo_qualities": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "original",
+                "display"
+              ]
+            },
+            "type": "object",
+            "maxProperties": 5000,
+            "title": "Photo Qualities"
           }
         },
         "type": "object",
@@ -1851,6 +1982,7 @@
             "type": "string",
             "enum": [
               "display",
+              "thumb",
               "original",
               "compact"
             ],
@@ -2096,6 +2228,40 @@
         ],
         "title": "InvitePreview"
       },
+      "ItemQualityRequest": {
+        "properties": {
+          "item_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Item Ids"
+          },
+          "photo_quality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "original",
+                  "display"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Quality"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_ids",
+          "photo_quality"
+        ],
+        "title": "ItemQualityRequest"
+      },
       "JoinRequest": {
         "properties": {
           "code": {
@@ -2277,6 +2443,7 @@
             "type": "string",
             "enum": [
               "display",
+              "thumb",
               "original",
               "compact"
             ],
@@ -2393,6 +2560,24 @@
         ],
         "title": "PutDeviceLinksRequest"
       },
+      "RemoveItemsRequest": {
+        "properties": {
+          "item_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Item Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_ids"
+        ],
+        "title": "RemoveItemsRequest"
+      },
       "RemoveMyItemsRequest": {
         "properties": {
           "moment_ids": {
@@ -2496,6 +2681,15 @@
             "type": "integer",
             "title": "Item Count"
           },
+          "cover_mode": {
+            "type": "string",
+            "enum": [
+              "latest",
+              "photo",
+              "design"
+            ],
+            "title": "Cover Mode"
+          },
           "cover_item_id": {
             "anyOf": [
               {
@@ -2506,6 +2700,17 @@
               }
             ],
             "title": "Cover Item Id"
+          },
+          "cover_emoji": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Emoji"
           },
           "storage": {
             "$ref": "#/components/schemas/AlbumStorage"
@@ -2554,7 +2759,9 @@
           "is_owner",
           "member_count",
           "item_count",
+          "cover_mode",
           "cover_item_id",
+          "cover_emoji",
           "storage",
           "writable",
           "updated_at",
@@ -2648,6 +2855,15 @@
             "type": "integer",
             "title": "Item Count"
           },
+          "cover_mode": {
+            "type": "string",
+            "enum": [
+              "latest",
+              "photo",
+              "design"
+            ],
+            "title": "Cover Mode"
+          },
           "cover_item_id": {
             "anyOf": [
               {
@@ -2658,6 +2874,17 @@
               }
             ],
             "title": "Cover Item Id"
+          },
+          "cover_emoji": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Emoji"
           },
           "storage": {
             "$ref": "#/components/schemas/AlbumStorage"
@@ -2682,7 +2909,9 @@
           "is_owner",
           "member_count",
           "item_count",
+          "cover_mode",
           "cover_item_id",
+          "cover_emoji",
           "storage",
           "writable",
           "updated_at"
@@ -2790,12 +3019,25 @@
               "type": "string",
               "enum": [
                 "display",
+                "thumb",
                 "original",
                 "compact"
               ]
             },
             "type": "array",
             "title": "Stored Variants"
+          },
+          "photo_quality": {
+            "type": "string",
+            "enum": [
+              "original",
+              "display"
+            ],
+            "title": "Photo Quality"
+          },
+          "quality_chosen": {
+            "type": "boolean",
+            "title": "Quality Chosen"
           },
           "added_at": {
             "type": "string",
@@ -2818,6 +3060,8 @@
           "width",
           "height",
           "stored_variants",
+          "photo_quality",
+          "quality_chosen",
           "added_at"
         ],
         "title": "SharedItemOut"
@@ -3000,6 +3244,7 @@
               "type": "string",
               "enum": [
                 "display",
+                "thumb",
                 "original",
                 "compact"
               ]
@@ -3169,6 +3414,47 @@
               }
             ],
             "title": "Photo Quality"
+          },
+          "cover_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "latest",
+                  "photo",
+                  "design"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Mode"
+          },
+          "cover_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 36
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Item Id"
+          },
+          "cover_emoji": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Emoji"
           }
         },
         "type": "object",

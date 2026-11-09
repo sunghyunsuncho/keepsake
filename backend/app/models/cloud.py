@@ -169,6 +169,12 @@ class SharedAlbum(Base):
     relation: Mapped[str] = mapped_column(String(16), default="other")
     # 구성원이 담은 사진을 올릴 화질. 'original' | 'display' (안전 앨범과 같다)
     photo_quality: Mapped[str] = mapped_column(String(16), default="original")
+    # 표지. 'latest'(가장 최근 사진) | 'photo'(고른 항목) | 'design'(이모지). 안전 앨범과 같다.
+    cover_mode: Mapped[str] = mapped_column(String(16), default="latest", server_default="latest")
+    # 고른 항목. 그 항목이 빠지면 가장 최근 사진으로 보여 준다 (항목이 지워져도 남으므로 FK를
+    # 두지 않는다).
+    cover_item_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    cover_emoji: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -250,6 +256,10 @@ class SharedAlbumItem(Base):
     moment_id: Mapped[str] = mapped_column(String(36))
     seq: Mapped[int] = mapped_column(BigInteger)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # 이 사진만 따로 고른 화질 ('original' | 'display'). None이면 앨범 화질을 따른다.
+    # 파일은 사진마다 하나라 구성원 모두 같은 파일을 보고, 앨범 사용량도 사진마다 남기는 파일로
+    # 센다 (app/shared.py item_quality).
+    photo_quality: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # 담을 때의 촬영 정보. 메모와 장소는 개인 기록이라 옮기지 않는다.
     media_type: Mapped[str] = mapped_column(String(8), default="photo")
     duration: Mapped[float | None] = mapped_column(Float, nullable=True)

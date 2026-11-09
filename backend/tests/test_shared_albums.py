@@ -275,6 +275,115 @@ def test_display_album_does_not_expose_an_authors_personal_original(client):
     )
 
 
+def test_members_see_the_thumbnail_and_it_counts_in_album_usage(client):
+    _, owner = subscriber(client)
+    created = new_album(client, owner, photo_quality="display")
+    moment_id = push_moment(client, owner)
+    add(client, owner, created["id"], moment_id)
+    store(client, owner, moment_id, "display", b"d" * 8)
+    store(client, owner, moment_id, "thumb", b"t" * 2)
+    _, member = sign_in(client)
+    invite_and_join(client, owner, created["id"], member, "지민")
+
+    [item] = items(client, member, created["id"])
+    assert item["stored_variants"] == ["display", "thumb"]
+    assert album(client, member, created["id"])["storage"]["bytes_total"] == 10
+    thumb = client.get(
+        f"/shared-albums/{created['id']}/items/{item['id']}/photo",
+        headers=member,
+        params={"variant": "thumb"},
+    )
+    assert thumb.status_code == 200 and thumb.json()["size"] == 2
+
+
+def test_each_photo_can_keep_its_own_quality_for_everyone(client):
+    _, owner = subscriber(client)
+    created = new_album(client, owner, photo_quality="display")
+    _, member = sign_in(client)
+    invite_and_join(client, owner, created["id"], member, "지민")
+    sharp, light = push_moment(client, owner), push_moment(client, owner)
+    response = client.post(
+        f"/shared-albums/{created['id']}/items",
+        headers=owner,
+        json={"moment_ids": [sharp], "photo_quality": "original"},
+    )
+    assert response.status_code == 200, response.text
+    add(client, owner, created["id"], light)
+    for moment_id in (sharp, light):
+        store(client, owner, moment_id, "display", b"d" * 4)
+        store(client, owner, moment_id, "original", b"o" * 10)
+
+    # 구성원 모두에게 같은 파일이 보이고, 앨범 용량은 사진마다 남기는 파일로 센다.
+    by_quality = {item["photo_quality"]: item for item in items(client, member, created["id"])}
+    assert by_quality["original"]["stored_variants"] == ["display", "original"]
+    assert by_quality["original"]["quality_chosen"] is True
+    assert by_quality["display"]["stored_variants"] == ["display"]
+    assert by_quality["display"]["quality_chosen"] is False
+    assert album(client, owner, created["id"])["storage"]["bytes_total"] == 4 + 10 + 4
+    mine = client.get("/shared-albums/my-items", headers=owner).json()["items"]
+    assert {row["moment_id"]: row["photo_quality"] for row in mine} == {
+        sharp: "original",
+        light: "display",
+    }
+
+    # 올린 사람이나 관리자만 바꾼다. 앨범 화질로 되돌리면 원본은 앨범에서 세지 않는다.
+    path = f"/shared-albums/{created['id']}/items/quality"
+    item_id = by_quality["original"]["id"]
+    body = {"item_ids": [item_id], "photo_quality": None}
+    assert client.post(path, headers=member, json=body).status_code == 403
+    assert client.post(path, headers=owner, json=body).status_code == 204
+    assert album(client, owner, created["id"])["storage"]["bytes_total"] == 4 + 4
+    original = client.get(
+        f"/shared-albums/{created['id']}/items/{item_id}/photo",
+        headers=member,
+        params={"variant": "original"},
+    )
+    assert original.status_code == 404
+
+
+def test_quality_changes_cannot_exceed_shared_album_capacity(client):
+    """이미 개인 Cloud에 있는 원본도 사진별·기본 화질을 바꿔 앨범 사용량이 될 수 있다."""
+    _, owner = subscriber(client)
+    created = new_album(client, owner, allocated=10, photo_quality="display")
+    moment_id = push_moment(client, owner)
+    add(client, owner, created["id"], moment_id)
+    store(client, owner, moment_id, "display", b"d" * 4)
+    store(client, owner, moment_id, "original", b"o" * 10)
+    item_id = items(client, owner, created["id"])[0]["id"]
+
+    # 사진별 원본 선택(14바이트)은 10바이트 할당을 넘기며, 기존 선택은 그대로여야 한다.
+    response = client.post(
+        f"/shared-albums/{created['id']}/items/quality",
+        headers=owner,
+        json={"item_ids": [item_id], "photo_quality": "original"},
+    )
+    assert response.status_code == 413
+    assert album(client, owner, created["id"])["storage"]["bytes_total"] == 4
+    assert items(client, owner, created["id"])[0]["photo_quality"] == "display"
+
+    # 앨범 기본 화질 변경도 같은 우회 경로가 되지 않는다.
+    response = client.patch(
+        f"/shared-albums/{created['id']}", headers=owner, json={"photo_quality": "original"}
+    )
+    assert response.status_code == 413
+    assert album(client, owner, created["id"])["photo_quality"] == "display"
+
+
+def test_converting_keeps_each_photos_chosen_quality(client):
+    _, owner = subscriber(client)
+    sharp, light = push_moment(client, owner), push_moment(client, owner)
+    created = new_album(
+        client,
+        owner,
+        photo_quality="display",
+        moment_ids=[sharp, light],
+        photo_qualities={sharp: "original"},
+    )
+    by_moment = {item["moment_id"]: item for item in items(client, owner, created["id"])}
+    assert by_moment[sharp]["photo_quality"] == "original"
+    assert by_moment[light]["photo_quality"] == "display"
+
+
 def test_album_capacity_limits_uploads_and_adds(client):
     _, owner = subscriber(client)
     created = new_album(client, owner, allocated=8)
@@ -417,6 +526,75 @@ def test_only_the_uploader_or_an_admin_can_remove_a_photo(client):
     assert client.delete(f"{path}/{by_author['지민']['id']}", headers=member_a).status_code == 204
     assert client.delete(f"{path}/{by_author['서준']['id']}", headers=owner).status_code == 204
     assert items(client, owner, created["id"]) == []
+
+
+def test_removing_several_photos_at_once_checks_every_one(client):
+    _, owner = subscriber(client)
+    created = new_album(client, owner)
+    _, member = sign_in(client)
+    invite_and_join(client, owner, created["id"], member, "지민")
+    mine = [push_moment(client, member) for _ in range(2)]
+    add(client, member, created["id"], *mine)
+    add(client, owner, created["id"], push_moment(client, owner))
+    by_author: dict[str, list[str]] = {}
+    for item in items(client, member, created["id"]):
+        by_author.setdefault(item["author_name"], []).append(item["id"])
+
+    path = f"/shared-albums/{created['id']}/items/remove"
+    # 남의 사진이 하나라도 섞이면 아무것도 빼지 않는다.
+    mixed = {"item_ids": by_author["지민"] + by_author["엄마"]}
+    assert client.post(path, headers=member, json=mixed).status_code == 403
+    assert len(items(client, owner, created["id"])) == 3
+    removed = client.post(path, headers=member, json={"item_ids": by_author["지민"]})
+    assert removed.status_code == 204
+    assert [item["author_name"] for item in items(client, owner, created["id"])] == ["엄마"]
+    # 관리자는 누구의 사진이든 뺀다. 이미 빠진 항목은 건너뛴다.
+    everything = {"item_ids": by_author["지민"] + by_author["엄마"]}
+    assert client.post(path, headers=owner, json=everything).status_code == 204
+    assert items(client, owner, created["id"]) == []
+
+
+def test_admin_chooses_the_cover_and_it_falls_back_when_the_photo_leaves(client):
+    _, owner = subscriber(client)
+    created = new_album(client, owner)
+    first, second = push_moment(client, owner), push_moment(client, owner)
+    for moment_id in (first, second):
+        store(client, owner, moment_id, "display", b"cover")
+    add(client, owner, created["id"], first, second)
+    item_ids = {item["moment_id"]: item["id"] for item in items(client, owner, created["id"])}
+    path = f"/shared-albums/{created['id']}"
+    assert album(client, owner, created["id"])["cover_mode"] == "latest"
+    assert album(client, owner, created["id"])["cover_item_id"] == item_ids[second]
+
+    chose = client.patch(
+        path, headers=owner, json={"cover_mode": "photo", "cover_item_id": item_ids[first]}
+    )
+    assert chose.status_code == 200, chose.text
+    assert chose.json()["cover_item_id"] == item_ids[first]
+    _, someone = subscriber(client)
+    other = new_album(client, someone)
+    not_here = client.patch(
+        f"/shared-albums/{other['id']}",
+        headers=someone,
+        json={"cover_mode": "photo", "cover_item_id": item_ids[first]},
+    )
+    assert not_here.status_code == 422
+
+    # 고른 사진이 빠지면 가장 최근 사진으로 돌아간다.
+    assert client.delete(f"{path}/items/{item_ids[first]}", headers=owner).status_code == 204
+    after = album(client, owner, created["id"])
+    assert after["cover_mode"] == "photo" and after["cover_item_id"] == item_ids[second]
+
+    designed = client.patch(path, headers=owner, json={"cover_mode": "design", "cover_emoji": "🏡"})
+    assert designed.json()["cover_mode"] == "design" and designed.json()["cover_emoji"] == "🏡"
+    [listed] = client.get("/shared-albums", headers=owner).json()["albums"]
+    assert listed["cover_emoji"] == "🏡"
+    assert client.get("/shared-albums", headers=someone).json()["albums"][0]["cover_emoji"] is None
+
+    _, member = sign_in(client)
+    invite_and_join(client, owner, created["id"], member, "지민")
+    blocked = client.patch(path, headers=member, json={"cover_mode": "latest"})
+    assert blocked.status_code == 403
 
 
 def test_several_admins_and_owner_transfer(client):

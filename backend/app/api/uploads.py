@@ -24,6 +24,7 @@ from app.models.cloud import (
     User,
 )
 from app.shared import (
+    ITEM_QUALITY,
     album_usage,
     capacity,
     lock_album_row,
@@ -47,9 +48,9 @@ VIDEO_DOWNLOAD_URL_TTL = timedelta(hours=3)
 # R2는 한 번의 PUT으로 5GiB까지 받는다. 여유를 두고 4GiB까지만 받는다.
 MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024
 
-# display: 목록에 그리는 이미지 (동영상은 대표 장면) / original: 원본 파일
-# compact: 효율 보관 동영상 (720p로 줄인 mp4)
-Variant = Literal["display", "original", "compact"]
+# display: 크게 볼 때 그리는 이미지 (동영상은 대표 장면) / thumb: 목록·표지에 그리는 작은 이미지
+# original: 원본 파일 / compact: 효율 보관 동영상 (720p로 줄인 mp4)
+Variant = Literal["display", "thumb", "original", "compact"]
 
 EXTENSIONS = {
     "image/jpeg": "jpg",
@@ -84,7 +85,7 @@ def validate_upload_kind(moment: Moment, variant: Variant, content_type: str) ->
         media_type = json.loads(moment.data).get("data", {}).get("media_type", "photo")
     except (TypeError, json.JSONDecodeError):
         media_type = "photo"
-    if variant == "display":
+    if variant in ("display", "thumb"):
         valid = content_type == "image/jpeg"
     elif variant == "compact":
         # compact는 동영상의 효율 보관본이다. 사진에 이를 허용하면 사용되지 않는
@@ -221,7 +222,7 @@ def _shared_albums_using(db: DbSession, user_id: str, moment_id: str, variant: s
             select(
                 SharedAlbumItem.album_id,
                 SharedAlbumItem.media_type,
-                SharedAlbum.photo_quality,
+                ITEM_QUALITY,
             )
             .join(SharedAlbum, SharedAlbum.id == SharedAlbumItem.album_id)
             .where(

@@ -63,12 +63,21 @@ def lock_album_row(db: Session, album_id: str) -> SharedAlbum | None:
 # 앨범에 필요한 파일
 
 
+# 항목의 화질: 사진마다 고른 화질이 앨범 화질보다 먼저다 (쿼리용).
+ITEM_QUALITY = func.coalesce(SharedAlbumItem.photo_quality, SharedAlbum.photo_quality)
+
+
+def item_quality(item: SharedAlbumItem, album: SharedAlbum) -> str:
+    return item.photo_quality or album.photo_quality
+
+
 def wanted_variants(quality: str, media_type: str, stored: Iterable[str]) -> set[str]:
     """앨범 화질에 맞춰 남길 파일. 개인 안전 앨범 규칙(mobile photos.ts)과 같다.
 
     효율 보관 앨범의 동영상은 720p(compact)를 두고, compact가 올라가기 전에는 원본을 지우지 않는다.
     """
-    variants = {"display"}
+    # 썸네일은 표시용과 늘 함께 둔다 (목록·표지).
+    variants = {"display", "thumb"}
     if quality == "original":
         variants.add("original")
     elif media_type == "video":
@@ -109,7 +118,7 @@ def shared_needs(
             SharedAlbumItem.moment_id,
             SharedAlbumItem.album_id,
             SharedAlbumItem.media_type,
-            SharedAlbum.photo_quality,
+            ITEM_QUALITY,
         )
         .join(SharedAlbum, SharedAlbum.id == SharedAlbumItem.album_id)
         .where(SharedAlbumItem.author_id == user_id)
@@ -170,7 +179,7 @@ def recount(
             objects = stored.get(item.moment_id, {})
             size = sum(
                 objects[v].size_bytes
-                for v in wanted_variants(album.photo_quality, item.media_type, objects)
+                for v in wanted_variants(item_quality(item, album), item.media_type, objects)
                 if v in objects
             )
             album.bytes_total += size - item.bytes

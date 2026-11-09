@@ -584,15 +584,16 @@ def test_upload_rejects_a_file_type_that_does_not_match_its_variant(client):
         json={"moments": [moment(moment_id, "2026-10-01T00:00:00Z", media_type="video")]},
     )
     base = {"moment_id": moment_id, "size": 10, "md5": "0" * 32}
-    # display는 모든 기기에서 이미지로 그리고 compact는 mp4로 재생한다.
-    assert (
-        client.post(
-            "/uploads",
-            headers=headers,
-            json={**base, "variant": "display", "content_type": "video/mp4"},
-        ).status_code
-        == 422
-    )
+    # display·thumb는 모든 기기에서 이미지로 그리고 compact는 mp4로 재생한다.
+    for variant in ("display", "thumb"):
+        assert (
+            client.post(
+                "/uploads",
+                headers=headers,
+                json={**base, "variant": variant, "content_type": "video/mp4"},
+            ).status_code
+            == 422
+        )
     assert (
         client.post(
             "/uploads",
