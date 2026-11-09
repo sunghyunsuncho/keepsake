@@ -30,25 +30,15 @@ export function CreatedAlbumCard({
         styles.createdAlbumCard,
         { backgroundColor: theme.background, borderColor: theme.border, opacity: pressed ? 0.8 : 1 },
       ]}>
-      <View style={[styles.coverStack, { backgroundColor: theme.backgroundSelected, borderColor: theme.border }]}>
-        <View style={[styles.coverLayer, { backgroundColor: theme.accent }]} />
-        <View style={styles.springBinding}>
-          {Array.from({ length: 6 }, (_, index) => (
-            <View key={index} style={[styles.springRing, { borderColor: theme.background }]} />
-          ))}
-        </View>
+      <SpringCover spine={theme.accent}>
         {album.coverMode === 'design' ? (
-          <View style={[styles.createdCover, styles.emojiCover, { backgroundColor: theme.background }]}>
-            <ThemedText style={styles.coverEmoji}>{album.coverEmoji ?? '✨'}</ThemedText>
-          </View>
+          <EmojiCover emoji={album.coverEmoji} />
         ) : album.cover ? (
-          <MomentPhoto moment={album.cover} style={styles.createdCover} transition={150} />
+          <MomentPhoto moment={album.cover} variant="thumb" style={SPRING_COVER_PHOTO} transition={150} />
         ) : (
-          <View style={[styles.createdCover, styles.emptyCover, { backgroundColor: theme.backgroundSelected }]}>
-            <Ionicons name="images-outline" size={28} color={theme.textSecondary} />
-          </View>
+          <EmptyCover icon="images-outline" />
         )}
-      </View>
+      </SpringCover>
       <View style={styles.createdAlbumBody}>
         <ThemedText type="smallBold" numberOfLines={1} style={styles.createdAlbumTitle}>
           {album.title}
@@ -71,6 +61,40 @@ export function CreatedAlbumCard({
   );
 }
 
+/** 책등(spine 색)과 스프링 고리가 있는 표지. children은 SPRING_COVER_PHOTO 자리에 그린다. */
+export function SpringCover({ spine, children }: { spine: string; children: ReactNode }) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.coverStack, { backgroundColor: theme.backgroundSelected, borderColor: theme.border }]}>
+      <View style={[styles.coverLayer, { backgroundColor: spine }]} />
+      <View style={styles.springBinding}>
+        {Array.from({ length: 6 }, (_, index) => (
+          <View key={index} style={[styles.springRing, { borderColor: theme.background }]} />
+        ))}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+export function EmojiCover({ emoji }: { emoji: string | null }) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.createdCover, styles.emojiCover, { backgroundColor: theme.background }]}>
+      <ThemedText style={styles.coverEmoji}>{emoji ?? '✨'}</ThemedText>
+    </View>
+  );
+}
+
+export function EmptyCover({ icon, color }: { icon: keyof typeof Ionicons.glyphMap; color?: string }) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.createdCover, styles.emptyCover, { backgroundColor: theme.backgroundSelected }]}>
+      <Ionicons name={icon} size={28} color={color ?? theme.textSecondary} />
+    </View>
+  );
+}
+
 function formatAlbumPeriod(startAt: string, endAt: string) {
   const format = (value: string) => {
     const date = new Date(value);
@@ -80,6 +104,17 @@ function formatAlbumPeriod(startAt: string, endAt: string) {
   const end = format(endAt);
   return start === end ? start : `${start} – ${end}`;
 }
+
+/** 표지 사진 자리 (책등 오른쪽) */
+export const SPRING_COVER_PHOTO = {
+  position: 'absolute',
+  left: 12,
+  top: 7,
+  width: 70,
+  height: 78,
+  borderRadius: Spacing.one,
+  overflow: 'hidden',
+} as const;
 
 const styles = StyleSheet.create({
   emptyCover: { alignItems: 'center', justifyContent: 'center' },
@@ -96,7 +131,7 @@ const styles = StyleSheet.create({
   coverLayer: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 10 },
   springBinding: { position: 'absolute', zIndex: 2, left: 0, top: 8, bottom: 8, justifyContent: 'space-between' },
   springRing: { width: 15, height: 6, marginLeft: -2, borderWidth: 1.5, borderRadius: 3 },
-  createdCover: { position: 'absolute', left: 12, top: 7, width: 70, height: 78, borderRadius: Spacing.one, overflow: 'hidden' },
+  createdCover: SPRING_COVER_PHOTO,
   emojiCover: { alignItems: 'center', justifyContent: 'center', paddingTop: 3 },
   coverEmoji: { fontSize: 30, lineHeight: 42, includeFontPadding: false },
   createdAlbumBody: { flex: 1, gap: Spacing.one },

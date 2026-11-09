@@ -4,12 +4,14 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
-import { Button } from '@/components/button';
+import { AlbumSectionHeader } from '@/components/album-shelf';
+import { EmojiCover, EmptyCover, SPRING_COVER_PHOTO, SpringCover } from '@/components/created-album-card';
+import { PhotoQualityBadge } from '@/components/photo-quality';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useDbQuery } from '@/db/changes';
 import { useTheme } from '@/hooks/use-theme';
-import { listSharedAlbums, RELATIONS, sharedDisplayUri, type SharedAlbumSummary } from '@/lib/cloud/shared';
+import { listSharedAlbums, RELATIONS, sharedImageUri, type SharedAlbumSummary } from '@/lib/cloud/shared';
 import { formatBytes, formatSize } from '@/lib/storage';
 
 /**
@@ -17,15 +19,28 @@ import { formatBytes, formatSize } from '@/lib/storage';
  * 구독하지 않은 계정도 초대받은 앨범은 보므로, 구독 여부와 관계없이 로그인하면 보여준다.
  */
 export function SharedAlbumSection({ canCreate }: { canCreate: boolean }) {
+  const theme = useTheme();
   const { data: albums, error } = useDbQuery(() => listSharedAlbums(), []);
 
+  // 나만 보는 안전 앨범처럼 만들기·참여는 제목 오른쪽 버튼으로 둔다. 구독하지 않으면 참여만 한다.
   return (
     <View style={styles.section}>
-      <View style={styles.titleRow}>
-        <ThemedText type="smallBold" themeColor="textSecondary">
-          함께 쓰는 공유 앨범
-        </ThemedText>
-      </View>
+      <AlbumSectionHeader
+        title="함께 쓰는 공유 앨범"
+        actions={[
+          { icon: 'enter-outline', label: '코드로 참여', color: theme.navy, onPress: () => router.push('/shared-albums/join') },
+          ...(canCreate
+            ? [
+                {
+                  icon: 'add' as const,
+                  label: '새 공유 앨범',
+                  color: theme.navy,
+                  onPress: () => router.push({ pathname: '/cloud-albums/new', params: { audience: 'shared' } }),
+                },
+              ]
+            : []),
+        ]}
+      />
       {albums === undefined && !error ? (
         <ActivityIndicator />
       ) : error && !albums ? (
@@ -43,20 +58,11 @@ export function SharedAlbumSection({ canCreate }: { canCreate: boolean }) {
           가족·친구·파트너와 함께 사진을 담는 앨범이에요.{'\n'}누가 담았는지 사진마다 보이고, 각자 담은 사진은 각자 관리해요.
         </ThemedText>
       )}
-      <View style={styles.buttons}>
-        {canCreate && (
-          <View style={styles.flex}>
-            <Button label="새 공유 앨범" onPress={() => router.push({ pathname: '/cloud-albums/new', params: { audience: 'shared' } })} />
-          </View>
-        )}
-        <View style={styles.flex}>
-          <Button label="초대 코드로 참여" variant="secondary" onPress={() => router.push('/shared-albums/join')} />
-        </View>
-      </View>
     </View>
   );
 }
 
+/** 나만 보는 안전 앨범과 같은 스프링 표지에, 책등만 네이비로 구분한다. */
 function SharedAlbumCard({ album }: { album: SharedAlbumSummary }) {
   const theme = useTheme();
   const relation = RELATIONS[album.relation];
@@ -68,26 +74,35 @@ function SharedAlbumCard({ album }: { album: SharedAlbumSummary }) {
         styles.card,
         { backgroundColor: theme.background, borderColor: theme.border, opacity: pressed ? 0.8 : 1 },
       ]}>
-      <Cover album={album} />
-      <View style={styles.flex}>
-        <ThemedText type="smallBold" numberOfLines={1}>
+      <SpringCover spine={theme.navy}>
+        <Cover album={album} />
+      </SpringCover>
+      <View style={styles.body}>
+        <ThemedText type="smallBold" numberOfLines={1} style={styles.title}>
           {album.title}
         </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          {relation.label} · {album.member_count}명 · 사진 {album.item_count}장
-        </ThemedText>
+        <View style={styles.relation}>
+          <Ionicons name={relation.icon} size={14} color={theme.navy} />
+          <ThemedText type="small" themeColor="textSecondary">
+            {relation.label} · {album.member_count}명 · 사진 {album.item_count}장
+          </ThemedText>
+        </View>
         <ThemedText type="small" style={album.storage.over_capacity ? { color: theme.danger } : undefined} themeColor="textSecondary">
           {album.storage.over_capacity
             ? '앨범 용량이 넘쳤어요'
             : `${formatBytes(album.storage.bytes_total)} / ${formatSize(album.storage.capacity_bytes)}`}
         </ThemedText>
-        {album.role === 'admin' && (
-          <ThemedText type="small" style={[styles.admin, { color: theme.accent }]}>
-            {album.is_owner ? '소유자' : '관리자'}
-          </ThemedText>
-        )}
+        {/* 나만 보는 안전 앨범 카드(CloudAlbumBadges)처럼 보관 화질을 태그로 보여 준다. */}
+        <View style={styles.badges}>
+          <PhotoQualityBadge quality={album.photo_quality} />
+          {album.role === 'admin' && (
+            <ThemedText type="small" style={[styles.admin, { color: theme.accent }]}>
+              {album.is_owner ? '소유자' : '관리자'}
+            </ThemedText>
+          )}
+        </View>
       </View>
-      <Ionicons name="chevron-forward" size={18} color={theme.chevron} />
+      <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
     </Pressable>
   );
 }
@@ -95,33 +110,33 @@ function SharedAlbumCard({ album }: { album: SharedAlbumSummary }) {
 function Cover({ album }: { album: SharedAlbumSummary }) {
   const theme = useTheme();
   const [uri, setUri] = useState<string | null>(null);
+  const design = album.cover_mode === 'design';
   useEffect(() => {
-    if (!album.cover_item_id) return setUri(null);
+    if (design || !album.cover_item_id) return setUri(null);
     let cancelled = false;
-    sharedDisplayUri(album.id, album.cover_item_id)
+    const itemId = album.cover_item_id;
+    // 썸네일이 아직 없는 표지(이전에 올린 사진)는 표시용으로 그린다.
+    sharedImageUri(album.id, itemId, 'thumb')
+      .catch(() => sharedImageUri(album.id, itemId, 'display'))
       .then((found) => !cancelled && setUri(found))
       .catch(() => !cancelled && setUri(null));
     return () => {
       cancelled = true;
     };
-  }, [album.id, album.cover_item_id]);
+  }, [album.id, album.cover_item_id, design]);
 
-  if (uri) return <Image source={{ uri }} style={styles.cover} contentFit="cover" transition={100} />;
-  return (
-    <View style={[styles.cover, styles.coverEmpty, { backgroundColor: theme.backgroundElement }]}>
-      <Ionicons name={RELATIONS[album.relation].icon} size={24} color={theme.accent} />
-    </View>
-  );
+  if (design) return <EmojiCover emoji={album.cover_emoji} />;
+  if (uri) return <Image source={{ uri }} style={SPRING_COVER_PHOTO} contentFit="cover" transition={150} />;
+  return <EmptyCover icon={RELATIONS[album.relation].icon} color={theme.navy} />;
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  section: { gap: Spacing.two, paddingHorizontal: Spacing.three },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  hint: { paddingVertical: Spacing.two },
-  stack: { gap: Spacing.two },
-  buttons: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.one },
+  section: { gap: Spacing.two },
+  hint: { paddingVertical: Spacing.two, paddingHorizontal: Spacing.three },
+  stack: { gap: Spacing.two, paddingHorizontal: Spacing.three },
+  // 나만 보는 안전 앨범 카드(CreatedAlbumCard)와 같은 크기
   card: {
+    minHeight: 112,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
@@ -129,7 +144,9 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  cover: { width: 64, height: 64, borderRadius: Spacing.two, overflow: 'hidden' },
-  coverEmpty: { alignItems: 'center', justifyContent: 'center' },
+  body: { flex: 1, gap: Spacing.one },
+  title: { fontSize: 17, lineHeight: 24 },
+  relation: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.two, marginTop: Spacing.one },
   admin: { fontSize: 12, lineHeight: 16, fontWeight: 700 },
 });

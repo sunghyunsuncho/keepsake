@@ -15,17 +15,21 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showActionSheet } from '@/components/action-sheet';
 import { AlbumChooserRow } from '@/components/album-chooser';
 import { Button } from '@/components/button';
 import { DateSheet } from '@/components/date-sheet';
 import { MomentPhoto } from '@/components/moment-photo';
+import { PHOTO_QUALITY } from '@/components/photo-quality';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { momentQualityInfo, type PhotoQuality } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
 import { getMoment, updateMoment, type Moment, type MomentEdit } from '@/db/moments';
 import { useTheme } from '@/hooks/use-theme';
 import { fillPlaceFromPhoto, removeMoment } from '@/lib/capture';
+import { useCloudState } from '@/lib/cloud/engine';
 import { removeFromSharedAlbums, sharedAlbumCount } from '@/lib/cloud/shared';
 import { formatFullDate, formatTime, localDateKey } from '@/lib/dates';
 
@@ -197,6 +201,7 @@ function MomentEditor({ moment }: { moment: Moment }) {
           </View>
 
           <AlbumChooserRow momentId={moment.id} />
+          <CloudQualityRow moment={moment} />
 
           <TextInput
             value={memo}
@@ -241,6 +246,85 @@ function MomentEditor({ moment }: { moment: Moment }) {
         onClose={() => setViewing(false)}
       />
     </ThemedView>
+  );
+}
+
+/**
+ * 이 사진만 원본 그대로 / 효율 보관으로 남기기. 안전 앨범에 담긴 사진이고 사진을 올릴 수 있을 때만 보인다.
+ * 원본은 기기 사진첩에 있어야 올릴 수 있으므로, 원본을 지운 뒤에는 효율 보관에서 되돌릴 수 없다고 먼저 알린다.
+ */
+function CloudQualityRow({ moment }: { moment: Moment }) {
+  const db = useSQLiteContext();
+  const theme = useTheme();
+  const canUpload = useCloudState().account?.subscription.can_upload ?? false;
+  const { data: info } = useDbQuery(() => momentQualityInfo(db, moment.id), [db, moment.id]);
+  if (!canUpload || !info || info.albums === 0) return null;
+
+  const video = moment.media_type === 'video';
+  const onDevice = !!moment.source_asset_id && !moment.source_missing;
+  const current = moment.cloud_quality ?? info.albumDefault;
+  const save = (next: PhotoQuality | null) => updateMoment(db, moment.id, { cloud_quality: next });
+
+  const choose = (next: PhotoQuality | null) => {
+    // 같은 것을 다시 고르면 기록을 고치지 않는다 (다른 기기와 동기화할 변경이 생기지 않게).
+    if (next === moment.cloud_quality) return;
+    const effective = next ?? info.albumDefault;
+    if (effective === 'original' && !moment.original_uploaded && !onDevice) {
+      Alert.alert('원본을 보관할 수 없어요', '기기 사진첩에 원본이 없어요. 원본은 기기 사진첩에 있을 때만 올릴 수 있어요.');
+      return;
+    }
+    // 원본 보관 공유 앨범이 쓰는 원본은 지우지 않으므로 묻지 않는다.
+    if (effective === 'display' && moment.original_uploaded && !info.sharedOriginal) {
+      Alert.alert(
+        '안전 보관한 원본을 지울까요?',
+        (video ? '720p로 줄인 영상과 대표 장면만 남아요. 720p 영상을 올린 뒤에 원본을 지워요. ' : '긴 변 2048px 보기용 사진만 남아요. ') +
+          (onDevice
+            ? '기기 사진첩에 원본이 있는 동안에는 다시 원본으로 바꿀 수 있어요.'
+            : video
+              ? '기기 사진첩에 원본이 없어 720p 영상을 만들 수 없으니, 원본은 그대로 남겨 둬요.'
+              : '기기 사진첩에도 원본이 없어서 지우면 되돌릴 수 없어요.'),
+        [
+          { text: '취소', style: 'cancel' },
+          { text: '효율 보관으로', style: 'destructive', onPress: () => save(next) },
+        ],
+      );
+      return;
+    }
+    save(next);
+  };
+
+  // 앨범 화질과 같은 쪽을 고르면 앨범 화질을 따르게 한다 (나중에 앨범 화질을 바꾸면 이 사진도 따라간다).
+  const option = (quality: PhotoQuality) => ({
+    text: `${PHOTO_QUALITY[quality].label}${quality === info.albumDefault ? ' · 앨범 기본' : ''}${quality === current ? ' (지금)' : ''}`,
+    onPress: () => choose(quality === info.albumDefault ? null : quality),
+  });
+  const open = () =>
+    showActionSheet(
+      '이 사진의 보관 화질',
+      `${PHOTO_QUALITY.original.label}: 원본과 보기용을 함께 보관해요.\n${PHOTO_QUALITY.display.label}: 보기용(${video ? '720p 영상' : '긴 변 2048px'})만 보관해 용량을 아껴요.` +
+        (info.sharedOriginal ? '\n\n원본 보관 공유 앨범에 담겨 있어서 원본은 늘 함께 남아요.' : ''),
+      [option('original'), option('display'), { text: '취소', style: 'cancel' }],
+    );
+
+  return (
+    <Pressable
+      onPress={open}
+      accessibilityRole="button"
+      accessibilityLabel={`보관 화질: ${PHOTO_QUALITY[current].label}. 눌러서 바꾸기`}
+      style={[styles.row, { borderColor: theme.border }]}>
+      <Ionicons name={PHOTO_QUALITY[current].icon} size={20} color={theme.textSecondary} />
+      <ThemedText style={styles.flex}>
+        {PHOTO_QUALITY[current].label}
+        {current === info.albumDefault && (
+          <ThemedText type="small" themeColor="textSecondary">
+            {'  '}앨범 기본
+          </ThemedText>
+        )}
+      </ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">
+        바꾸기
+      </ThemedText>
+    </Pressable>
   );
 }
 

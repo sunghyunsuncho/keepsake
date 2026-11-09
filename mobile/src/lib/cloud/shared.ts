@@ -22,6 +22,7 @@ export type SharedAlbumDetail = components['schemas']['SharedAlbumDetail'];
 export type SharedItem = components['schemas']['SharedItemOut'];
 export type SharedMember = components['schemas']['MemberOut'];
 export type Relation = SharedAlbumSummary['relation'];
+type Quality = SharedAlbumSummary['photo_quality'];
 export type SharedAlbumList = components['schemas']['SharedAlbumList'];
 export type LeavePreview = components['schemas']['LeavePreview'];
 
@@ -96,8 +97,16 @@ export async function mySharedItemCount() {
 
 /** 이 앨범에 내가 담은 기록. 고르는 화면에서 이미 담은 사진을 표시한다. */
 export async function mySharedMomentIds(db: SQLiteDatabase, albumId: string) {
-  const rows = await db.getAllAsync<{ moment_id: string }>('SELECT moment_id FROM shared_items WHERE album_id = ?', albumId);
-  return new Set(rows.map((row) => row.moment_id));
+  return new Set((await mySharedQualities(db, albumId)).keys());
+}
+
+/** 이 앨범에 내가 담은 기록과 그 사진의 화질 (사진마다 고른 화질, 없으면 앨범 화질). */
+export async function mySharedQualities(db: SQLiteDatabase, albumId: string) {
+  const rows = await db.getAllAsync<{ moment_id: string; photo_quality: Quality }>(
+    'SELECT moment_id, photo_quality FROM shared_items WHERE album_id = ?',
+    albumId,
+  );
+  return new Map(rows.map((row) => [row.moment_id, row.photo_quality]));
 }
 
 /** 이 기록을 담은 공유 앨범 수. 기록을 지울 때 공유 앨범에도 남아 있다고 알리고 함께 뺄지 묻는다. */
@@ -139,11 +148,17 @@ export async function deleteSharedAlbum(albumId: string) {
 }
 
 /**
- * 내 기록을 공유 앨범에 담는다. 서버에 기록이 있어야 담기므로 먼저 보낸다.
+ * 내 기록을 공유 앨범에 담는다. chosen: 이번에 담는 사진에만 따로 고른 화질 (null이면 앨범 화질). 서버에 기록이 있어야 담기므로 먼저 보낸다.
  * 이미 안전 보관한 파일은 다시 올리지 않고, 없는 파일은 다음 동기화에서 앨범 화질로 올린다 (앨범 용량에서 센다).
  * 담은 수를 돌려준다.
  */
-export async function addToSharedAlbum(db: SQLiteDatabase, albumId: string, momentIds: string[], quality: SharedAlbumSummary['photo_quality']) {
+export async function addToSharedAlbum(
+  db: SQLiteDatabase,
+  albumId: string,
+  momentIds: string[],
+  quality: Quality,
+  chosen: Quality | null = null,
+) {
   await pushChanges(db);
   let added = 0;
   for (let i = 0; i < momentIds.length; i += 500) {
@@ -151,11 +166,11 @@ export async function addToSharedAlbum(db: SQLiteDatabase, albumId: string, mome
     added += unwrap(
       await cloudApi.POST('/shared-albums/{album_id}/items', {
         params: { path: { album_id: albumId } },
-        body: { moment_ids: batch },
+        body: { moment_ids: batch, photo_quality: chosen },
       }),
     ).added;
     // 다음 동기화가 내 항목 목록을 다시 받기 전에도 바로 올리기 시작하도록 미리 적어 둔다.
-    await rememberSharedItems(db, albumId, batch, quality);
+    await rememberSharedItems(db, albumId, batch, () => chosen ?? quality);
   }
   notifyChange();
   return added;
@@ -166,6 +181,7 @@ export async function addToSharedAlbum(db: SQLiteDatabase, albumId: string, mome
  * (할당이 그 사진들보다 작으면 아무것도 만들지 않는다). 파일은 다시 올리거나 옮기지 않는다: 같은 Cloud 파일을
  * 공유 앨범이 가리키고, 그 용량을 개인 사용량에서 앨범 용량으로 옮겨 센다.
  * 원래 안전 앨범을 지우기 전에 shared_items에 적어 두므로 정리가 파일을 지우지 않는다.
+ * 사진마다 고른 화질(moments.cloud_quality)도 그 사진의 공유 앨범 화질로 옮긴다.
  */
 export async function convertToSharedAlbum(
   db: SQLiteDatabase,
@@ -174,20 +190,31 @@ export async function convertToSharedAlbum(
 ) {
   await pushChanges(db);
   const momentIds = [...(await albumMomentIds(db, albumId))];
-  const shared = await createSharedAlbum({ ...body, moment_ids: momentIds });
-  await rememberSharedItems(db, shared.id, momentIds, shared.photo_quality);
+  const rows = await db.getAllAsync<{ id: string; cloud_quality: Quality }>(
+    `SELECT m.id, m.cloud_quality FROM album_moments am JOIN moments m ON m.id = am.moment_id
+     WHERE am.album_id = ? AND am.deleted_at IS NULL AND m.cloud_quality IS NOT NULL`,
+    albumId,
+  );
+  const chosen = Object.fromEntries(rows.map((row) => [row.id, row.cloud_quality]));
+  const shared = await createSharedAlbum({ ...body, moment_ids: momentIds, photo_qualities: chosen });
+  await rememberSharedItems(db, shared.id, momentIds, (id) => chosen[id] ?? shared.photo_quality);
   await deleteAlbum(db, albumId);
   return shared;
 }
 
-async function rememberSharedItems(db: SQLiteDatabase, albumId: string, momentIds: string[], quality: string) {
+async function rememberSharedItems(
+  db: SQLiteDatabase,
+  albumId: string,
+  momentIds: string[],
+  qualityOf: (momentId: string) => Quality,
+) {
   await inTransaction(db, async () => {
     for (const momentId of momentIds) {
       await db.runAsync(
         'INSERT OR REPLACE INTO shared_items (album_id, moment_id, photo_quality) VALUES (?, ?, ?)',
         albumId,
         momentId,
-        quality,
+        qualityOf(momentId),
       );
     }
   });
@@ -208,6 +235,31 @@ export async function removeSharedItem(albumId: string, itemId: string) {
   unwrap(
     await cloudApi.DELETE('/shared-albums/{album_id}/items/{item_id}', {
       params: { path: { album_id: albumId, item_id: itemId } },
+    }),
+  );
+  notifyChange();
+}
+
+/**
+ * 사진마다 화질을 바꾼다 (null이면 앨범 화질로 되돌린다). 올린 사람이나 관리자만 바꿀 수 있다.
+ * 올린 사람의 기기가 다음 동기화에서 내 항목 목록을 다시 받아 원본을 올리거나 정리한다.
+ */
+export async function setSharedItemsQuality(albumId: string, itemIds: string[], quality: Quality | null) {
+  unwrap(
+    await cloudApi.POST('/shared-albums/{album_id}/items/quality', {
+      params: { path: { album_id: albumId } },
+      body: { item_ids: itemIds, photo_quality: quality },
+    }),
+  );
+  notifyChange();
+}
+
+/** 여러 장을 한 번에 뺀다. 하나라도 뺄 수 없는 사진이 섞이면 서버가 아무것도 빼지 않는다. */
+export async function removeSharedItems(albumId: string, itemIds: string[]) {
+  unwrap(
+    await cloudApi.POST('/shared-albums/{album_id}/items/remove', {
+      params: { path: { album_id: albumId } },
+      body: { item_ids: itemIds },
     }),
   );
   notifyChange();
@@ -284,7 +336,9 @@ export async function transferOwner(albumId: string, userId: string) {
   return album;
 }
 
-async function sharedItemDownload(albumId: string, itemId: string, variant: 'display' | 'original' | 'compact') {
+type SharedVariant = SharedItem['stored_variants'][number];
+
+async function sharedItemDownload(albumId: string, itemId: string, variant: SharedVariant) {
   return unwrap(
     await cloudApi.GET('/shared-albums/{album_id}/items/{item_id}/photo', {
       params: { path: { album_id: albumId, item_id: itemId }, query: { variant } },
@@ -293,7 +347,7 @@ async function sharedItemDownload(albumId: string, itemId: string, variant: 'dis
 }
 
 /** 다른 구성원이 올린 사진의 서명 URL. 동영상은 이 주소로 바로 재생한다. */
-export async function sharedItemUrl(albumId: string, itemId: string, variant: 'display' | 'original' | 'compact') {
+export async function sharedItemUrl(albumId: string, itemId: string, variant: SharedVariant) {
   return (await sharedItemDownload(albumId, itemId, variant)).download_url;
 }
 
@@ -371,22 +425,23 @@ export async function saveSharedItemsToLibrary(
   return { total: items.length, failed };
 }
 
-const displayDownloads = new Map<string, Promise<string>>();
+const imageDownloads = new Map<string, Promise<string>>();
 
-/** 공유 항목의 표시용 사진을 캐시에 받아 둔다 (안전 사진첩의 cloudDisplayUri와 같다). */
-export function sharedDisplayUri(albumId: string, itemId: string) {
-  let download = displayDownloads.get(itemId);
+/** 공유 항목의 표시용 사진이나 썸네일을 캐시에 받아 둔다 (안전 사진첩의 cloudImageUri와 같다). */
+export function sharedImageUri(albumId: string, itemId: string, variant: 'display' | 'thumb') {
+  const key = `${variant}:${itemId}`;
+  let download = imageDownloads.get(key);
   if (!download) {
     download = (async () => {
-      const file = new File(cacheDir('shared-display'), `${itemId}.jpg`);
+      const file = new File(cacheDir(`shared-${variant}`), `${itemId}.jpg`);
       if (!file.exists) {
         const partial = new File(file.parentDirectory, `${itemId}.jpg.partial`);
-        await File.downloadFileAsync(await sharedItemUrl(albumId, itemId, 'display'), partial, { idempotent: true });
+        await File.downloadFileAsync(await sharedItemUrl(albumId, itemId, variant), partial, { idempotent: true });
         partial.move(file);
       }
       return file.uri;
-    })().finally(() => displayDownloads.delete(itemId));
-    displayDownloads.set(itemId, download);
+    })().finally(() => imageDownloads.delete(key));
+    imageDownloads.set(key, download);
   }
   return download;
 }

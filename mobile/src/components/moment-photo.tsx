@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image, type ImageContentFit } from 'expo-image';
 import * as MediaLibrary from 'expo-media-library';
 import { useSQLiteContext, type SQLiteDatabase } from 'expo-sqlite';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View, type ImageStyle, type StyleProp, type ViewStyle } from 'react-native';
 
 import { MomentVideo } from '@/components/moment-video';
@@ -11,7 +11,7 @@ import { VideoBadge } from '@/components/video-badge';
 import { Spacing } from '@/constants/theme';
 import { setMomentSource, type Moment } from '@/db/moments';
 import { useTheme } from '@/hooks/use-theme';
-import { cloudDisplayUri, cloudOriginalUrl } from '@/lib/cloud/photos';
+import { cloudImageUri, cloudOriginalUrl } from '@/lib/cloud/photos';
 import { useCloudSession } from '@/lib/cloud/session';
 import { hasLimitedPhotoAccess } from '@/lib/photos';
 
@@ -24,14 +24,18 @@ export type PhotoMoment = Pick<
   | 'media_type'
   | 'duration'
   | 'display_uploaded'
+  | 'thumb_uploaded'
   | 'original_uploaded'
   | 'compact_uploaded'
 >;
 
 type Props = {
   moment: PhotoMoment;
-  /** original: 크게 볼 때. 사진첩 원본이 없으면 Cloud 원본을 받는다. 동영상은 재생한다. */
-  variant?: 'display' | 'original';
+  /**
+   * original: 크게 볼 때. 사진첩 원본이 없으면 Cloud 원본을 받는다. 동영상은 재생한다.
+   * thumb: 목록·표지처럼 작게 그릴 때. 사진첩 원본이 없으면 Cloud 썸네일(없으면 표시용)을 받는다.
+   */
+  variant?: 'display' | 'thumb' | 'original';
   style: StyleProp<ImageStyle>;
   contentFit?: ImageContentFit;
   transition?: number;
@@ -83,6 +87,8 @@ function MomentImage({ moment, variant = 'display', style, contentFit = 'cover',
   const [libraryFailed, setLibraryFailed] = useState(false);
   const [cloudUri, setCloudUri] = useState<string | null>(null);
   const [cloudFailed, setCloudFailed] = useState(false);
+  // Cloud 썸네일을 받지 못했으면 표시용으로 다시 시도한다 (다른 기기에서 지운 직후 등 표시가 늦은 경우).
+  const [thumbFailed, setThumbFailed] = useState(false);
 
   // 다른 기록을 그리게 되거나(목록 재사용) 주소가 바뀌면 처음부터 다시 시도한다.
   // 그리기 전에 바꿔서, 재사용된 칸에 이전 기록의 사진이 잠깐 보이지 않게 한다.
@@ -93,6 +99,7 @@ function MomentImage({ moment, variant = 'display', style, contentFit = 'cover',
     setLibraryFailed(false);
     setCloudUri(null);
     setCloudFailed(false);
+    setThumbFailed(false);
   }
 
   // 그릴 주소를 아직 모르면(이전 버전에서 남긴 기록) 사진첩에서 찾아 저장한다.
@@ -104,19 +111,34 @@ function MomentImage({ moment, variant = 'display', style, contentFit = 'cover',
   const libraryUri = !libraryFailed ? moment.source_uri : null;
   // 원본이 아직 Cloud에 없으면(표시용만 올라간 경우) 크게 볼 때도 표시용 사진을 보여준다.
   const cloudVariant =
-    variant === 'original' && moment.original_uploaded ? 'original' : moment.display_uploaded ? 'display' : null;
+    variant === 'original' && moment.original_uploaded
+      ? 'original'
+      : variant === 'thumb' && moment.thumb_uploaded && !thumbFailed
+        ? 'thumb'
+        : moment.display_uploaded
+          ? 'display'
+          : null;
   const tryCloud = !libraryUri && !!session && !!cloudVariant && !cloudFailed;
 
+  const failCloud = useCallback(() => {
+    if (cloudVariant === 'thumb' && moment.display_uploaded) {
+      setThumbFailed(true);
+      setCloudUri(null);
+    } else {
+      setCloudFailed(true);
+    }
+  }, [cloudVariant, moment.display_uploaded]);
+
   useEffect(() => {
-    if (!tryCloud || cloudUri) return;
+    if (!tryCloud || cloudUri || !cloudVariant) return;
     let cancelled = false;
-    (cloudVariant === 'original' ? cloudOriginalUrl(moment.id) : cloudDisplayUri(moment.id))
+    (cloudVariant === 'original' ? cloudOriginalUrl(moment.id) : cloudImageUri(moment.id, cloudVariant))
       .then((uri) => !cancelled && setCloudUri(uri))
-      .catch(() => !cancelled && setCloudFailed(true));
+      .catch(() => !cancelled && failCloud());
     return () => {
       cancelled = true;
     };
-  }, [tryCloud, cloudUri, cloudVariant, moment.id]);
+  }, [tryCloud, cloudUri, cloudVariant, moment.id, failCloud]);
 
   const uri = libraryUri ?? (tryCloud ? cloudUri : null);
   const waiting = !libraryUri && tryCloud && !cloudUri;
@@ -142,7 +164,7 @@ function MomentImage({ moment, variant = 'display', style, contentFit = 'cover',
           setLibraryFailed(true);
           refreshSource(db, moment);
         } else {
-          setCloudFailed(true);
+          failCloud();
         }
       }}
     />

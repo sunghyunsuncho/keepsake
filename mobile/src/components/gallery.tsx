@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { Pressable, StyleSheet, useWindowDimensions, View, type ImageStyle } from 'react-native';
 
 import { MomentPhoto } from '@/components/moment-photo';
 import { GRID_GAP } from '@/components/pick';
@@ -9,6 +10,7 @@ import { Spacing } from '@/constants/theme';
 import type { Moment } from '@/db/moments';
 import { useTheme } from '@/hooks/use-theme';
 import { formatFullDate, formatTime, localDateKey } from '@/lib/dates';
+import type { Dated } from '@/lib/gallery';
 
 // 앨범 화면과 앨범에 사진 넣기 화면이 함께 쓰는 조각들 (줄 목록은 lib/gallery.ts).
 
@@ -16,8 +18,8 @@ import { formatFullDate, formatTime, localDateKey } from '@/lib/dates';
  * 일·이야기 단계의 폴라로이드 인화지. 다크 모드에서도 종이는 흰색이라 그 위 글자색도 고정한다.
  * (밝은 모드에서는 흰 바탕 위라 그림자로 테두리를 드러낸다)
  */
-const PRINT = { paper: '#FFFFFF', ink: '#1C1C1E', inkSecondary: '#6B6F76' } as const;
-const PRINT_SHADOW = {
+export const PRINT = { paper: '#FFFFFF', ink: '#1C1C1E', inkSecondary: '#6B6F76' } as const;
+export const PRINT_SHADOW = {
   shadowColor: '#140F0A',
   shadowOpacity: 0.16,
   shadowRadius: 4,
@@ -58,27 +60,36 @@ export function useGridTileSize(columns: number) {
   return Math.floor((width - GRID_GAP * (columns + 1)) / columns);
 }
 
-/** 정사각형 사진 한 줄. 마지막 줄이 덜 차도 같은 크기로 왼쪽부터 채운다. */
-export function TileRow({
+/**
+ * 정사각형 사진 한 줄. 마지막 줄이 덜 차도 같은 크기로 왼쪽부터 채운다.
+ * 내 기록이 아닌 것(공유 앨범 항목)은 renderPhoto로 그린다.
+ */
+export function TileRow<T extends Dated = Moment>({
   moments,
   columns,
   checked,
   framed,
   onPress,
   onLongPress,
+  renderPhoto,
 }: {
-  moments: Moment[];
+  moments: T[];
   columns: number;
   /** 고르는 화면이면 체크 표시할 기록 */
   checked?: Set<string>;
   /** 작은 폴라로이드로 (일 단계) */
   framed?: boolean;
-  onPress: (moment: Moment) => void;
-  onLongPress?: (moment: Moment) => void;
+  onPress: (moment: T) => void;
+  onLongPress?: (moment: T) => void;
+  renderPhoto?: (moment: T, style: ImageStyle) => ReactNode;
 }) {
   const theme = useTheme();
   const { width } = useWindowDimensions();
   const gridSize = useGridTileSize(columns);
+  const photo = (moment: T, size: number) => {
+    const style = { width: size, height: size, backgroundColor: theme.backgroundElement };
+    return renderPhoto ? renderPhoto(moment, style) : <MomentPhoto moment={moment as unknown as Moment} variant="thumb" style={style} transition={100} />;
+  };
   if (framed) {
     const outer = Math.floor((width - FRAMED_SIDE * 2 - FRAMED_GAP * (columns - 1)) / columns);
     const size = outer - TILE_FRAME * 2;
@@ -92,11 +103,7 @@ export function TileRow({
             accessibilityRole="imagebutton"
             accessibilityLabel={formatFullDate(moment.taken_at, moment.taken_tz_offset)}
             style={({ pressed }) => [styles.framedTile, { opacity: pressed ? 0.8 : 1 }]}>
-            <MomentPhoto
-              moment={moment}
-              style={{ width: size, height: size, backgroundColor: theme.backgroundElement }}
-              transition={100}
-            />
+            {photo(moment, size)}
           </Pressable>
         ))}
       </View>
@@ -116,11 +123,7 @@ export function TileRow({
             accessibilityLabel={formatFullDate(moment.taken_at, moment.taken_tz_offset)}
             accessibilityState={checked ? { checked: isChecked } : undefined}
             style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}>
-            <MomentPhoto
-              moment={moment}
-              style={{ width: size, height: size, backgroundColor: theme.backgroundElement }}
-              transition={100}
-            />
+            {photo(moment, size)}
             {checked && (
               <View
                 style={[

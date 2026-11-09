@@ -19,8 +19,13 @@ import { cacheDir } from '@/lib/storage';
 //
 // 앱은 사진을 보관하지 않으므로, 올릴 때 기기 사진첩에서 원본을 읽고 표시용 사진은 그때 만들어 올린 뒤 지운다.
 // 올릴 사진은 moments에서 바로 계산한다 (서버에 기록이 있고, 안전 앨범에 담겼고, 사진이 아직 올라가지 않은 것).
-// 표시용은 안전 앨범에 담긴 기록 모두, 원본은 화질이 '원본'인 안전 앨범에 담긴 기록만 올린다 (db/albums.ts).
+// 표시용은 안전 앨범에 담긴 기록 모두, 원본은 원본을 보관할 기록만 올린다 (wantsOriginal).
+// 사진마다 고른 화질(moments.cloud_quality)이 안전 앨범의 화질보다 먼저다. 공유 앨범은 그 앨범 항목의 화질
+// (shared_items.photo_quality: 공유 앨범에서 사진마다 고른 화질, 없으면 앨범 화질)을 따른다.
 // 반대로 안전 앨범에서 빠졌거나 앨범을 효율 보관으로 바꿔 필요 없어진 사진은 서버에서 지운다 (releaseUnwantedPhotos).
+//
+// 썸네일(thumb)은 목록·표지에 그리는 작은 표시용이다. 표시용이 필요한 기록에는 늘 함께 둔다. 기기 사진첩에 원본이
+// 없으면(정리로 지웠거나 다른 기기에서 남긴 기록) Cloud의 표시용으로 만든다. 썸네일이 없는 사진은 표시용으로 그린다.
 //
 // 동영상: 표시용(display)은 대표 장면 이미지라 목록·표지는 사진과 똑같이 그린다. 원본 보관 앨범은 영상 원본을,
 // 효율 보관 앨범은 720p로 줄인 영상(compact)을 올린다. 원본 보관 앨범에 함께 담겨 원본이 올라가 있으면 compact는 필요 없다.
@@ -28,14 +33,18 @@ import { cacheDir } from '@/lib/storage';
 // 기기 사진첩에서 지워져 compact를 만들 수 없으면 원본을 남긴다 (Cloud에 남은 유일한 영상이다).
 // upload_queue에는 실패한 사진의 재시도 횟수와 다음 시도 시각만 둔다. 앱을 다시 열어도 이어서 올린다.
 
-type Variant = 'display' | 'original' | 'compact';
+type Variant = 'display' | 'thumb' | 'original' | 'compact';
 type PendingUpload = { id: string; variant: Variant };
 
 const MAX_BACKOFF_MS = 6 * 60 * 60 * 1000;
 
-// 표시용 리사이즈본: 긴 변 기준. 1장 약 0.5MB를 목표로 한다 (docs/PLAN.md §2.2).
-const DISPLAY_LONG_EDGE = 1600;
+// 표시용 리사이즈본: 긴 변 기준. 1장 약 0.8MB를 목표로 한다 (docs/PLAN.md §2.2).
+// 메신저로 주고받는 사진보다 선명하게 남기려고 1600px에서 올렸다. 이미 올린 사진은 그대로 둔다.
+const DISPLAY_LONG_EDGE = 2048;
 const DISPLAY_QUALITY = 0.8;
+// 썸네일: 3칸 목록의 정사각형 칸(3배 화면에서 약 420px)을 짧은 변이 채우는 크기. 1장 약 50KB.
+const THUMB_LONG_EDGE = 640;
+const THUMB_QUALITY = 0.75;
 
 // R2 한 번의 PUT 한도(5GiB) 안에서 서버가 받는 크기 (backend/app/api/uploads.py MAX_UPLOAD_BYTES)
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024;
@@ -44,6 +53,7 @@ const TOO_LARGE_RETRY_MS = 24 * 60 * 60 * 1000;
 
 const UPLOADED_COLUMN: Record<Variant, string> = {
   display: 'display_uploaded',
+  thumb: 'thumb_uploaded',
   original: 'original_uploaded',
   compact: 'compact_uploaded',
 };
@@ -70,27 +80,44 @@ const CONTENT_TYPES: Record<string, string> = {
 // 기기 사진첩에 원본이 있어야 올릴 수 있다. 지워진 사진(source_missing)이나 다른 기기에서 받은 기록은 뺀다.
 const ON_DEVICE = 'deleted_at IS NULL AND source_asset_id IS NOT NULL AND source_missing = 0';
 const UPLOADABLE = `${ON_DEVICE} AND sync_state = 'synced'`;
+// 썸네일은 기기 원본이 없어도 Cloud의 표시용으로 만든다.
+const THUMB_UPLOADABLE = `deleted_at IS NULL AND sync_state = 'synced'
+  AND ((source_asset_id IS NOT NULL AND source_missing = 0) OR display_uploaded = 1)`;
 
 /**
- * 안전 앨범이나 내가 담은 공유 앨범에 있는 기록 (moments 테이블 기준). originalOnly: 원본을 보관하는 앨범만.
+ * 안전 앨범이나 내가 담은 공유 앨범에 있는 기록 (moments 테이블 기준).
  * 공유 앨범의 파일도 내 Cloud 파일 그대로라 안전 앨범과 같은 규칙으로 올리고 지운다 (shared_items, lib/cloud/shared.ts).
  * 용량은 서버가 나눠 센다: 공유 앨범이 쓰는 파일은 그 앨범 용량이다.
  * sharedOnly: 공유 앨범만 (구독하지 않은 구성원은 공유 앨범 공간에만 올린다).
  */
-function inCloudAlbum(originalOnly: boolean, sharedOnly = false) {
-  const shared = `EXISTS (
-    SELECT 1 FROM shared_items s WHERE s.moment_id = moments.id
-      ${originalOnly ? "AND s.photo_quality = 'original'" : ''})`;
+function inCloudAlbum(sharedOnly = false) {
+  const shared = `EXISTS (SELECT 1 FROM shared_items s WHERE s.moment_id = moments.id)`;
   if (sharedOnly) return `(${shared})`;
-  return `(EXISTS (
-    SELECT 1 FROM album_moments am JOIN albums a ON a.id = am.album_id
-    WHERE am.moment_id = moments.id AND am.deleted_at IS NULL AND a.deleted_at IS NULL AND a.kind = 'cloud'
-      ${originalOnly ? "AND IFNULL(a.photo_quality, 'original') = 'original'" : ''})
-  OR ${shared})`;
+  return `(${inPersonalAlbum(false)} OR ${shared})`;
 }
 
-/** 효율 보관 동영상(720p)이 필요한 기록: 안전 앨범에 담겼지만 원본을 보관하는 안전 앨범에는 없는 동영상 */
-const WANTS_COMPACT = `media_type = 'video' AND ${inCloudAlbum(false)} AND NOT ${inCloudAlbum(true)}`;
+/** 내 안전 앨범(공유 앨범 제외)에 담긴 기록. originalOnly: 원본을 보관하는 앨범만. */
+function inPersonalAlbum(originalOnly: boolean) {
+  return `EXISTS (
+    SELECT 1 FROM album_moments am JOIN albums a ON a.id = am.album_id
+    WHERE am.moment_id = moments.id AND am.deleted_at IS NULL AND a.deleted_at IS NULL AND a.kind = 'cloud'
+      ${originalOnly ? "AND IFNULL(a.photo_quality, 'original') = 'original'" : ''})`;
+}
+
+/**
+ * 원본을 보관할 기록. 원본 보관 공유 앨범에 담았거나, 안전 앨범에 담겼고 사진에서 '원본'을 골랐거나,
+ * 사진에서 고르지 않았고 원본 보관 안전 앨범에 담긴 기록이다. 사진에서 '효율'을 골라도 원본 보관 공유 앨범이 쓰면 남긴다.
+ * sharedOnly: 공유 앨범만 본다 (inCloudAlbum과 같다).
+ */
+function wantsOriginal(sharedOnly = false) {
+  const shared = `EXISTS (SELECT 1 FROM shared_items s WHERE s.moment_id = moments.id AND s.photo_quality = 'original')`;
+  if (sharedOnly) return `(${shared})`;
+  return `(${shared} OR (${inPersonalAlbum(false)} AND (cloud_quality = 'original'
+    OR (cloud_quality IS NULL AND ${inPersonalAlbum(true)}))))`;
+}
+
+/** 효율 보관 동영상(720p)이 필요한 기록: 안전 앨범에 담겼지만 원본은 보관하지 않는 동영상 */
+const WANTS_COMPACT = `media_type = 'video' AND ${inCloudAlbum()} AND NOT ${wantsOriginal()}`;
 
 export async function pendingUploads(db: SQLiteDatabase, now = new Date().toISOString(), sharedOnly = false) {
   // 표시용 사진을 먼저 올린다. 새 기기에서 사진첩을 빨리 보여주기 위해서다.
@@ -98,13 +125,18 @@ export async function pendingUploads(db: SQLiteDatabase, now = new Date().toISOS
   return db.getAllAsync<PendingUpload>(
     `SELECT p.id, p.variant FROM (
        SELECT id, 'display' AS variant, 0 AS priority, taken_at FROM moments
-       WHERE ${UPLOADABLE} AND display_uploaded = 0 AND ${inCloudAlbum(false, sharedOnly)}
+       WHERE ${UPLOADABLE} AND display_uploaded = 0 AND ${inCloudAlbum(sharedOnly)}
+       UNION ALL
+       -- Cloud 표시용으로 만드는 썸네일은 맨 뒤에: 원본이 있는 다른 기기가 먼저 올리면 받지 않아도 된다.
+       SELECT id, 'thumb', CASE WHEN source_asset_id IS NOT NULL AND source_missing = 0 THEN 0 ELSE 2 END, taken_at
+       FROM moments
+       WHERE ${THUMB_UPLOADABLE} AND thumb_uploaded = 0 AND ${inCloudAlbum(sharedOnly)}
        UNION ALL
        SELECT id, 'original', 1, taken_at FROM moments
-       WHERE ${UPLOADABLE} AND original_uploaded = 0 AND ${inCloudAlbum(true, sharedOnly)}
+       WHERE ${UPLOADABLE} AND original_uploaded = 0 AND ${wantsOriginal(sharedOnly)}
        UNION ALL
        SELECT id, 'compact', 1, taken_at FROM moments
-       WHERE ${UPLOADABLE} AND ${WANTS_COMPACT} AND compact_uploaded = 0 AND ${inCloudAlbum(false, sharedOnly)}
+       WHERE ${UPLOADABLE} AND ${WANTS_COMPACT} AND compact_uploaded = 0 AND ${inCloudAlbum(sharedOnly)}
      ) AS p
      LEFT JOIN upload_queue q ON q.moment_id = p.id AND q.variant = p.variant
      WHERE q.next_attempt_at IS NULL OR q.next_attempt_at <= ?
@@ -113,11 +145,12 @@ export async function pendingUploads(db: SQLiteDatabase, now = new Date().toISOS
   );
 }
 
+/** 화면에 보이는 '올릴 사진' 수. 썸네일은 표시용에서 따라 만드는 작은 파일이라 세지 않는다. */
 export async function countPendingUploads(db: SQLiteDatabase) {
   const row = await db.getFirstAsync<{ count: number }>(
     `SELECT
-       SUM(CASE WHEN display_uploaded = 0 AND ${inCloudAlbum(false)} THEN 1 ELSE 0 END) +
-       SUM(CASE WHEN original_uploaded = 0 AND ${inCloudAlbum(true)} THEN 1 ELSE 0 END) +
+       SUM(CASE WHEN display_uploaded = 0 AND ${inCloudAlbum()} THEN 1 ELSE 0 END) +
+       SUM(CASE WHEN original_uploaded = 0 AND ${wantsOriginal()} THEN 1 ELSE 0 END) +
        SUM(CASE WHEN compact_uploaded = 0 AND ${WANTS_COMPACT} THEN 1 ELSE 0 END) AS count
      FROM moments WHERE ${ON_DEVICE}`,
   );
@@ -127,21 +160,25 @@ export async function countPendingUploads(db: SQLiteDatabase) {
 const RELEASE_BATCH = 500;
 
 /**
- * 올라가 있지만 이제 어떤 안전 앨범에도 필요 없는 파일. 표시용은 안전 앨범 밖, 원본은 원본 보관 앨범 밖.
- * 효율 보관 앨범에 남은 동영상의 원본은 compact가 올라간 뒤에 지운다. compact는 원본이 올라가 있으면 지운다.
+ * 올라가 있지만 이제 어떤 안전 앨범에도 필요 없는 파일. 표시용·썸네일은 안전 앨범 밖, 원본은 보관할 원본이 아닐 때
+ * (원본 보관 앨범에서 빠졌거나 사진에서 '효율'을 골랐을 때). 효율 보관으로 남은 동영상의 원본은 compact가 올라간 뒤에
+ * 지운다. compact는 원본을 보관하면 지운다.
  */
 function unwantedPhotos(db: SQLiteDatabase) {
   return db.getAllAsync<PendingUpload>(
     `SELECT id, 'display' AS variant FROM moments
-     WHERE deleted_at IS NULL AND display_uploaded = 1 AND NOT ${inCloudAlbum(false)}
+     WHERE deleted_at IS NULL AND display_uploaded = 1 AND NOT ${inCloudAlbum()}
+     UNION ALL
+     SELECT id, 'thumb' FROM moments
+     WHERE deleted_at IS NULL AND thumb_uploaded = 1 AND NOT ${inCloudAlbum()}
      UNION ALL
      SELECT id, 'original' FROM moments
-     WHERE deleted_at IS NULL AND original_uploaded = 1 AND NOT ${inCloudAlbum(true)}
-       AND (media_type != 'video' OR compact_uploaded = 1 OR NOT ${inCloudAlbum(false)})
+     WHERE deleted_at IS NULL AND original_uploaded = 1 AND NOT ${wantsOriginal()}
+       AND (media_type != 'video' OR compact_uploaded = 1 OR NOT ${inCloudAlbum()})
      UNION ALL
      SELECT id, 'compact' FROM moments
      WHERE deleted_at IS NULL AND compact_uploaded = 1
-       AND (NOT ${inCloudAlbum(false)} OR (original_uploaded = 1 AND ${inCloudAlbum(true)}))
+       AND (NOT ${inCloudAlbum()} OR (original_uploaded = 1 AND ${wantsOriginal()}))
      LIMIT ${RELEASE_BATCH}`,
   );
 }
@@ -182,7 +219,7 @@ export async function adoptPhotosWithoutAlbum(db: SQLiteDatabase) {
   if ((await getSettings(db)).cloud_photos_adopted) return;
   const rows = await db.getAllAsync<{ id: string; original_uploaded: number }>(
     `SELECT id, original_uploaded FROM moments
-     WHERE deleted_at IS NULL AND (display_uploaded = 1 OR original_uploaded = 1) AND NOT ${inCloudAlbum(false)}`,
+     WHERE deleted_at IS NULL AND (display_uploaded = 1 OR original_uploaded = 1) AND NOT ${inCloudAlbum()}`,
   );
   if (rows.length > 0) {
     const quality = rows.some((row) => row.original_uploaded === 1) ? 'original' : 'display';
@@ -226,12 +263,23 @@ class TooLargeError extends Error {}
 /** 올렸으면 true. 기기 사진첩에서 원본이 지워졌으면 지워진 사진으로 표시하고 false. */
 async function uploadOne(db: SQLiteDatabase, { id, variant }: PendingUpload) {
   const row = await db.getFirstAsync<{
-    source_asset_id: string;
+    source_asset_id: string | null;
+    source_missing: number;
     media_type: string;
     width: number | null;
     height: number | null;
-  }>('SELECT source_asset_id, media_type, width, height FROM moments WHERE id = ? AND deleted_at IS NULL', id);
+  }>(
+    'SELECT source_asset_id, source_missing, media_type, width, height FROM moments WHERE id = ? AND deleted_at IS NULL',
+    id,
+  );
   if (!row) return false; // 올리는 동안 기록에서 뺐다.
+  if (!row.source_asset_id || row.source_missing) {
+    // 기기 원본이 없으면 썸네일만 Cloud의 표시용으로 만든다 (다른 파일은 올릴 후보가 되지 않는다).
+    if (variant !== 'thumb') return false;
+    await uploadThumbFromCloud(id, row.width, row.height, row.media_type === 'video');
+    await markUploaded(db, id, variant);
+    return true;
+  }
   // iCloud에만 있는 원본은 받아야 파일이 생긴다 (OS가 관리하는 사진첩 캐시라 앱 용량은 늘지 않는다).
   // 사진이 없으면 null이고, 예외는 권한 문제 같은 일시적 실패라 재시도로 넘긴다 (지워진 사진으로 표시하지 않는다).
   const info = await MediaLibrary.getAssetInfoAsync(row.source_asset_id, {
@@ -254,8 +302,10 @@ async function uploadOne(db: SQLiteDatabase, { id, variant }: PendingUpload) {
   const file =
     variant === 'compact'
       ? await makeCompactVideo(sourceUri)
-      : variant === 'display'
-        ? await (video ? makeVideoPoster(sourceUri, width, height) : makeDisplayImage(sourceUri, width, height))
+      : variant === 'display' || variant === 'thumb'
+        ? await (video
+            ? makeVideoPoster(sourceUri, width, height, IMAGE_SIZES[variant])
+            : makeImage(sourceUri, width, height, IMAGE_SIZES[variant]))
         : video
           ? new File(sourceUri)
           : copyToUploadDir(sourceUri, info.filename);
@@ -264,9 +314,41 @@ async function uploadOne(db: SQLiteDatabase, { id, variant }: PendingUpload) {
   } finally {
     if (temporary && file.exists) file.delete();
   }
+  await markUploaded(db, id, variant);
+  return true;
+}
+
+async function markUploaded(db: SQLiteDatabase, id: string, variant: Variant) {
   await db.runAsync(`UPDATE moments SET ${UPLOADED_COLUMN[variant]} = 1 WHERE id = ?`, id);
   await db.runAsync('DELETE FROM upload_queue WHERE moment_id = ? AND variant = ?', id, variant);
-  return true;
+}
+
+/**
+ * 기기 원본이 없는 기록의 썸네일을 Cloud 표시용으로 만든다. 표시용은 볼 때 받아 둔 캐시가 있으면 그대로 쓰고,
+ * 없으면 잠깐 받아 쓰고 지운다 (사진마다 받은 표시용이 캐시에 쌓이지 않게).
+ */
+async function uploadThumbFromCloud(id: string, width: number | null, height: number | null, video: boolean) {
+  // 원본이 있는 다른 기기가 이미 올렸으면 표시용을 받지 않는다 (서명 URL만 받는 가벼운 요청).
+  const existing = await cloudApi.GET('/moments/{moment_id}/photo', {
+    params: { path: { moment_id: id }, query: { variant: 'thumb' } },
+  });
+  if (existing.response.ok) return;
+  if (existing.response.status !== 404) unwrap(existing);
+
+  const cached = new File(cacheDir('cloud-display'), `${id}.jpg`);
+  const temporary = cached.exists ? null : new File(cacheDir('upload'), `${id}-display.jpg`);
+  let file: File | null = null;
+  try {
+    if (temporary) await downloadTo(id, 'display', temporary);
+    const display = (temporary ?? cached).uri;
+    // 표시용은 원본과 비율이 같다. 크기를 모르면(오래된 기록) 한 번 읽어 본다.
+    const size = width && height ? { width, height } : await imageSize(display);
+    file = await makeImage(display, size.width, size.height, IMAGE_SIZES.thumb);
+    await uploadFile(id, 'thumb', file, video);
+  } finally {
+    if (file?.exists) file.delete();
+    if (temporary?.exists) temporary.delete();
+  }
 }
 
 // 사진첩 파일을 직접 올리면 올리는 동안 사진첩이 파일을 바꿀 수 있어(편집, iCloud) 잠깐 복사해 둔다.
@@ -278,7 +360,7 @@ function copyToUploadDir(sourceUri: string, filename: string) {
 }
 
 async function uploadFile(id: string, variant: Variant, file: File, video: boolean) {
-  const ext = variant === 'display' ? 'jpg' : variant === 'compact' ? 'mp4' : (extensionOf(file.name) ?? 'jpg');
+  const ext = variant === 'display' || variant === 'thumb' ? 'jpg' : variant === 'compact' ? 'mp4' : (extensionOf(file.name) ?? 'jpg');
   const contentType = CONTENT_TYPES[ext] ?? (video && variant === 'original' ? `video/${ext}` : `image/${ext}`);
   if (file.size > MAX_UPLOAD_BYTES) throw new TooLargeError('4GB보다 큰 동영상은 보관할 수 없어요');
   // 큰 원본을 JS 메모리에 올리지 않도록 해시는 네이티브로 조금씩 읽어 계산하고 업로드도 네이티브로 한다.
@@ -306,14 +388,14 @@ async function uploadFile(id: string, variant: Variant, file: File, video: boole
   );
 }
 
-/** 동영상의 대표 장면을 표시용 이미지로 만든다 (첫 장면은 검은 화면일 때가 많아 1초 쯤에서). */
-async function makeVideoPoster(uri: string, width: number, height: number) {
+/** 동영상의 대표 장면을 표시용·썸네일 이미지로 만든다 (첫 장면은 검은 화면일 때가 많아 1초 쯤에서). */
+async function makeVideoPoster(uri: string, width: number, height: number, size: ImageSize) {
   const frame = await getThumbnailAsync(uri, { time: POSTER_TIME_MS }).catch(() =>
     // 1초보다 짧은 영상
     getThumbnailAsync(uri, { time: 0 }),
   );
   try {
-    return await makeDisplayImage(frame.uri, frame.width || width, frame.height || height);
+    return await makeImage(frame.uri, frame.width || width, frame.height || height, size);
   } finally {
     const file = new File(frame.uri);
     if (file.exists) file.delete();
@@ -334,17 +416,22 @@ async function makeCompactVideo(uri: string) {
   return file;
 }
 
-async function makeDisplayImage(uri: string, width: number, height: number) {
+type ImageSize = { longEdge: number; quality: number };
+const IMAGE_SIZES: Record<'display' | 'thumb', ImageSize> = {
+  display: { longEdge: DISPLAY_LONG_EDGE, quality: DISPLAY_QUALITY },
+  thumb: { longEdge: THUMB_LONG_EDGE, quality: THUMB_QUALITY },
+};
+
+/** 긴 변을 size.longEdge 이하로 줄인 JPEG */
+async function makeImage(uri: string, width: number, height: number, { longEdge, quality }: ImageSize) {
   const context = ImageManipulator.manipulate(uri);
-  if (Math.max(width, height) > DISPLAY_LONG_EDGE) {
-    context.resize(
-      width >= height ? { width: DISPLAY_LONG_EDGE, height: null } : { width: null, height: DISPLAY_LONG_EDGE },
-    );
+  if (Math.max(width, height) > longEdge) {
+    context.resize(width >= height ? { width: longEdge, height: null } : { width: null, height: longEdge });
   }
   // 원본 해상도 이미지를 메모리에 올리므로 다 쓰면 바로 놓아준다.
   const image = await context.renderAsync();
   try {
-    const result = await image.saveAsync({ format: SaveFormat.JPEG, compress: DISPLAY_QUALITY });
+    const result = await image.saveAsync({ format: SaveFormat.JPEG, compress: quality });
     return new File(result.uri);
   } finally {
     image.release();
@@ -376,25 +463,35 @@ async function recordFailure(db: SQLiteDatabase, item: PendingUpload, error: unk
   );
 }
 
+async function imageSize(uri: string) {
+  const image = await ImageManipulator.manipulate(uri).renderAsync();
+  try {
+    return { width: image.width, height: image.height };
+  } finally {
+    image.release();
+  }
+}
+
 /**
- * 기기 사진첩에 원본이 없는 기록(지워진 사진, 다른 기기에서 남긴 기록)의 Cloud 표시용 사진.
+ * 기기 사진첩에 원본이 없는 기록(지워진 사진, 다른 기기에서 남긴 기록)의 Cloud 표시용 사진이나 썸네일.
  * 볼 때 한 장씩 받아 캐시에 둔다. OS가 캐시를 지우면 다시 받는다.
  */
-export function cloudDisplayUri(momentId: string) {
+export function cloudImageUri(momentId: string, variant: 'display' | 'thumb') {
   // 같은 사진을 두 곳(앨범 표지와 목록)에서 그려도 임시 파일이 겹치지 않게 한 번만 받는다.
-  let download = displayDownloads.get(momentId);
+  const key = `${variant}:${momentId}`;
+  let download = imageDownloads.get(key);
   if (!download) {
-    download = fetchDisplay(momentId).finally(() => displayDownloads.delete(momentId));
-    displayDownloads.set(momentId, download);
+    download = fetchImage(momentId, variant).finally(() => imageDownloads.delete(key));
+    imageDownloads.set(key, download);
   }
   return download;
 }
 
-const displayDownloads = new Map<string, Promise<string>>();
+const imageDownloads = new Map<string, Promise<string>>();
 
-async function fetchDisplay(momentId: string) {
-  const file = new File(cacheDir('cloud-display'), `${momentId}.jpg`);
-  if (!file.exists) await downloadTo(momentId, 'display', file);
+async function fetchImage(momentId: string, variant: 'display' | 'thumb') {
+  const file = new File(cacheDir(`cloud-${variant}`), `${momentId}.jpg`);
+  if (!file.exists) await downloadTo(momentId, variant, file);
   return file.uri;
 }
 

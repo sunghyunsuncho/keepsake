@@ -3,13 +3,12 @@ import { useNetworkState } from 'expo-network';
 import { router, useNavigation } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useLayoutEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 
-import { MomentsAlbumCard, NewAlbumCard } from '@/components/album-shelf';
+import { AlbumSectionHeader, MomentsRowCard } from '@/components/album-shelf';
 import { Button } from '@/components/button';
 import { CreatedAlbumCard } from '@/components/created-album-card';
 import { CloudAlbumGuide } from '@/components/library-guide';
-import { LibraryIntro } from '@/components/library-intro';
 import { NotificationBell } from '@/components/notification-bell';
 import { PhotoQualityBadge } from '@/components/photo-quality';
 import { SharedAlbumSection } from '@/components/shared-album-section';
@@ -23,7 +22,6 @@ import { useDbQuery } from '@/db/changes';
 import { useTheme } from '@/hooks/use-theme';
 import { useCloudState } from '@/lib/cloud/engine';
 import { useCloudSession } from '@/lib/cloud/session';
-import { formatFullDate, formatTime } from '@/lib/dates';
 import { formatBytes } from '@/lib/storage';
 
 /** 계정의 안전 보관 공간: 안전 앨범 목록. 구독 중이거나 유예 기간에만 연다. */
@@ -113,9 +111,7 @@ function OfflineNotice() {
 
 function CloudAlbums() {
   const db = useSQLiteContext();
-  const theme = useTheme();
-  const { width } = useWindowDimensions();
-  const { account, running, problem, pendingUploads, lastSyncedAt } = useCloudState();
+  const { account, running, problem, pendingUploads } = useCloudState();
   const { data: albums } = useDbQuery(() => listAlbums(db, 'cloud'), [db]);
   const { data: recentMoments } = useDbQuery(() => listRecentCloudMoments(db, 3), [db]);
   const { data: pending } = useDbQuery(() => listCloudAlbumPending(db), [db]);
@@ -124,54 +120,31 @@ function CloudAlbums() {
   if (!albums) return <ActivityIndicator />;
 
   const canUpload = account?.subscription.can_upload ?? false;
-  const cardWidth = (width - Spacing.three * 2 - Spacing.three) / 2;
-  const topCardHeight = Math.min(Math.round(cardWidth * 0.56), 100);
   const allAlbum = albums[0];
   const cloudAlbums = albums.slice(1);
-  const syncLine = running
-    ? '동기화하는 중…'
-    : canUpload && pendingUploads > 0
-      ? `올릴 사진 ${pendingUploads}장`
-      : lastSyncedAt
-        ? `${formatFullDate(lastSyncedAt)} ${formatTime(lastSyncedAt)}에 동기화했어요`
-        : null;
+  // 할 일이 있을 때만 알린다. 마지막 동기화 시각은 안전 사진첩 설정(⚙)에서 본다.
+  const syncLine = running ? '동기화하는 중…' : canUpload && pendingUploads > 0 ? `올릴 사진 ${pendingUploads}장` : null;
+  const newAlbum = canUpload ? [{ icon: 'add' as const, label: '새 안전 앨범', onPress: () => router.push('/cloud-albums/new') }] : [];
 
   return (
     <>
-      {/* 기기 사진첩과 같은 높이의 소개 문구 → 같은 위치의 카드 두 장. 사용한 공간은 그 아래에 둔다. */}
-      <LibraryIntro
-        title="안전 보관한 사진으로 사진첩을 만들어요"
-        description="기기를 바꾸거나 사진을 지워도 계정에 남아요."
-      />
-
-      <View style={[styles.topRow, { backgroundColor: theme.backgroundElement }]}>
-        <MomentsAlbumCard album={allAlbum} moments={recentMoments} width={cardWidth} height={topCardHeight} source="cloud" />
-        {canUpload && (
-          <NewAlbumCard
-            width={cardWidth}
-            height={topCardHeight}
-            label="새 안전 앨범"
-            caption="나만 보기 · 함께 쓰기"
-            onPress={() => router.push('/cloud-albums/new')}
+      {/* 모든 사진은 한 줄 카드로(사용한 공간은 그 안에), 새 앨범은 목록 제목 오른쪽 버튼으로 두어
+          앨범 목록이 위쪽부터 보이게 한다. */}
+      <MomentsRowCard album={allAlbum} moments={recentMoments} source="cloud">
+        {account?.usage && (
+          <StorageMeter
+            used={account.usage.bytes_total}
+            allocated={account.usage.allocated_bytes}
+            max={account.usage.max_bytes}
+            note={syncLine}
+            problem={problem}
           />
         )}
-      </View>
+      </MomentsRowCard>
 
-      {account?.usage && (
-        <StorageMeter
-          used={account.usage.bytes_total}
-          allocated={account.usage.allocated_bytes}
-          max={account.usage.max_bytes}
-          note={syncLine}
-          problem={problem}
-        />
-      )}
-
-      {cloudAlbums.length > 0 ? (
-        <View style={styles.createdAlbums}>
-          <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionTitle}>
-            나만 보는 안전 앨범
-          </ThemedText>
+      <View style={styles.createdAlbums}>
+        <AlbumSectionHeader title="나만 보는 안전 앨범" actions={newAlbum} />
+        {cloudAlbums.length > 0 ? (
           <View style={styles.albumStack}>
             {cloudAlbums.map((album) => (
               <CreatedAlbumCard key={album.id} album={album} source="cloud">
@@ -179,12 +152,12 @@ function CloudAlbums() {
               </CreatedAlbumCard>
             ))}
           </View>
-        </View>
-      ) : (
-        <ThemedText themeColor="textSecondary" style={styles.hint}>
-          아직 안전 앨범이 없어요.{'\n'}안전 보관할 사진을 앨범으로 묶어 보세요.
-        </ThemedText>
-      )}
+        ) : (
+          <ThemedText type="small" themeColor="textSecondary" style={styles.sectionHint}>
+            아직 안전 앨범이 없어요. 안전 보관할 사진을 앨범으로 묶어 보세요.
+          </ThemedText>
+        )}
+      </View>
 
       <SharedAlbumSection canCreate={canUpload} />
 
@@ -193,8 +166,8 @@ function CloudAlbums() {
 }
 
 /**
- * 사용한 공간과 동기화 상태. 앨범의 보관 화질을 고를 때 참고하도록 목록 위에 둔다.
- * allocated: 공유 앨범에 나눠 준 용량. 공유 앨범의 사진은 개인 사용량이 아니라 그 안에서 센다.
+ * 사용한 공간 (모든 사진 카드 안의 한 줄). 할 일(올릴 사진·동기화 중)이나 문제가 있을 때만 한 줄 더 보여 준다.
+ * allocated: 공유 앨범에 나눠 준 용량. 공유 앨범의 사진은 개인 사용량이 아니라 그 안에서 센다 (막대의 회색 부분).
  */
 function StorageMeter({
   used,
@@ -215,14 +188,7 @@ function StorageMeter({
   return (
     <View style={styles.meter}>
       <View style={styles.meterLabels}>
-        <ThemedText type="small" themeColor="textSecondary">
-          사용한 공간
-        </ThemedText>
-        <ThemedText type="small">
-          {formatBytes(used + allocated)} / {formatBytes(max)}
-        </ThemedText>
-      </View>
-      <View style={[styles.meterTrack, styles.meterRow, { backgroundColor: theme.backgroundElement }]}>
+        <View style={[styles.meterTrack, styles.meterRow, styles.flex, { backgroundColor: theme.backgroundSelected }]}>
         <View
           style={[
             styles.meterFill,
@@ -235,12 +201,12 @@ function StorageMeter({
         {allocated > 0 && (
           <View style={[styles.meterFill, { width: `${sharedRatio * 100}%`, backgroundColor: theme.textSecondary }]} />
         )}
-      </View>
-      {allocated > 0 && (
-        <ThemedText type="small" themeColor="textSecondary">
-          내 사진 {formatBytes(used)} · 공유 앨범에 나눠 줌 {formatBytes(allocated)}
+        </View>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.meterText}>
+          {formatBytes(used + allocated)} / {formatBytes(max)}
+          {allocated > 0 ? ` · 공유 ${formatBytes(allocated)}` : ''}
         </ThemedText>
-      )}
+      </View>
       {problem ? (
         <ThemedText type="small" style={{ color: theme.danger }}>
           {problem}
@@ -287,23 +253,14 @@ const styles = StyleSheet.create({
   offlineContent: { flexGrow: 1, justifyContent: 'center' },
   empty: { alignItems: 'center', gap: Spacing.two, paddingVertical: Spacing.five, paddingHorizontal: Spacing.three },
   center: { textAlign: 'center' },
-  hint: { textAlign: 'center', paddingHorizontal: Spacing.four },
-  meter: { gap: Spacing.one, marginHorizontal: Spacing.three, paddingHorizontal: Spacing.one },
-  meterLabels: { flexDirection: 'row', justifyContent: 'space-between' },
-  meterTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  meterFill: { height: 6, borderRadius: 3 },
+  meter: { gap: Spacing.half, paddingHorizontal: Spacing.half },
+  meterLabels: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  meterTrack: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  meterFill: { height: 4, borderRadius: 2 },
   meterRow: { flexDirection: 'row' },
-  topRow: {
-    flexDirection: 'row',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.three,
-    paddingBottom: Spacing.four,
-    borderTopLeftRadius: Spacing.four,
-    borderTopRightRadius: Spacing.four,
-  },
+  meterText: { fontSize: 12, lineHeight: 16 },
   createdAlbums: { gap: Spacing.two },
-  sectionTitle: { paddingHorizontal: Spacing.three },
+  sectionHint: { paddingHorizontal: Spacing.three },
   albumStack: { gap: Spacing.two, paddingHorizontal: Spacing.three },
   badges: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.one, marginTop: Spacing.one },
   linkBadge: {

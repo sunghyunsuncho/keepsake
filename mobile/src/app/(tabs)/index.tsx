@@ -4,12 +4,12 @@ import type { Asset } from 'expo-media-library';
 import { router, useNavigation } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { AlbumNameSheet } from '@/components/album-name-sheet';
 import { DateSheet } from '@/components/date-sheet';
-import { MomentPhoto } from '@/components/moment-photo';
+import { AlbumSectionHeader, MomentsRowCard } from '@/components/album-shelf';
 import {
   BottomBar,
   Centered,
@@ -24,7 +24,7 @@ import {
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { ALL_ALBUM_ID, createAlbum, getAlbumTitle, listAlbums, updateAlbumMoments } from '@/db/albums';
+import { createAlbum, getAlbumTitle, listAlbums, updateAlbumMoments } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
 import { listRecentlySavedMoments, momentIdsByAsset } from '@/db/moments';
 import { getSettings, setSetting, type Settings } from '@/db/settings';
@@ -674,23 +674,13 @@ function CleanupCard({ count, onCleanup, onKeep }: { count: number; onCleanup: (
   );
 }
 
-/** 고르기에서 남긴 사진은 사진첩의 기본 보관함으로 이어진다. */
+/** 고르기에서 남긴 사진은 사진첩의 기본 보관함으로 이어진다. 기기 사진첩 탭 맨 위와 같은 한 줄 카드와 새 앨범 버튼이다. */
 function SavedMomentsLink() {
   const db = useSQLiteContext();
-  const theme = useTheme();
-  const { width } = useWindowDimensions();
   const [naming, setNaming] = useState(false);
   const { data: albums } = useDbQuery(() => listAlbums(db), [db]);
   const { data: recentMoments } = useDbQuery(() => listRecentlySavedMoments(db, 3), [db]);
   const momentsAlbum = albums?.[0];
-  const cardWidth = (width - Spacing.three * 2 - Spacing.three) / 2;
-  const cardHeight = Math.min(Math.round(cardWidth * 0.56), 100);
-  const previews = recentMoments?.length ? recentMoments : momentsAlbum?.cover ? [momentsAlbum.cover] : [];
-  const innerHeight = cardHeight - Spacing.two - Spacing.one;
-  const mainWidth = Math.round((cardWidth - Spacing.two * 2 - Spacing.one) * 0.62);
-  const sideWidth = cardWidth - Spacing.two * 2 - Spacing.one - mainWidth;
-  const sideCount = Math.min(Math.max(previews.length - 1, 0), 2);
-  const sideHeight = sideCount === 1 ? innerHeight : (innerHeight - Spacing.one) / 2;
 
   const create = async (title: string) => {
     setNaming(false);
@@ -698,63 +688,12 @@ function SavedMomentsLink() {
     router.push({ pathname: '/albums/[id]/add', params: { id } });
   };
 
+  if (!momentsAlbum) return null;
   return (
     <>
-      <View style={[styles.momentsShortcut, { backgroundColor: theme.backgroundElement }]}>
-        <Pressable
-          onPress={() => router.push({ pathname: '/albums/[id]', params: { id: ALL_ALBUM_ID } })}
-          accessibilityRole="button"
-          style={({ pressed }) => [{ width: cardWidth, opacity: pressed ? 0.8 : 1 }]}>
-          <View style={[styles.momentsBox, { width: cardWidth, height: cardHeight, backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
-            {previews.length > 0 ? (
-              <>
-                <MomentPhoto moment={previews[0]} style={[styles.mainMomentPhoto, { width: mainWidth, height: innerHeight }]} transition={150} />
-                {previews.length > 1 && (
-                  <View style={styles.sideMomentPhotos}>
-                    {previews.slice(1, 3).map((moment) => (
-                      <MomentPhoto key={moment.id} moment={moment} style={[styles.sideMomentPhoto, { width: sideWidth, height: sideHeight }]} transition={150} />
-                    ))}
-                  </View>
-                )}
-              </>
-            ) : (
-              <View style={[styles.emptyMomentsBox, styles.emptyMomentsCover, { backgroundColor: theme.backgroundSelected }]}>
-                <Ionicons name="images-outline" size={28} color={theme.textSecondary} />
-              </View>
-            )}
-          </View>
-          <ThemedText type="smallBold" numberOfLines={1} style={styles.momentsGalleryTitle}>
-            나의 순간들
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            {momentsAlbum?.count ?? 0}장
-          </ThemedText>
-        </Pressable>
-
-        <Pressable
-          onPress={() => setNaming(true)}
-          accessibilityRole="button"
-          style={({ pressed }) => [{ width: cardWidth, opacity: pressed ? 0.7 : 1 }]}>
-          <View style={[styles.newBookShelf, { width: cardWidth, height: cardHeight, backgroundColor: theme.backgroundElement }]}>
-            <View style={[styles.newBook, { height: cardHeight - 24, backgroundColor: theme.backgroundSelected, borderColor: theme.border }]}>
-              <View style={[styles.bookSpine, { backgroundColor: theme.accent }]} />
-              <View style={styles.newBookSpring}>
-                {Array.from({ length: 4 }, (_, index) => (
-                  <View key={index} style={[styles.newBookRing, { borderColor: theme.background }]} />
-                ))}
-              </View>
-              <Ionicons name="add" size={18} color={theme.accent} />
-              <View style={[styles.bookPage, { backgroundColor: theme.background }]} />
-              <View style={[styles.bookPage, styles.bookPageLower, { backgroundColor: theme.background }]} />
-            </View>
-          </View>
-          <ThemedText type="smallBold" style={[styles.momentsGalleryTitle, { color: theme.accent }]}>
-            새 앨범
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            나의 순간들에서 골라 담아요
-          </ThemedText>
-        </Pressable>
+      <View style={styles.momentsShortcut}>
+        <AlbumSectionHeader title="기기 사진첩" actions={[{ icon: 'add', label: '새 앨범', onPress: () => setNaming(true) }]} />
+        <MomentsRowCard album={momentsAlbum} moments={recentMoments} />
       </View>
 
       <AlbumNameSheet
@@ -806,31 +745,7 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     borderRadius: Spacing.three,
   },
-  momentsShortcut: {
-    flexDirection: 'row',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.three,
-    paddingBottom: Spacing.four,
-    marginTop: Spacing.three,
-    marginBottom: Spacing.three,
-    borderTopLeftRadius: Spacing.four,
-    borderTopRightRadius: Spacing.four,
-  },
-  momentsBox: { flexDirection: 'row', padding: Spacing.one, gap: Spacing.one, borderRadius: Spacing.three, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
-  mainMomentPhoto: { borderRadius: Spacing.two, overflow: 'hidden' },
-  sideMomentPhotos: { gap: Spacing.one },
-  sideMomentPhoto: { borderRadius: Spacing.one, overflow: 'hidden' },
-  emptyMomentsBox: { flex: 1, borderRadius: Spacing.two },
-  emptyMomentsCover: { alignItems: 'center', justifyContent: 'center' },
-  newBookShelf: { alignItems: 'center', justifyContent: 'center', borderRadius: Spacing.three, position: 'relative', overflow: 'hidden' },
-  newBook: { width: 70, borderWidth: StyleSheet.hairlineWidth, borderRadius: Spacing.one, overflow: 'hidden', justifyContent: 'center', paddingLeft: Spacing.three, gap: Spacing.one },
-  bookSpine: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 6 },
-  newBookSpring: { position: 'absolute', zIndex: 2, left: 0, top: 6, bottom: 6, justifyContent: 'space-between' },
-  newBookRing: { width: 12, height: 5, marginLeft: -2, borderWidth: 1.25, borderRadius: 3 },
-  bookPage: { height: 3, marginRight: Spacing.two, borderRadius: Spacing.half },
-  bookPageLower: { width: 28 },
-  momentsGalleryTitle: { marginTop: Spacing.one },
+  momentsShortcut: { gap: Spacing.two, marginVertical: Spacing.three },
   pastPhotosIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   inlineCleanup: { paddingHorizontal: Spacing.three, paddingBottom: Spacing.two },
   cleanupCard: { flexDirection: 'column', alignItems: 'stretch', gap: Spacing.three },

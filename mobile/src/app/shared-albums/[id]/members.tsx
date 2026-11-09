@@ -399,8 +399,8 @@ function AlbumSettingsSection({ album }: { album: SharedAlbumDetail }) {
     Alert.alert(
       quality === 'display' ? '효율 보관으로 바꿀까요?' : '원본 그대로 보관할까요?',
       quality === 'display'
-        ? '원본은 앨범 용량에서 빠지고, 다른 앨범에 필요 없는 원본은 담은 사람의 기기가 지워요. 지운 원본은 되돌릴 수 없어요.'
-        : '구성원의 기기에 원본이 남아 있으면 원본도 올라가요. 앨범 용량을 더 써요.',
+        ? '원본은 앨범 용량에서 빠지고, 다른 앨범에 필요 없는 원본은 담은 사람의 기기가 지워요. 지운 원본은 되돌릴 수 없어요. 사진마다 따로 화질을 고른 사진은 그대로예요.'
+        : '구성원의 기기에 원본이 남아 있으면 원본도 올라가요. 앨범 용량을 더 써요. 사진마다 따로 화질을 고른 사진은 그대로예요.',
       [
         { text: '취소', style: 'cancel' },
         { text: '바꾸기', onPress: () => update({ photo_quality: quality }) },

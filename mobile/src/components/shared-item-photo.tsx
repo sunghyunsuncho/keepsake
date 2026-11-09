@@ -12,14 +12,14 @@ import { Spacing } from '@/constants/theme';
 import { useDbQuery } from '@/db/changes';
 import { getMoment } from '@/db/moments';
 import { useTheme } from '@/hooks/use-theme';
-import { sharedDisplayUri, sharedItemUrl, type SharedItem } from '@/lib/cloud/shared';
+import { sharedImageUri, sharedItemUrl, type SharedItem } from '@/lib/cloud/shared';
 
 type Props = {
   albumId: string;
   item: SharedItem;
   style: StyleProp<ImageStyle>;
-  /** full: 크게 볼 때. 동영상은 재생한다. */
-  variant?: 'display' | 'full';
+  /** full: 크게 볼 때. 동영상은 재생한다. thumb: 목록·표지처럼 작게 그릴 때 (썸네일이 없으면 표시용). */
+  variant?: 'display' | 'thumb' | 'full';
   contentFit?: ImageContentFit;
   active?: boolean;
 };
@@ -37,7 +37,7 @@ export function SharedItemPhoto(props: Props) {
     return (
       <MomentPhoto
         moment={moment}
-        variant={props.variant === 'full' ? 'original' : 'display'}
+        variant={props.variant === 'full' ? 'original' : props.variant === 'thumb' ? 'thumb' : 'display'}
         style={props.style}
         contentFit={props.contentFit}
         active={props.active}
@@ -60,6 +60,7 @@ export function SharedItemPhoto(props: Props) {
 function SharedImage({ albumId, item, style, contentFit = 'cover', variant }: Props) {
   const theme = useTheme();
   const stored = item.stored_variants.includes('display');
+  const image = variant === 'thumb' && item.stored_variants.includes('thumb') ? 'thumb' : 'display';
   // undefined: 받는 중, null: 받을 수 없다
   const [uri, setUri] = useState<string | null | undefined>(undefined);
 
@@ -67,13 +68,15 @@ function SharedImage({ albumId, item, style, contentFit = 'cover', variant }: Pr
     if (!stored) return;
     let cancelled = false;
     setUri(undefined);
-    sharedDisplayUri(albumId, item.id)
+    sharedImageUri(albumId, item.id, image)
+      // 썸네일을 받지 못하면 표시용으로 그린다 (목록을 받은 뒤 올린 사람이 바꾼 경우 등).
+      .catch((e) => (image === 'thumb' ? sharedImageUri(albumId, item.id, 'display') : Promise.reject(e)))
       .then((found) => !cancelled && setUri(found))
       .catch(() => !cancelled && setUri(null));
     return () => {
       cancelled = true;
     };
-  }, [albumId, item.id, stored]);
+  }, [albumId, item.id, stored, image]);
 
   if (stored && uri) {
     return <Image source={{ uri }} style={style} contentFit={contentFit} recyclingKey={item.id} transition={100} />;

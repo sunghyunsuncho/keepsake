@@ -483,6 +483,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/shared-albums/{album_id}/items/quality": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Item Quality
+         * @description 사진마다 화질을 바꾼다. 빼기와 같이 올린 사람이나 관리자만 바꾼다.
+         *
+         *     원본이 필요해지면 올린 사람의 기기가 다음 동기화에서 올리고(앨범 용량에서 확인한다),
+         *     필요 없어진 원본은 그 기기가 정리한다.
+         */
+        post: operations["shared_albums_set_item_quality"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/shared-albums/{album_id}/items/{item_id}": {
         parameters: {
             query?: never;
@@ -498,6 +521,26 @@ export interface paths {
          * @description 올린 사람이나 관리자만 뺀다. 올린 사람의 기록은 남는다.
          */
         delete: operations["shared_albums_remove_item"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/{album_id}/items/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove Selected Items
+         * @description 여러 장을 한 번에 뺀다. 하나라도 뺄 수 없는 사진이 있으면 아무것도 빼지 않는다.
+         */
+        post: operations["shared_albums_remove_selected_items"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -582,6 +625,8 @@ export interface components {
         AddItemsRequest: {
             /** Moment Ids */
             moment_ids: string[];
+            /** Photo Quality */
+            photo_quality?: ("original" | "display") | null;
         };
         /** AddItemsResponse */
         AddItemsResponse: {
@@ -643,6 +688,10 @@ export interface components {
             allocated_bytes: number;
             /** Moment Ids */
             moment_ids?: string[];
+            /** Photo Qualities */
+            photo_qualities?: {
+                [key: string]: "original" | "display";
+            };
         };
         /** CreateUploadRequest */
         CreateUploadRequest: {
@@ -652,7 +701,7 @@ export interface components {
              * Variant
              * @enum {string}
              */
-            variant: "display" | "original" | "compact";
+            variant: "display" | "thumb" | "original" | "compact";
             /** Size */
             size: number;
             /** Content Type */
@@ -746,6 +795,13 @@ export interface components {
             /** Already Member */
             already_member: boolean;
         };
+        /** ItemQualityRequest */
+        ItemQualityRequest: {
+            /** Item Ids */
+            item_ids: string[];
+            /** Photo Quality */
+            photo_quality: ("original" | "display") | null;
+        };
         /** JoinRequest */
         JoinRequest: {
             /** Code */
@@ -832,7 +888,7 @@ export interface components {
              * Variant
              * @enum {string}
              */
-            variant: "display" | "original" | "compact";
+            variant: "display" | "thumb" | "original" | "compact";
         };
         /** PullResponse */
         PullResponse: {
@@ -865,6 +921,11 @@ export interface components {
             device_id: string;
             /** Links */
             links: components["schemas"]["DeviceLinkRow"][];
+        };
+        /** RemoveItemsRequest */
+        RemoveItemsRequest: {
+            /** Item Ids */
+            item_ids: string[];
         };
         /** RemoveMyItemsRequest */
         RemoveMyItemsRequest: {
@@ -916,8 +977,15 @@ export interface components {
             member_count: number;
             /** Item Count */
             item_count: number;
+            /**
+             * Cover Mode
+             * @enum {string}
+             */
+            cover_mode: "latest" | "photo" | "design";
             /** Cover Item Id */
             cover_item_id: string | null;
+            /** Cover Emoji */
+            cover_emoji: string | null;
             storage: components["schemas"]["AlbumStorage"];
             /** Writable */
             writable: boolean;
@@ -972,8 +1040,15 @@ export interface components {
             member_count: number;
             /** Item Count */
             item_count: number;
+            /**
+             * Cover Mode
+             * @enum {string}
+             */
+            cover_mode: "latest" | "photo" | "design";
             /** Cover Item Id */
             cover_item_id: string | null;
+            /** Cover Emoji */
+            cover_emoji: string | null;
             storage: components["schemas"]["AlbumStorage"];
             /** Writable */
             writable: boolean;
@@ -1013,7 +1088,14 @@ export interface components {
             /** Height */
             height: number | null;
             /** Stored Variants */
-            stored_variants: ("display" | "original" | "compact")[];
+            stored_variants: ("display" | "thumb" | "original" | "compact")[];
+            /**
+             * Photo Quality
+             * @enum {string}
+             */
+            photo_quality: "original" | "display";
+            /** Quality Chosen */
+            quality_chosen: boolean;
             /**
              * Added At
              * Format: date-time
@@ -1084,7 +1166,7 @@ export interface components {
                 [key: string]: unknown;
             };
             /** Stored Variants */
-            stored_variants?: ("display" | "original" | "compact")[];
+            stored_variants?: ("display" | "thumb" | "original" | "compact")[];
         };
         /** SyncRecordRow */
         SyncRecordRow: {
@@ -1129,6 +1211,12 @@ export interface components {
             relation?: ("family" | "friends" | "partner" | "other") | null;
             /** Photo Quality */
             photo_quality?: ("original" | "display") | null;
+            /** Cover Mode */
+            cover_mode?: ("latest" | "photo" | "design") | null;
+            /** Cover Item Id */
+            cover_item_id?: string | null;
+            /** Cover Emoji */
+            cover_emoji?: string | null;
         };
         /** UploadResponse */
         UploadResponse: {
@@ -1522,7 +1610,7 @@ export interface operations {
     uploads_download_photo: {
         parameters: {
             query: {
-                variant: "display" | "original" | "compact";
+                variant: "display" | "thumb" | "original" | "compact";
             };
             header?: never;
             path: {
@@ -2111,6 +2199,39 @@ export interface operations {
             };
         };
     };
+    shared_albums_set_item_quality: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemQualityRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     shared_albums_remove_item: {
         parameters: {
             query?: never;
@@ -2122,6 +2243,39 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_remove_selected_items: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoveItemsRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {
@@ -2174,7 +2328,7 @@ export interface operations {
     shared_albums_download_item: {
         parameters: {
             query: {
-                variant: "display" | "original" | "compact";
+                variant: "display" | "thumb" | "original" | "compact";
             };
             header?: never;
             path: {

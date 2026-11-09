@@ -1,25 +1,30 @@
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, View, type ImageStyle } from 'react-native';
 
-import { MomentPhoto } from '@/components/moment-photo';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import type { AlbumSummary } from '@/db/albums';
-import type { Moment } from '@/db/moments';
 import { useTheme } from '@/hooks/use-theme';
 
 const EMOJIS = ['🌿', '☕️', '✈️', '🎞️', '🎂', '🐚', '🏡', '✨'];
 
+/** momentId: 고른 사진의 id (공유 앨범에서는 항목 id) */
 export type AlbumCoverChoice = { mode: AlbumSummary['coverMode']; momentId?: string | null; emoji?: string | null };
 
-/** 최신 사진, 앨범 안의 사진, 이모지 디자인 중 표지 방식을 고르는 시트. */
-export function AlbumCoverSheet({
+/**
+ * 최신 사진, 앨범 안의 사진, 이모지 디자인 중 표지 방식을 고르는 시트.
+ * 사진은 renderPhoto로 그린다 (내 기록과 공유 앨범 항목이 그리는 방법이 다르다).
+ */
+export function AlbumCoverSheet<T extends { id: string }>({
   visible,
-  moments,
+  items,
+  renderPhoto,
   onChoose,
   onCancel,
 }: {
   visible: boolean;
-  moments: Moment[];
+  items: T[];
+  renderPhoto: (item: T, style: ImageStyle) => ReactNode;
   onChoose: (choice: AlbumCoverChoice) => void;
   onCancel: () => void;
 }) {
@@ -43,13 +48,13 @@ export function AlbumCoverSheet({
             </Pressable>
           ))}
         </View>
-        {moments.length > 0 && (
+        {items.length > 0 && (
           <>
             <ThemedText type="smallBold">앨범 사진에서 고르기</ThemedText>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photos}>
-              {moments.map((moment) => (
-                <Pressable key={moment.id} onPress={() => onChoose({ mode: 'photo', momentId: moment.id })}>
-                  <MomentPhoto moment={moment} style={styles.photo} transition={100} />
+              {items.map((item) => (
+                <Pressable key={item.id} onPress={() => onChoose({ mode: 'photo', momentId: item.id })}>
+                  {renderPhoto(item, styles.photo)}
                 </Pressable>
               ))}
             </ScrollView>

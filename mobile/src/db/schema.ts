@@ -172,6 +172,15 @@ const MIGRATIONS: string[] = [
     saved_at TEXT NOT NULL
   );
   `,
+  // 15: thumb_uploaded: 목록·표지용 썸네일(긴 변 640px)이 Cloud에 올라가 있는지 (기기 전용, display_uploaded와 같다).
+  `
+  ALTER TABLE moments ADD COLUMN thumb_uploaded INTEGER NOT NULL DEFAULT 0;
+  `,
+  // 16: cloud_quality: 사진마다 고른 보관 화질 ('original' | 'display'). null이면 담긴 안전 앨범의 화질을 따른다.
+  // 사용자가 고른 값이라 다른 기기와 동기화한다 (lib/cloud/photos.ts).
+  `
+  ALTER TABLE moments ADD COLUMN cloud_quality TEXT;
+  `,
 ];
 
 export async function migrateDb(db: SQLiteDatabase) {

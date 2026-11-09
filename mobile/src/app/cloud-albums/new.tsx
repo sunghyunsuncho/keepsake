@@ -409,7 +409,7 @@ function DeviceAlbumOption({
           <ThemedText>{album.coverEmoji ?? '✨'}</ThemedText>
         </View>
       ) : album.cover ? (
-        <MomentPhoto moment={album.cover} style={styles.albumThumb} />
+        <MomentPhoto moment={album.cover} variant="thumb" style={styles.albumThumb} />
       ) : (
         <View style={[styles.albumThumb, styles.thumbCenter, { backgroundColor: theme.backgroundElement }]}>
           <Ionicons name="images-outline" size={18} color={theme.textSecondary} />

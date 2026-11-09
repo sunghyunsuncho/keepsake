@@ -11,7 +11,7 @@ import { localDateKey } from '@/lib/dates';
 //
 // kind 'custom'은 기기 사진첩의 앨범, 'cloud'는 안전 사진첩의 안전 앨범이다.
 // 안전 앨범에 담은 기록만 사진을 Cloud에 올린다 (lib/cloud/photos.ts). 화질은 앨범마다 고른다:
-// 'original'은 원본과 표시용을 함께, 'display'는 표시용(긴 변 1600px)만 올려 용량을 아낀다.
+// 'original'은 원본과 표시용을 함께, 'display'는 표시용(긴 변 2048px)만 올려 용량을 아낀다.
 
 export const ALL_ALBUM_ID = 'all';
 export const ALL_ALBUM_TITLE = '나의 순간들';
@@ -312,10 +312,32 @@ export async function listCloudAlbumPending(db: SQLiteDatabase) {
      JOIN moments m ON m.id = am.moment_id
      WHERE a.kind = 'cloud' AND a.deleted_at IS NULL
        AND m.deleted_at IS NULL AND m.source_asset_id IS NOT NULL AND m.source_missing = 0
-       AND (m.display_uploaded = 0 OR (IFNULL(a.photo_quality, 'original') = 'original' AND m.original_uploaded = 0))
+       AND (m.display_uploaded = 0 OR (m.original_uploaded = 0 AND (m.cloud_quality = 'original'
+         OR (m.cloud_quality IS NULL AND IFNULL(a.photo_quality, 'original') = 'original'))))
      GROUP BY a.id`,
   );
   return new Map(rows.map((row) => [row.album_id, row.pending]));
+}
+
+/**
+ * 사진의 보관 화질을 고를 때 보여줄 정보. albums: 담긴 내 안전 앨범 수, albumDefault: 사진에서 고르지 않았을 때의 화질
+ * (원본 보관 앨범이 하나라도 있으면 원본), sharedOriginal: 원본 보관 공유 앨범에 담겨 원본을 늘 남기는지.
+ */
+export async function momentQualityInfo(db: SQLiteDatabase, momentId: string) {
+  const row = await db.getFirstAsync<{ albums: number; originals: number; shared_original: number }>(
+    `SELECT COUNT(a.id) AS albums,
+       SUM(CASE WHEN IFNULL(a.photo_quality, 'original') = 'original' THEN 1 ELSE 0 END) AS originals,
+       EXISTS (SELECT 1 FROM shared_items s WHERE s.moment_id = ? AND s.photo_quality = 'original') AS shared_original
+     FROM album_moments am JOIN albums a ON a.id = am.album_id
+     WHERE am.moment_id = ? AND am.deleted_at IS NULL AND a.deleted_at IS NULL AND a.kind = 'cloud'`,
+    momentId,
+    momentId,
+  );
+  return {
+    albums: row?.albums ?? 0,
+    albumDefault: (row?.originals ?? 0) > 0 ? ('original' as const) : ('display' as const),
+    sharedOriginal: row?.shared_original === 1,
+  };
 }
 
 /** 안전 앨범의 보관 화질을 바꾼다. 원본으로 바꾸면 담긴 사진의 원본을 이어서 올린다. */
@@ -360,6 +382,26 @@ export async function deleteAlbum(db: SQLiteDatabase, id: string) {
     );
   });
   notifyChange();
+}
+
+/**
+ * 이 앨범(exceptAlbumId) 밖에서 원본을 남기게 하는 기록. 사진을 담는 화면에서 어떤 화질로 보관될지 보여 줄 때 쓴다
+ * (lib/cloud/photos.ts wantsOriginal과 같은 규칙).
+ * albums: 다른 원본 보관 안전 앨범에 담긴 기록 (사진에서 화질을 고르지 않았을 때만 원본이 남는다)
+ * shared: 원본 보관 공유 앨범 항목 (사진에서 고른 화질과 관계없이 원본이 남는다)
+ */
+export async function originalElsewhereIds(db: SQLiteDatabase, exceptAlbumId: string) {
+  const rows = await db.getAllAsync<{ moment_id: string; shared: number }>(
+    `SELECT am.moment_id, 0 AS shared FROM album_moments am JOIN albums a ON a.id = am.album_id
+     WHERE am.deleted_at IS NULL AND a.deleted_at IS NULL AND a.kind = 'cloud' AND a.id != ?
+       AND IFNULL(a.photo_quality, 'original') = 'original'
+     UNION SELECT moment_id, 1 FROM shared_items WHERE photo_quality = 'original'`,
+    exceptAlbumId,
+  );
+  const albums = new Set<string>();
+  const shared = new Set<string>();
+  for (const row of rows) (row.shared ? shared : albums).add(row.moment_id);
+  return { albums, shared };
 }
 
 /** 앨범에 들어 있는 기록 ID (기록에서 뺀 것은 세지 않는다) */

@@ -28,6 +28,12 @@ export type Moment = {
   lng: number | null;
   place_name: string | null;
   memo: string;
+  /**
+   * 이 사진만 따로 고른 보관 화질. null이면 담긴 안전 앨범의 화질을 따른다 (원본 보관 앨범이 하나라도 있으면 원본).
+   * 공유 앨범에는 쓰지 않는다: 공유 앨범은 그 앨범 항목의 화질(사진마다 고른 화질, 없으면 앨범 화질)을 따른다
+   * (구성원에게 보이는 파일과 앨범 용량이 그 화질로 정해진다, shared_items.photo_quality).
+   */
+  cloud_quality: 'original' | 'display' | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -35,6 +41,8 @@ export type Moment = {
   /** Cloud에 원본/표시용 사진(동영상은 대표 장면)이 올라가 있는지 (0|1) */
   original_uploaded: number;
   display_uploaded: number;
+  /** Cloud에 목록·표지용 썸네일이 올라가 있는지 (0|1) */
+  thumb_uploaded: number;
   /** Cloud에 효율 보관 동영상(720p)이 올라가 있는지 (0|1). 동영상만 */
   compact_uploaded: number;
   /** 사진첩 연결을 서버에 보냈는지 (0|1) */
@@ -57,7 +65,7 @@ export type NewMoment = Pick<
   | 'lng'
 >;
 
-export type MomentEdit = Partial<Pick<Moment, 'memo' | 'place_name' | 'taken_at'>>;
+export type MomentEdit = Partial<Pick<Moment, 'memo' | 'place_name' | 'taken_at' | 'cloud_quality'>>;
 
 export const MOMENT_COLUMNS = [
   'id',
@@ -75,12 +83,14 @@ export const MOMENT_COLUMNS = [
   'lng',
   'place_name',
   'memo',
+  'cloud_quality',
   'created_at',
   'updated_at',
   'deleted_at',
   'sync_state',
   'original_uploaded',
   'display_uploaded',
+  'thumb_uploaded',
   'compact_uploaded',
 ] as const satisfies readonly (keyof Moment)[];
 
@@ -92,6 +102,7 @@ export const DEVICE_ONLY_COLUMNS = [
   'sync_state',
   'original_uploaded',
   'display_uploaded',
+  'thumb_uploaded',
   'compact_uploaded',
 ] as const;
 export const SYNCED_MOMENT_COLUMNS = MOMENT_COLUMNS.filter(
@@ -217,6 +228,26 @@ export async function updateMoment(db: SQLiteDatabase, id: string, edit: MomentE
      WHERE id = ? AND deleted_at IS NULL`,
     [...entries.map(([, value]) => value as string | null), now, id],
   );
+  notifyChange();
+}
+
+/** 여러 기록의 보관 화질을 한 번에 정한다 (안전 앨범에 사진을 담을 때). null이면 앨범 화질을 따르게 한다. */
+export async function setMomentsCloudQuality(db: SQLiteDatabase, ids: string[], quality: Moment['cloud_quality']) {
+  if (ids.length === 0) return;
+  const now = new Date().toISOString();
+  await inTransaction(db, async () => {
+    for (const id of ids) {
+      await db.runAsync(
+        `UPDATE moments SET cloud_quality = ?, updated_at = ${laterThanBefore('?')},
+           sync_state = CASE sync_state WHEN 'synced' THEN 'pending' ELSE sync_state END
+         WHERE id = ? AND deleted_at IS NULL AND cloud_quality IS NOT ?`,
+        quality,
+        now,
+        id,
+        quality,
+      );
+    }
+  });
   notifyChange();
 }
 

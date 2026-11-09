@@ -10,10 +10,9 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { createAlbum, listAlbums, listOnThisDay, type OnThisDay } from '@/db/albums';
-import { MomentsAlbumCard, NewAlbumCard } from '@/components/album-shelf';
+import { AlbumSectionHeader, MomentsRowCard } from '@/components/album-shelf';
 import { CreatedAlbumCard } from '@/components/created-album-card';
 import { DeviceAlbumGuide } from '@/components/library-guide';
-import { LibraryIntro } from '@/components/library-intro';
 import { NotificationBell } from '@/components/notification-bell';
 import { HeaderButton } from '@/components/stack-header';
 import { TabTitle } from '@/components/tab-title';
@@ -23,13 +22,9 @@ import { getSettings, setSetting } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { todayKey } from '@/lib/dates';
 
-const COLUMNS = 2;
-
 // 기기 사진첩 탭: 이 기기에 보관한 '나의 순간들'과 사용자가 만든 앨범을 고른다.
 export default function AlbumsScreen() {
   const db = useSQLiteContext();
-  const theme = useTheme();
-  const { width } = useWindowDimensions();
   const [naming, setNaming] = useState(false);
   const [guide, setGuide] = useState(false);
   const navigation = useNavigation();
@@ -64,8 +59,6 @@ export default function AlbumsScreen() {
     );
   }
 
-  const cardWidth = (width - Spacing.three * 2 - Spacing.three * (COLUMNS - 1)) / COLUMNS;
-  const topCardHeight = Math.min(Math.round(cardWidth * 0.56), 100);
   const showOnThisDay = !!onThisDay?.length && settings?.on_this_day_hidden !== today;
   const momentsAlbum = albums[0];
   const customAlbums = albums.slice(1);
@@ -80,15 +73,8 @@ export default function AlbumsScreen() {
   return (
     <ThemedView style={styles.flex}>
       <ScrollView contentContainerStyle={styles.content}>
-        <LibraryIntro
-          title="이 기기에 보관한 사진으로 사진첩을 만들어요"
-          description="남긴 사진을 이야기별 앨범으로 묶어 보세요."
-        />
-
-        <View style={[styles.topRow, { backgroundColor: theme.backgroundElement }]}>
-          <MomentsAlbumCard album={momentsAlbum} moments={recentMoments} width={cardWidth} height={topCardHeight} />
-          <NewAlbumCard width={cardWidth} height={topCardHeight} caption="나의 순간들에서 골라 담아요" onPress={() => setNaming(true)} />
-        </View>
+        {/* 모든 사진은 한 줄 카드로, 새 앨범은 목록 제목 오른쪽 버튼으로 두어 앨범 목록이 위쪽부터 보이게 한다. */}
+        <MomentsRowCard album={momentsAlbum} moments={recentMoments} />
 
         {momentsAlbum.count === 0 && (
           <ThemedText themeColor="textSecondary" style={styles.hint}>
@@ -96,18 +82,20 @@ export default function AlbumsScreen() {
           </ThemedText>
         )}
 
-        {customAlbums.length > 0 && (
-          <View style={styles.createdAlbums}>
-            <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionTitle}>
-              만든 앨범
-            </ThemedText>
+        <View style={styles.createdAlbums}>
+          <AlbumSectionHeader title="만든 앨범" actions={[{ icon: 'add', label: '새 앨범', onPress: () => setNaming(true) }]} />
+          {customAlbums.length > 0 ? (
             <View style={styles.albumStack}>
               {customAlbums.map((album) => (
                 <CreatedAlbumCard key={album.id} album={album} />
               ))}
             </View>
-          </View>
-        )}
+          ) : (
+            <ThemedText type="small" themeColor="textSecondary" style={styles.sectionHint}>
+              남긴 사진을 이야기별 앨범으로 묶어 보세요.
+            </ThemedText>
+          )}
+        </View>
 
         {showOnThisDay && <OnThisDayCards groups={onThisDay} onHide={() => setSetting(db, 'on_this_day_hidden', today)} />}
       </ScrollView>
@@ -162,7 +150,7 @@ function OnThisDayCards({ groups, onHide }: { groups: OnThisDay[]; onHide: () =>
                 styles.memoryCard,
                 { width: cardWidth, backgroundColor: theme.backgroundElement, opacity: pressed ? 0.85 : 1 },
               ]}>
-              <MomentPhoto moment={first} style={{ width: cardWidth, height: cardWidth * 0.62 }} transition={150} />
+              <MomentPhoto moment={first} variant="thumb" style={{ width: cardWidth, height: cardWidth * 0.62 }} transition={150} />
               <View style={styles.memoryBody}>
                 <ThemedText style={styles.memoryTitle}>
                   {yearsAgo}년 전 오늘
@@ -190,18 +178,8 @@ const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { paddingVertical: Spacing.three, gap: Spacing.four },
   hint: { textAlign: 'center', paddingHorizontal: Spacing.four },
-  topRow: {
-    flexDirection: 'row',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.three,
-    paddingBottom: Spacing.four,
-    borderTopLeftRadius: Spacing.four,
-    borderTopRightRadius: Spacing.four,
-  },
-  cover: { borderRadius: Spacing.three, overflow: 'hidden' },
   createdAlbums: { gap: Spacing.two },
-  sectionTitle: { paddingHorizontal: Spacing.three },
+  sectionHint: { paddingHorizontal: Spacing.three },
   albumStack: { gap: Spacing.two, paddingHorizontal: Spacing.three },
   onThisDay: { gap: Spacing.two },
   onThisDayHeader: {
