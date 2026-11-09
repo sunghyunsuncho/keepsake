@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { FlashList } from '@shopify/flash-list';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useMemo, useState } from 'react';
@@ -12,21 +13,30 @@ import {
   StyleSheet,
   useWindowDimensions,
   View,
+  type ImageStyle,
 } from 'react-native';
+import { GestureDetector } from 'react-native-gesture-handler';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ActionSheetHost, showActionSheet } from '@/components/action-sheet';
+import { AlbumActionButton, SortOrderButton, usePinchZoom, ZoomBar } from '@/components/album-controls';
+import { AlbumCoverSheet, type AlbumCoverChoice } from '@/components/album-cover-sheet';
 import { AlbumNameSheet } from '@/components/album-name-sheet';
 import { Button } from '@/components/button';
-import { useGridTileSize } from '@/components/gallery';
-import { PhotoQualityBadge } from '@/components/photo-quality';
+import { GalleryHeader, TileRow } from '@/components/gallery';
+import { PHOTO_QUALITY, PhotoQualityBadge } from '@/components/photo-quality';
 import { SharedItemPhoto } from '@/components/shared-item-photo';
+import { SharedStoryCard } from '@/components/shared-story-card';
 import { HeaderButton } from '@/components/stack-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useDbQuery } from '@/db/changes';
+import { DEFAULT_SETTINGS, getSettings, setSetting } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
-import { useCloudState } from '@/lib/cloud/engine';
+import { useZoomedGallery } from '@/hooks/use-zoomed-gallery';
+import { syncCloud, useCloudState } from '@/lib/cloud/engine';
 import { CloudError } from '@/lib/cloud/session';
 import {
   getSharedAlbum,
@@ -35,32 +45,61 @@ import {
   DISPLAY_NAME_MAX,
   removeAuthorItems,
   removeSharedItem,
+  removeSharedItems,
   saveSharedItemsToLibrary,
+  setSharedItemsQuality,
   SharedSaveError,
   unsavedSharedItems,
   updateMember,
+  updateSharedAlbum,
   type SharedAlbumDetail,
   type SharedItem,
 } from '@/lib/cloud/shared';
 import { formatFullDate } from '@/lib/dates';
+import { sortForGallery } from '@/lib/gallery';
 import { formatBytes, formatSize } from '@/lib/storage';
 
-const COLUMNS = 3;
-const GRID_GAP = 2;
+/** 촬영 시각이 없는 항목은 담은 시각으로 묶는다. */
+type DatedItem = SharedItem & { taken_at: string };
 
-// 공유 앨범: 구성원이 함께 담은 사진을 본다. 사진마다 누가 담았는지 보이고,
-// 사진은 올린 사람이나 관리자만 앨범에서 뺄 수 있다 (서버가 다시 확인한다).
+// 공유 앨범: 구성원이 함께 담은 사진을 내 앨범처럼 해 → 달 → 날 → 이야기 순으로 당겨 본다.
+// 사진마다 누가 담았는지 보이고, 사진은 올린 사람이나 관리자만 앨범에서 뺄 수 있다 (서버가 다시 확인한다).
+// 단계와 정렬은 내 앨범과 같은 설정을 쓴다.
 export default function SharedAlbumScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const db = useSQLiteContext();
   const theme = useTheme();
   const { account } = useCloudState();
   const { data: album, error } = useDbQuery(() => getSharedAlbum(id), [id]);
   const { data: items } = useDbQuery(() => listSharedItems(id), [id]);
+  const { data: settings } = useDbQuery(() => getSettings(db), [db]);
   const [author, setAuthor] = useState<string | null>(null);
   const [viewing, setViewing] = useState<number | null>(null);
-  const tile = useGridTileSize(COLUMNS);
+  const [renaming, setRenaming] = useState(false);
+  const [choosingCover, setChoosingCover] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [removing, setRemoving] = useState(false);
+  const order = settings?.album_sort_order ?? DEFAULT_SETTINGS.album_sort_order;
 
-  const shown = useMemo(() => (items ?? []).filter((item) => !author || item.author_id === author), [items, author]);
+  const shown = useMemo(
+    () =>
+      (items ?? [])
+        .filter((item) => !author || item.author_id === author)
+        .map((item): DatedItem => ({ ...item, taken_at: item.taken_at ?? item.added_at })),
+    [items, author],
+  );
+  // 크게 볼 때도 목록과 같은 순서로 넘긴다.
+  const sorted = useMemo(() => sortForGallery(shown, order), [shown, order]);
+  // 단계는 내 앨범 화면과 같은 설정에 저장한다.
+  const gallery = useZoomedGallery(shown, {
+    order,
+    initialZoom: settings?.album_zoom ?? DEFAULT_SETTINGS.album_zoom,
+    onZoomChange: (next) => setSetting(db, 'album_zoom', next),
+  });
+  const zoom = gallery.zoom;
+  const { gesture: pinch, style: pinchStyle } = usePinchZoom(gallery.stepZoom);
+
   const canUpload = account?.subscription.can_upload ?? false;
 
   if (error && !album) {
@@ -75,13 +114,17 @@ export default function SharedAlbumScreen() {
       </ThemedView>
     );
   }
-  if (!album || !items) {
+  // 설정을 읽기 전에 그리면 기본 단계로 그렸다가 저장된 단계로 다시 그린다.
+  if (!album || !items || !settings) {
     return (
       <ThemedView style={styles.centered}>
         <ActivityIndicator />
       </ThemedView>
     );
   }
+
+  const admin = album.role === 'admin';
+  const canRemoveAny = items.some((item) => item.can_delete);
 
   const openAdd = () => {
     // 앨범 용량은 구성원이 나눠 준 용량의 합이라, 내가 구독하지 않아도 앨범에 공간이 있으면 담는다.
@@ -100,6 +143,91 @@ export default function SharedAlbumScreen() {
     }
     router.push({ pathname: '/shared-albums/[id]/add', params: { id } });
   };
+  const openManage = () => router.push({ pathname: '/shared-albums/[id]/members', params: { id } });
+  const openViewer = (item: DatedItem) => setViewing(sorted.findIndex((entry) => entry.id === item.id));
+
+  const toggleEditing = () => {
+    setEditing((current) => !current);
+    setSelectedIds(new Set());
+  };
+  // 남이 담은 사진은 관리자만 뺄 수 있어 고르지 못하게 한다.
+  const toggleSelected = (item: SharedItem) => {
+    if (!item.can_delete) {
+      Alert.alert('뺄 수 없는 사진이에요', `${item.author_name}님이 담은 사진은 올린 사람이나 관리자만 앨범에서 뺄 수 있어요.`);
+      return;
+    }
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (!next.delete(item.id)) next.add(item.id);
+      return next;
+    });
+  };
+  const removeSelected = () => {
+    if (selectedIds.size === 0) return;
+    const othersCount = items.filter((item) => selectedIds.has(item.id) && !item.is_mine).length;
+    Alert.alert(
+      `${selectedIds.size}장을 공유 앨범에서 뺄까요?`,
+      '구성원 모두에게서 사라져요. 올린 사람의 기록과 기기 사진첩의 사진은 그대로예요.' +
+        (othersCount > 0 ? `\n\n다른 구성원이 담은 사진 ${othersCount}장도 관리자로서 함께 빠져요.` : ''),
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '앨범에서 빼기',
+          style: 'destructive',
+          onPress: async () => {
+            setRemoving(true);
+            try {
+              await removeSharedItems(id, [...selectedIds]);
+              setSelectedIds(new Set());
+              setEditing(false);
+            } catch {
+              Alert.alert('사진을 빼지 못했어요', '잠시 후 다시 시도해 주세요.');
+            } finally {
+              setRemoving(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  // 앨범 이름·표지는 구성원 모두에게 보이므로 관리자만 바꾼다 (서버가 다시 확인한다).
+  const update = (body: Parameters<typeof updateSharedAlbum>[1], what: string) =>
+    updateSharedAlbum(id, body).catch(() => Alert.alert(`${what}을 바꾸지 못했어요`, '잠시 후 다시 시도해 주세요.'));
+  const chooseCover = (choice: AlbumCoverChoice) => {
+    setChoosingCover(false);
+    update(
+      choice.mode === 'photo'
+        ? { cover_mode: 'photo', cover_item_id: choice.momentId }
+        : choice.mode === 'design'
+          ? { cover_mode: 'design', cover_emoji: choice.emoji }
+          : { cover_mode: 'latest' },
+      '표지',
+    );
+  };
+  const showAlbumMenu = () =>
+    showActionSheet(album.title, undefined, [
+      { text: '표지 바꾸기', onPress: () => setChoosingCover(true) },
+      { text: '이름 바꾸기', onPress: () => setRenaming(true) },
+      { text: '구성원과 앨범 관리', onPress: openManage },
+      { text: '취소', style: 'cancel' },
+    ]);
+
+  // 표지로 고를 수 있는 사진: 표시용 사진이 올라간 것 (서버가 그 사진으로 표지를 그린다).
+  const coverable = sorted.filter((item) => item.stored_variants.includes('display'));
+  // 해 단계는 칸이 작아 이름표를 붙이지 않는다.
+  const renderTile = (item: DatedItem, style: ImageStyle) => (
+    <View>
+      <SharedItemPhoto albumId={id} item={item} variant="thumb" style={style} />
+      {zoom !== 'year' && (
+        <View style={styles.authorTag} pointerEvents="none">
+          <ThemedText style={styles.authorTagText} numberOfLines={1}>
+            {item.is_mine ? '나' : item.author_name}
+          </ThemedText>
+        </View>
+      )}
+    </View>
+  );
 
   return (
     <ThemedView style={styles.flex}>
@@ -108,47 +236,130 @@ export default function SharedAlbumScreen() {
           title: album.title,
           headerRight: () => (
             <View style={styles.headerButtons}>
-              <HeaderButton icon="add" label="사진 담기" onPress={openAdd} />
-              <HeaderButton
-                icon="people-outline"
-                label="구성원과 앨범 관리"
-                size={22}
-                onPress={() => router.push({ pathname: '/shared-albums/[id]/members', params: { id } })}
-              />
+              <HeaderButton icon="people-outline" label="구성원과 앨범 관리" size={22} onPress={openManage} />
+              {admin && <HeaderButton icon="ellipsis-horizontal" label="앨범 메뉴" onPress={showAlbumMenu} />}
             </View>
           ),
         }}
       />
-      <FlatList
-        data={shown}
-        keyExtractor={(item) => item.id}
-        numColumns={COLUMNS}
-        columnWrapperStyle={styles.gridRow}
-        contentContainerStyle={styles.grid}
-        ListHeaderComponent={
-          <AlbumHeader album={album} items={items} author={author} onAuthor={setAuthor} onAdd={openAdd} />
-        }
-        ListEmptyComponent={
-          <ThemedText themeColor="textSecondary" style={[styles.center, styles.empty]}>
-            {author ? '이 구성원이 담은 사진이 없어요.' : '아직 담은 사진이 없어요.\n오른쪽 위 [+]로 함께 볼 사진을 담아 보세요.'}
-          </ThemedText>
-        }
-        renderItem={({ item, index }) => (
-          <Pressable
-            onPress={() => setViewing(index)}
-            accessibilityRole="imagebutton"
-            accessibilityLabel={`${item.author_name}님이 담은 사진`}
-            style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}>
-            <SharedItemPhoto albumId={id} item={item} style={{ width: tile, height: tile, backgroundColor: theme.backgroundElement }} />
-            <View style={styles.authorTag} pointerEvents="none">
-              <ThemedText style={styles.authorTagText} numberOfLines={1}>
-                {item.is_mine ? '나' : item.author_name}
+      <ZoomBar value={zoom} onChange={(next) => gallery.changeZoom(next)} />
+      <View style={styles.compactControls}>
+        <View style={styles.albumToolbar}>
+          <AlbumActionButton icon="add" label="추가" onPress={openAdd} />
+          {canRemoveAny && (
+            <AlbumActionButton
+              icon={editing ? 'close' : 'remove'}
+              label={editing ? '빼기 취소' : '빼기'}
+              active={editing}
+              onPress={toggleEditing}
+            />
+          )}
+        </View>
+        <SortOrderButton value={order} onChange={(next) => setSetting(db, 'album_sort_order', next)} />
+      </View>
+      {editing && (
+        <View style={[styles.editBar, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+          <View style={styles.flex}>
+            <ThemedText type="smallBold">{selectedIds.size}장 선택됨</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {admin ? '구성원 모두에게서 빠져요. 올린 사람의 기록은 남아요.' : '내가 담은 사진만 뺄 수 있어요.'}
+            </ThemedText>
+          </View>
+          <Button
+            label="앨범에서 빼기"
+            variant="danger"
+            loading={removing}
+            disabled={selectedIds.size === 0}
+            onPress={removeSelected}
+          />
+        </View>
+      )}
+      <GestureDetector gesture={pinch}>
+        <Animated.View style={[styles.flex, pinchStyle]}>
+          <FlashList
+            key={zoom}
+            data={gallery.rows}
+            {...gallery.listProps}
+            keyExtractor={(row) => row.key}
+            getItemType={(row) => (row.type === 'tiles' ? `tiles-${row.columns}` : row.type)}
+            contentContainerStyle={{ paddingBottom: Spacing.five }}
+            ListHeaderComponent={
+              <AlbumHeader album={album} items={items} author={author} onAuthor={setAuthor} onAdd={openAdd} />
+            }
+            ListEmptyComponent={
+              <ThemedText themeColor="textSecondary" style={[styles.center, styles.empty]}>
+                {author ? '이 구성원이 담은 사진이 없어요.' : '아직 담은 사진이 없어요.\n위의 [추가]로 함께 볼 사진을 담아 보세요.'}
               </ThemedText>
-            </View>
-          </Pressable>
-        )}
+            }
+            renderItem={({ item: row }) => {
+              if (row.type === 'header') {
+                return <GalleryHeader title={row.title} subtitle={row.subtitle} sticky={row.sticky} />;
+              }
+              if (row.type === 'card') {
+                return (
+                  <SharedStoryCard
+                    albumId={id}
+                    item={row.moment}
+                    takenAt={row.moment.taken_at}
+                    onOpen={() => openViewer(row.moment)}
+                    selecting={editing}
+                    selected={selectedIds.has(row.moment.id)}
+                    onSelect={() => toggleSelected(row.moment)}
+                  />
+                );
+              }
+              return (
+                <TileRow
+                  moments={row.moments}
+                  columns={row.columns}
+                  checked={editing ? selectedIds : undefined}
+                  // 고르는 동안에는 체크 표시가 보이도록 폴라로이드 대신 칸으로 그린다.
+                  framed={zoom === 'day' && !editing}
+                  renderPhoto={renderTile}
+                  // 해 단계에서 누르면 그 달로 당겨 보고, 그 밖에는 크게 본다.
+                  onPress={(item) =>
+                    editing
+                      ? toggleSelected(item)
+                      : zoom === 'year'
+                        ? gallery.zoomIntoMonth(item)
+                        : openViewer(item)
+                  }
+                />
+              );
+            }}
+          />
+        </Animated.View>
+      </GestureDetector>
+      <SharedViewer
+        albumId={id}
+        albumQuality={album.photo_quality}
+        items={sorted}
+        index={viewing}
+        onClose={() => setViewing(null)}
       />
-      <SharedViewer albumId={id} items={shown} index={viewing} onClose={() => setViewing(null)} />
+      {admin && (
+        <>
+          <AlbumNameSheet
+            visible={renaming}
+            heading="앨범 이름 바꾸기"
+            initial={album.title}
+            description="구성원 모두에게 바뀐 이름으로 보여요."
+            confirmLabel="바꾸기"
+            onSubmit={(next) => {
+              setRenaming(false);
+              if (next !== album.title) update({ title: next }, '이름');
+            }}
+            onCancel={() => setRenaming(false)}
+          />
+          <AlbumCoverSheet
+            visible={choosingCover}
+            items={coverable}
+            renderPhoto={(item, style) => <SharedItemPhoto albumId={id} item={item} variant="thumb" style={style} />}
+            onChoose={chooseCover}
+            onCancel={() => setChoosingCover(false)}
+          />
+        </>
+      )}
     </ThemedView>
   );
 }
@@ -424,15 +635,18 @@ function Chip({ label, selected, onPress }: { label: string; selected: boolean; 
 /** 전체 화면으로 옆으로 넘겨 본다. 아래에 누가 언제 담았는지와, 뺄 수 있으면 [앨범에서 빼기]를 둔다. */
 function SharedViewer({
   albumId,
+  albumQuality,
   items,
   index,
   onClose,
 }: {
   albumId: string;
+  albumQuality: SharedAlbumDetail['photo_quality'];
   items: SharedItem[];
   index: number | null;
   onClose: () => void;
 }) {
+  const db = useSQLiteContext();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [current, setCurrent] = useState(0);
@@ -463,6 +677,45 @@ function SharedViewer({
           },
         },
       ],
+    );
+  };
+
+  // 화질은 사진마다 하나라 구성원 모두 같은 파일을 본다. 빼기처럼 올린 사람이나 관리자만 바꾼다.
+  const chooseQuality = (target: SharedItem) => {
+    // 앨범 화질과 같은 쪽을 고르면 앨범 화질을 따르게 한다 (나중에 앨범 화질을 바꾸면 이 사진도 따라간다).
+    const option = (quality: SharedItem['photo_quality']) => ({
+      text: `${PHOTO_QUALITY[quality].label}${quality === albumQuality ? ' · 앨범 기본' : ''}${quality === target.photo_quality ? ' (지금)' : ''}`,
+      onPress: () => {
+        const next = quality === albumQuality ? null : quality;
+        // 지금과 같은 화질·같은 방식(앨범 기본 따르기/따로 고름)이면 바꿀 것이 없다.
+        const unchanged = quality === target.photo_quality && (next !== null) === target.quality_chosen;
+        if (unchanged) return;
+        // 앨범 화질 바꾸기(members.tsx)처럼, 이미 올라간 원본이 지워질 수 있으면 먼저 묻는다.
+        if (quality === 'display' && target.stored_variants.includes('original')) {
+          Alert.alert(
+            '효율 보관으로 바꿀까요?',
+            '원본은 앨범 용량에서 빠지고, 다른 앨범에 필요 없는 원본은 담은 사람의 기기가 지워요. 지운 원본은 되돌릴 수 없어요.',
+            [
+              { text: '취소', style: 'cancel' },
+              { text: '바꾸기', style: 'destructive', onPress: () => change(next) },
+            ],
+          );
+          return;
+        }
+        change(next);
+      },
+    });
+    const change = (quality: SharedItem['photo_quality'] | null) =>
+      setSharedItemsQuality(albumId, [target.id], quality)
+        // 올린 사람이 나면 바로 원본을 올리거나 정리하도록 내 항목 목록을 다시 받는다.
+        .then(() => syncCloud(db))
+        .catch(() => Alert.alert('화질을 바꾸지 못했어요', '잠시 후 다시 시도해 주세요.'));
+    showActionSheet(
+      '이 사진의 보관 화질',
+      `구성원 모두에게 같은 화질로 보여요. 원본 그대로는 앨범 용량을 더 써요.${
+        target.is_mine ? '' : `\n원본은 ${target.author_name}님의 기기에 원본이 있을 때 올라가요.`
+      }`,
+      [option('original'), option('display'), { text: '취소', style: 'cancel' }],
     );
   };
 
@@ -515,6 +768,19 @@ function SharedViewer({
                   {formatFullDate(item.taken_at, item.taken_tz_offset)}
                 </ThemedText>
               )}
+              <Pressable
+                onPress={() => chooseQuality(item)}
+                disabled={!item.can_delete}
+                hitSlop={8}
+                accessibilityRole={item.can_delete ? 'button' : 'text'}
+                accessibilityLabel={`보관 화질: ${PHOTO_QUALITY[item.photo_quality].label}${item.can_delete ? '. 눌러서 바꾸기' : ''}`}
+                style={styles.viewerQuality}>
+                <Ionicons name={PHOTO_QUALITY[item.photo_quality].icon} size={13} color="rgba(255,255,255,0.8)" />
+                <ThemedText type="small" style={styles.viewerDate}>
+                  {PHOTO_QUALITY[item.photo_quality].badge}
+                  {item.can_delete ? ' · 바꾸기' : ''}
+                </ThemedText>
+              </Pressable>
             </View>
             {item.can_delete &&
               (removing ? (
@@ -531,6 +797,8 @@ function SharedViewer({
               ))}
           </View>
         )}
+        {/* 화질 고르기 시트를 이 Modal 위에 띄운다. */}
+        <ActionSheetHost />
       </View>
     </Modal>
   );
@@ -542,8 +810,9 @@ const styles = StyleSheet.create({
   center: { textAlign: 'center' },
   empty: { paddingVertical: Spacing.five, paddingHorizontal: Spacing.four },
   headerButtons: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
-  grid: { paddingBottom: Spacing.six, gap: GRID_GAP },
-  gridRow: { gap: GRID_GAP, paddingHorizontal: GRID_GAP },
+  compactControls: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.three, paddingBottom: Spacing.two, gap: Spacing.two },
+  albumToolbar: { flexDirection: 'row', gap: Spacing.one },
+  editBar: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, borderWidth: StyleSheet.hairlineWidth, borderRadius: Spacing.two, marginHorizontal: Spacing.three, marginBottom: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two },
   header: { gap: Spacing.three, paddingHorizontal: Spacing.three, paddingTop: Spacing.two, paddingBottom: Spacing.three },
   summary: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: Spacing.one },
   storage: { gap: Spacing.one },
@@ -591,5 +860,6 @@ const styles = StyleSheet.create({
   },
   viewerAuthor: { color: '#fff', fontWeight: 700 },
   viewerDate: { color: 'rgba(255,255,255,0.8)' },
+  viewerQuality: { flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start', marginTop: 2 },
   viewerAction: { padding: Spacing.one },
 });
