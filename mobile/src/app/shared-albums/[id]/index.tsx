@@ -1,0 +1,595 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
+import { useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { AlbumNameSheet } from '@/components/album-name-sheet';
+import { Button } from '@/components/button';
+import { useGridTileSize } from '@/components/gallery';
+import { PhotoQualityBadge } from '@/components/photo-quality';
+import { SharedItemPhoto } from '@/components/shared-item-photo';
+import { HeaderButton } from '@/components/stack-header';
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { Spacing } from '@/constants/theme';
+import { useDbQuery } from '@/db/changes';
+import { useTheme } from '@/hooks/use-theme';
+import { useCloudState } from '@/lib/cloud/engine';
+import { CloudError } from '@/lib/cloud/session';
+import {
+  getSharedAlbum,
+  listSharedItems,
+  RELATIONS,
+  DISPLAY_NAME_MAX,
+  removeAuthorItems,
+  removeSharedItem,
+  saveSharedItemsToLibrary,
+  SharedSaveError,
+  unsavedSharedItems,
+  updateMember,
+  type SharedAlbumDetail,
+  type SharedItem,
+} from '@/lib/cloud/shared';
+import { formatFullDate } from '@/lib/dates';
+import { formatBytes, formatSize } from '@/lib/storage';
+
+const COLUMNS = 3;
+const GRID_GAP = 2;
+
+// 공유 앨범: 구성원이 함께 담은 사진을 본다. 사진마다 누가 담았는지 보이고,
+// 사진은 올린 사람이나 관리자만 앨범에서 뺄 수 있다 (서버가 다시 확인한다).
+export default function SharedAlbumScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const theme = useTheme();
+  const { account } = useCloudState();
+  const { data: album, error } = useDbQuery(() => getSharedAlbum(id), [id]);
+  const { data: items } = useDbQuery(() => listSharedItems(id), [id]);
+  const [author, setAuthor] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<number | null>(null);
+  const tile = useGridTileSize(COLUMNS);
+
+  const shown = useMemo(() => (items ?? []).filter((item) => !author || item.author_id === author), [items, author]);
+  const canUpload = account?.subscription.can_upload ?? false;
+
+  if (error && !album) {
+    const gone = error instanceof CloudError && error.status === 404;
+    return (
+      <ThemedView style={styles.centered}>
+        <Stack.Screen options={{ title: '' }} />
+        <Ionicons name={gone ? 'people-outline' : 'cloud-offline-outline'} size={40} color={theme.textSecondary} />
+        <ThemedText themeColor="textSecondary" style={styles.center}>
+          {gone ? '더 이상 이 공유 앨범의 구성원이 아니에요.' : '공유 앨범을 불러오지 못했어요.\n인터넷 연결을 확인해 주세요.'}
+        </ThemedText>
+      </ThemedView>
+    );
+  }
+  if (!album || !items) {
+    return (
+      <ThemedView style={styles.centered}>
+        <ActivityIndicator />
+      </ThemedView>
+    );
+  }
+
+  const openAdd = () => {
+    // 앨범 용량은 구성원이 나눠 준 용량의 합이라, 내가 구독하지 않아도 앨범에 공간이 있으면 담는다.
+    if (!album.writable) {
+      Alert.alert(
+        album.storage.capacity_bytes === 0 ? '앨범에 나눠 준 용량이 없어요' : '앨범 용량이 가득 찼어요',
+        canUpload
+          ? '앨범 관리에서 내 용량을 더 나눠 주거나, 담긴 사진을 정리하면 다시 담을 수 있어요.'
+          : '구성원이 용량을 더 나눠 주거나 사진을 정리하면 다시 담을 수 있어요. 안전 보관을 구독하면 내 용량도 나눠 줄 수 있어요.',
+        [
+          { text: '닫기', style: 'cancel' },
+          { text: '앨범 관리', onPress: () => router.push({ pathname: '/shared-albums/[id]/members', params: { id } }) },
+        ],
+      );
+      return;
+    }
+    router.push({ pathname: '/shared-albums/[id]/add', params: { id } });
+  };
+
+  return (
+    <ThemedView style={styles.flex}>
+      <Stack.Screen
+        options={{
+          title: album.title,
+          headerRight: () => (
+            <View style={styles.headerButtons}>
+              <HeaderButton icon="add" label="사진 담기" onPress={openAdd} />
+              <HeaderButton
+                icon="people-outline"
+                label="구성원과 앨범 관리"
+                size={22}
+                onPress={() => router.push({ pathname: '/shared-albums/[id]/members', params: { id } })}
+              />
+            </View>
+          ),
+        }}
+      />
+      <FlatList
+        data={shown}
+        keyExtractor={(item) => item.id}
+        numColumns={COLUMNS}
+        columnWrapperStyle={styles.gridRow}
+        contentContainerStyle={styles.grid}
+        ListHeaderComponent={
+          <AlbumHeader album={album} items={items} author={author} onAuthor={setAuthor} onAdd={openAdd} />
+        }
+        ListEmptyComponent={
+          <ThemedText themeColor="textSecondary" style={[styles.center, styles.empty]}>
+            {author ? '이 구성원이 담은 사진이 없어요.' : '아직 담은 사진이 없어요.\n오른쪽 위 [+]로 함께 볼 사진을 담아 보세요.'}
+          </ThemedText>
+        }
+        renderItem={({ item, index }) => (
+          <Pressable
+            onPress={() => setViewing(index)}
+            accessibilityRole="imagebutton"
+            accessibilityLabel={`${item.author_name}님이 담은 사진`}
+            style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}>
+            <SharedItemPhoto albumId={id} item={item} style={{ width: tile, height: tile, backgroundColor: theme.backgroundElement }} />
+            <View style={styles.authorTag} pointerEvents="none">
+              <ThemedText style={styles.authorTagText} numberOfLines={1}>
+                {item.is_mine ? '나' : item.author_name}
+              </ThemedText>
+            </View>
+          </Pressable>
+        )}
+      />
+      <SharedViewer albumId={id} items={shown} index={viewing} onClose={() => setViewing(null)} />
+    </ThemedView>
+  );
+}
+
+function AlbumHeader({
+  album,
+  items,
+  author,
+  onAuthor,
+  onAdd,
+}: {
+  album: SharedAlbumDetail;
+  items: SharedItem[];
+  author: string | null;
+  onAuthor: (id: string | null) => void;
+  onAdd: () => void;
+}) {
+  const theme = useTheme();
+  const [renaming, setRenaming] = useState(false);
+  const me = album.members.find((member) => member.is_me);
+  const relation = RELATIONS[album.relation];
+  const counts = new Map<string, number>();
+  items.forEach((item) => counts.set(item.author_id, (counts.get(item.author_id) ?? 0) + 1));
+  const alone = album.member_count === 1;
+  const memberIds = new Set(album.members.map((member) => member.user_id));
+  const departed = [...counts.keys()].filter((authorId) => !memberIds.has(authorId));
+
+  return (
+    <View style={styles.header}>
+      <View style={styles.summary}>
+        <Ionicons name={relation.icon} size={16} color={theme.textSecondary} />
+        <ThemedText type="small" themeColor="textSecondary">
+          {relation.label} · {album.member_count}명 · 사진 {items.length}장
+        </ThemedText>
+        <PhotoQualityBadge quality={album.photo_quality} />
+      </View>
+
+      <StorageBar album={album} />
+      <SaveToLibrary album={album} items={items} />
+
+      {/* 이름은 앨범마다 따로 정한다 (가족 앨범에선 '엄마', 친구 앨범에선 '지민'). */}
+      {me && (
+        <Pressable
+          onPress={() => setRenaming(true)}
+          accessibilityRole="button"
+          accessibilityLabel="이 앨범에서 보일 내 이름 바꾸기"
+          style={({ pressed }) => [styles.myName, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 }]}>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.flex} numberOfLines={1}>
+            이 앨범에서 나는 <ThemedText type="smallBold">{me.display_name}</ThemedText>(으)로 보여요
+          </ThemedText>
+          <ThemedText type="small" style={{ color: theme.accent, fontWeight: 700 }}>
+            바꾸기
+          </ThemedText>
+        </Pressable>
+      )}
+      {me && (
+        <AlbumNameSheet
+          visible={renaming}
+          heading="이 앨범에서 보일 내 이름"
+          initial={me.display_name}
+          placeholder="예) 엄마, 지민"
+          maxLength={DISPLAY_NAME_MAX}
+          description="이 앨범에만 적용돼요. 내가 담은 사진의 이름표가 모두 바뀌어요."
+          confirmLabel="바꾸기"
+          onSubmit={(next) => {
+            setRenaming(false);
+            updateMember(album.id, me.user_id, { display_name: next }).catch(() =>
+              Alert.alert('이름을 바꾸지 못했어요', '잠시 후 다시 시도해 주세요.'),
+            );
+          }}
+          onCancel={() => setRenaming(false)}
+        />
+      )}
+
+      {alone && album.role === 'admin' ? (
+        <View style={[styles.inviteCard, { backgroundColor: theme.backgroundElement }]}>
+          <ThemedText type="smallBold">함께 담을 사람을 초대해 보세요</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            초대 코드를 받은 사람이 참여하면 서로 담은 사진을 함께 볼 수 있어요. 담은 사진은 앨범 용량에서 세고, 참여한 사람이
+            용량을 나눠 주면 앨범 용량도 늘어나요.
+          </ThemedText>
+          <Button
+            label="초대하기"
+            onPress={() => router.push({ pathname: '/shared-albums/[id]/members', params: { id: album.id, invite: '1' } })}
+          />
+        </View>
+      ) : (
+        items.length === 0 && <Button label="사진 담기" variant="secondary" onPress={onAdd} />
+      )}
+
+      {album.members.length + departed.length > 1 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          <Chip label={`모두 ${items.length}`} selected={author === null} onPress={() => onAuthor(null)} />
+          {album.members.map((member) => (
+            <Chip
+              key={member.user_id}
+              label={`${member.is_me ? '나' : member.display_name} ${counts.get(member.user_id) ?? 0}`}
+              selected={author === member.user_id}
+              onPress={() => onAuthor(member.user_id)}
+            />
+          ))}
+          {/* 사진을 남기고 나간 사람도 따로 볼 수 있게 한다 (용량을 정리할 때 무엇이 남았는지 본다). */}
+          {departed.map((authorId, index) => (
+            <Chip
+              key={authorId}
+              label={`나간 구성원${departed.length > 1 ? ` ${index + 1}` : ''} ${counts.get(authorId) ?? 0}`}
+              selected={author === authorId}
+              onPress={() => onAuthor(authorId)}
+            />
+          ))}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+/**
+ * 다른 구성원이 담은 사진을 기기 사진첩에 저장한다. 앨범 용량이 없어 정리될 예정이면 기한과 함께 먼저 권한다.
+ * 저장한 사진은 기억해 두고 다시 받지 않는다 (shared_downloads).
+ */
+function SaveToLibrary({ album, items }: { album: SharedAlbumDetail; items: SharedItem[] }) {
+  const db = useSQLiteContext();
+  const theme = useTheme();
+  const { data: unsaved } = useDbQuery(() => unsavedSharedItems(db, items), [db, items]);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const cleanup = album.storage.cleanup_after;
+  const unfunded = album.storage.capacity_bytes === 0 && album.storage.bytes_total > 0;
+
+  const save = async () => {
+    if (!unsaved?.length) return;
+    try {
+      const result = await saveSharedItemsToLibrary(db, album.id, unsaved, (done, total) => setProgress({ done, total }));
+      Alert.alert(
+        result.failed > 0 ? `${result.total - result.failed}장을 저장했어요` : '기기 사진첩에 저장했어요',
+        result.failed > 0 ? `${result.failed}장은 저장하지 못했어요. 잠시 후 다시 눌러 주세요.` : undefined,
+      );
+    } catch (e) {
+      Alert.alert('저장하지 못했어요', e instanceof SharedSaveError ? e.message : '잠시 후 다시 시도해 주세요.');
+    } finally {
+      setProgress(null);
+    }
+  };
+
+  if (!unfunded && !unsaved?.length) return null;
+  return (
+    <View style={[styles.saveCard, unfunded && { borderColor: theme.danger, borderWidth: 1 }, { backgroundColor: theme.backgroundElement }]}>
+      {unfunded && (
+        <>
+          <ThemedText type="smallBold" style={{ color: theme.danger }}>
+            {cleanup ? `${formatFullDate(cleanup)}에 이 앨범의 사진이 지워져요` : '이 앨범에 나눠 준 용량이 없어요'}
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            용량을 나눠 준 구성원이 모두 나갔거나 구독이 끝나 새 사진도 담을 수 없어요. 그 전에 누군가 용량을 나눠 주면 그대로
+            이어져요. 간직할 사진은 기기 사진첩에 저장해 두세요.
+          </ThemedText>
+          <Button
+            label="앨범 관리에서 용량 나눠 주기"
+            variant="secondary"
+            onPress={() => router.push({ pathname: '/shared-albums/[id]/members', params: { id: album.id } })}
+          />
+        </>
+      )}
+      {!!unsaved?.length && (
+        <Button
+          label={
+            progress
+              ? `저장하는 중… ${progress.done}/${progress.total}`
+              : `다른 구성원의 사진 ${unsaved.length}장을 기기 사진첩에 저장`
+          }
+          variant={unfunded ? 'primary' : 'secondary'}
+          disabled={!!progress}
+          onPress={save}
+        />
+      )}
+    </View>
+  );
+}
+
+/** 앨범 용량(구성원이 나눠 준 용량의 합)과 사용량. 넘쳤으면 푸는 방법을 함께 보여 준다. */
+function StorageBar({ album }: { album: SharedAlbumDetail }) {
+  const theme = useTheme();
+  const { bytes_total: used, capacity_bytes: capacity, over_capacity: over } = album.storage;
+  const ratio = capacity > 0 ? Math.min(used / capacity, 1) : 1;
+  const admin = album.role === 'admin';
+  const departed = album.contributors.filter((c) => !c.is_member && c.bytes > 0);
+  const mine = album.contributors.find((c) => c.is_me);
+  const manage = () => router.push({ pathname: '/shared-albums/[id]/members', params: { id: album.id } });
+
+  const clean = (authorId: string, label: string, bytes: number) =>
+    Alert.alert(`${label} 사진을 앨범에서 뺄까요?`, `${formatBytes(bytes)}가 비워져요. 올린 사람의 기록은 그대로 남아요.`, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '빼기',
+        style: 'destructive',
+        onPress: () => removeAuthorItems(album.id, authorId).catch(() => Alert.alert('사진을 빼지 못했어요', '잠시 후 다시 시도해 주세요.')),
+      },
+    ]);
+
+  return (
+    <View style={styles.storage}>
+      <View style={styles.storageLabels}>
+        <ThemedText type="small" themeColor="textSecondary">
+          앨범 용량
+        </ThemedText>
+        <ThemedText type="small">
+          {formatBytes(used)} / {formatSize(capacity)}
+        </ThemedText>
+      </View>
+      <View style={[styles.track, { backgroundColor: theme.backgroundElement }]}>
+        <View
+          style={[
+            styles.fill,
+            { width: `${Math.max(ratio * 100, used > 0 ? 2 : 0)}%`, backgroundColor: over || ratio > 0.9 ? theme.danger : theme.accent },
+          ]}
+        />
+      </View>
+      {/* 나눠 준 용량이 하나도 없으면 정리 예정 안내(SaveToLibrary)가 대신 보여 준다. */}
+      {over && capacity > 0 && (
+        <View style={[styles.overCard, { borderColor: theme.danger }]}>
+          <ThemedText type="smallBold" style={{ color: theme.danger }}>
+            앨범 용량을 {formatBytes(used - capacity)} 넘었어요
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            구성원이 나가거나 구독이 끝나 앨범 용량이 줄었어요. 사진은 그대로 볼 수 있지만, 정리하기 전까지 새 사진은 담을 수
+            없어요. 아래 중에서 골라 주세요.
+          </ThemedText>
+          {admin &&
+            departed.map((c) => (
+              <Button
+                key={c.author_id}
+                label={`나간 구성원의 사진 정리 (${c.item_count}장, ${formatBytes(c.bytes)})`}
+                variant="secondary"
+                onPress={() => clean(c.author_id, '나간 구성원의', c.bytes)}
+              />
+            ))}
+          <Button label="내 용량을 더 나눠 주기" variant="secondary" onPress={manage} />
+          {mine && mine.bytes > 0 && (
+            <Button
+              label={`내가 담은 사진 빼기 (${mine.item_count}장)`}
+              variant="secondary"
+              onPress={() => clean(mine.author_id, '내가 담은', mine.bytes)}
+            />
+          )}
+          {admin && <Button label="구성원 초대하기" variant="secondary" onPress={manage} />}
+          <ThemedText type="small" themeColor="textSecondary">
+            사진을 한 장씩 빼려면 사진을 눌러 크게 본 뒤 휴지통을 눌러요. 공유 앨범 용량만 따로 늘리는 추가 결제는 준비하고
+            있어요.
+          </ThemedText>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      style={[
+        styles.chip,
+        { backgroundColor: selected ? theme.accent : theme.backgroundElement },
+      ]}>
+      <ThemedText type="small" style={{ color: selected ? theme.onAccent : theme.text }}>
+        {label}
+      </ThemedText>
+    </Pressable>
+  );
+}
+
+/** 전체 화면으로 옆으로 넘겨 본다. 아래에 누가 언제 담았는지와, 뺄 수 있으면 [앨범에서 빼기]를 둔다. */
+function SharedViewer({
+  albumId,
+  items,
+  index,
+  onClose,
+}: {
+  albumId: string;
+  items: SharedItem[];
+  index: number | null;
+  onClose: () => void;
+}) {
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const [current, setCurrent] = useState(0);
+  const [removing, setRemoving] = useState(false);
+  const item = index === null ? undefined : items[current];
+
+  const confirmRemove = (target: SharedItem) => {
+    Alert.alert(
+      '공유 앨범에서 뺄까요?',
+      target.is_mine
+        ? '구성원 모두에게서 사라져요. 내 기록과 기기 사진첩의 사진은 그대로예요.'
+        : `${target.author_name}님이 담은 사진이에요. 관리자로서 구성원 모두에게서 뺄까요? ${target.author_name}님의 기록은 그대로 남아요.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '빼기',
+          style: 'destructive',
+          onPress: async () => {
+            setRemoving(true);
+            try {
+              await removeSharedItem(albumId, target.id);
+              onClose();
+            } catch {
+              Alert.alert('사진을 빼지 못했어요', '잠시 후 다시 시도해 주세요.');
+            } finally {
+              setRemoving(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  return (
+    <Modal visible={index !== null} animationType="fade" onRequestClose={onClose} onShow={() => setCurrent(index ?? 0)}>
+      <View style={styles.viewer}>
+        {index !== null && (
+          <FlatList
+            data={items}
+            horizontal
+            pagingEnabled
+            initialScrollIndex={index}
+            getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
+            keyExtractor={(entry) => entry.id}
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={(e) => setCurrent(Math.round(e.nativeEvent.contentOffset.x / width))}
+            renderItem={({ item: entry, index: i }) => (
+              <SharedItemPhoto
+                albumId={albumId}
+                item={entry}
+                variant="full"
+                contentFit="contain"
+                active={i === current}
+                style={{ width, height }}
+              />
+            )}
+          />
+        )}
+        <Pressable
+          onPress={onClose}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="닫기"
+          style={[styles.viewerClose, { top: insets.top + Spacing.two }]}>
+          <Ionicons name="close" size={28} color="#fff" />
+        </Pressable>
+        {item && (
+          // 동영상은 아래쪽에 재생 막대가 있어 정보를 위에 둔다 (닫기 버튼 아래).
+          <View
+            style={[
+              styles.viewerInfo,
+              item.media_type === 'video'
+                ? { top: insets.top + Spacing.two + 48, paddingBottom: Spacing.three }
+                : { bottom: 0, paddingBottom: insets.bottom + Spacing.three },
+            ]}>
+            <View style={styles.flex}>
+              <ThemedText style={styles.viewerAuthor}>{item.is_mine ? '내가 담았어요' : `${item.author_name}님이 담았어요`}</ThemedText>
+              {item.taken_at && (
+                <ThemedText type="small" style={styles.viewerDate}>
+                  {formatFullDate(item.taken_at, item.taken_tz_offset)}
+                </ThemedText>
+              )}
+            </View>
+            {item.can_delete &&
+              (removing ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Pressable
+                  onPress={() => confirmRemove(item)}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="공유 앨범에서 빼기"
+                  style={styles.viewerAction}>
+                  <Ionicons name="trash-outline" size={22} color="#fff" />
+                </Pressable>
+              ))}
+          </View>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.two, padding: Spacing.four },
+  center: { textAlign: 'center' },
+  empty: { paddingVertical: Spacing.five, paddingHorizontal: Spacing.four },
+  headerButtons: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  grid: { paddingBottom: Spacing.six, gap: GRID_GAP },
+  gridRow: { gap: GRID_GAP, paddingHorizontal: GRID_GAP },
+  header: { gap: Spacing.three, paddingHorizontal: Spacing.three, paddingTop: Spacing.two, paddingBottom: Spacing.three },
+  summary: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: Spacing.one },
+  storage: { gap: Spacing.one },
+  saveCard: { gap: Spacing.two, padding: Spacing.three, borderRadius: Spacing.three },
+  storageLabels: { flexDirection: 'row', justifyContent: 'space-between' },
+  track: { height: 6, borderRadius: 3, overflow: 'hidden' },
+  fill: { height: 6, borderRadius: 3 },
+  overCard: { gap: Spacing.two, marginTop: Spacing.two, padding: Spacing.three, borderRadius: Spacing.three, borderWidth: 1 },
+  myName: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: Spacing.three,
+  },
+  inviteCard: { gap: Spacing.two, padding: Spacing.three, borderRadius: Spacing.three },
+  chips: { gap: Spacing.two },
+  chip: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.one + 2, borderRadius: 16 },
+  // 동영상 재생 시간은 왼쪽 아래에 있으므로 이름표는 왼쪽 위에 둔다.
+  authorTag: {
+    position: 'absolute',
+    left: Spacing.one,
+    top: Spacing.one,
+    maxWidth: '85%',
+    paddingHorizontal: Spacing.one + 2,
+    paddingVertical: 1,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  authorTagText: { color: '#fff', fontSize: 11, lineHeight: 15, fontWeight: 600 },
+  viewer: { flex: 1, backgroundColor: '#000' },
+  viewerClose: { position: 'absolute', right: Spacing.three },
+  // 위(동영상)나 아래(사진) 중 한쪽에만 붙인다. 둘 다 주면 막대가 화면 높이로 늘어난다.
+  viewerInfo: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.three,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  viewerAuthor: { color: '#fff', fontWeight: 700 },
+  viewerDate: { color: 'rgba(255,255,255,0.8)' },
+  viewerAction: { padding: Spacing.one },
+});

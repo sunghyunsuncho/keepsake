@@ -9,6 +9,7 @@ import { useDbQuery } from '@/db/changes';
 import { getSettings, setSetting } from '@/db/settings';
 import { formatFullDate } from '@/lib/dates';
 import { deleteAccount, signOut, syncCloud, useCloudState } from '@/lib/cloud/engine';
+import { mySharedItemCount } from '@/lib/cloud/shared';
 import { countMissingOriginals, PhotoSaveError, saveOriginalsToLibrary } from '@/lib/cloud/photos';
 import { MANAGE_SUBSCRIPTION_URL, purchasesAvailable } from '@/lib/cloud/purchases';
 import { useCloudSession } from '@/lib/cloud/session';
@@ -128,10 +129,15 @@ export function AccountRows() {
       },
     ]);
 
-  const confirmDelete = () =>
+  const confirmDelete = async () => {
+    // 공유 앨범에 담은 사진(나간 앨범에 남긴 것 포함)도 내 파일이라 함께 지워진다. 구성원이 먼저 챙길 수 있게 알린다.
+    const shared = await mySharedItemCount().catch(() => 0);
     Alert.alert(
       '계정을 삭제할까요?',
       '안전 보관한 사진과 기록이 바로 삭제되고 되돌릴 수 없어요. 이 기기에만 보관한 기록과, 이 기기 사진과 연결된 기록은 기기에 남아요.' +
+        (shared > 0
+          ? `\n\n공유 앨범에 담은 사진 ${shared}장도 모든 구성원에게서 사라져요. 구성원이 간직하려면 삭제 전에 공유 앨범에서 기기 사진첩에 저장해야 해요. 앨범 관리자에게는 사진이 빠졌다고 알려요.`
+          : '') +
         (purchasesAvailable ? '\n\n구독은 자동으로 해지되지 않으니 스토어의 구독 관리에서 해지해 주세요.' : ''),
       [
         { text: '취소', style: 'cancel' },
@@ -159,6 +165,7 @@ export function AccountRows() {
         },
       ],
     );
+  };
 
   return (
     <>

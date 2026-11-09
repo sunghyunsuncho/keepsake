@@ -4,6 +4,7 @@
 """
 
 import logging
+import sys
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -22,8 +23,30 @@ from app.cloud import (
 )
 from app.config import get_settings
 from app.db import SessionLocal, engine
-from app.models.cloud import BillingEvent, CloudObject, Device, Entitlement, StorageCleanup, User
+from app.models.cloud import (
+    BillingEvent,
+    CloudObject,
+    Device,
+    Entitlement,
+    Moment,
+    SharedAlbum,
+    SharedAlbumItem,
+    SharedAlbumMember,
+    SharedMoment,
+    StorageCleanup,
+    Usage,
+    User,
+)
 from app.monitoring import init_sentry
+from app.shared import (
+    delete_unneeded_files,
+    funding_changed_for_user,
+    lock_album_row,
+    recount,
+    recount_album,
+    refresh_funding,
+    release_unfunded_album,
+)
 from app.storage import UPLOAD_SETTLE_AFTER, delete_object, delete_prefix
 
 log = logging.getLogger(__name__)
@@ -181,6 +204,8 @@ def expire_grace(db: Session, now: datetime) -> None:
                 continue
             purge_photos(db, user_id, now)
             entitlement.status = "expired"
+            # 이제 이 사람이 나눠 준 용량은 앨범 용량에 들어가지 않는다.
+            funding_changed_for_user(db, user_id)
             db.commit()
             log.info("purged cloud photos after grace: %s", user_id)
         except UserGone:
@@ -223,13 +248,39 @@ def recheck_lapsed_subscriptions(db: Session, now: datetime) -> None:
             db.rollback()
 
 
+LEFT_PHOTOS_MESSAGE = (
+    "공유 앨범의 사진이 빠졌어요",
+    "'{title}'에 사진을 담았던 구성원이 계정을 지워, 그 사람이 담은 사진 {count}장이 빠졌어요.",
+)
+
+
+def notify_deleted_photos(
+    db: Session, notices: list[tuple[list[str], str, int]], notify: Notifier | None = None
+) -> None:
+    """계정 삭제로 사진이 빠진 공유 앨범의 관리자에게 알린다. 실패해도 삭제는 끝난 것으로 본다."""
+    notify = notify or send_push
+    for admins, title, count in notices:
+        for admin_id in admins:
+            try:
+                notify(
+                    db,
+                    admin_id,
+                    LEFT_PHOTOS_MESSAGE[0],
+                    LEFT_PHOTOS_MESSAGE[1].format(title=title, count=count),
+                )
+                db.commit()
+            except Exception:
+                log.warning("deleted photos notice failed: %s", admin_id, exc_info=True)
+                db.rollback()
+
+
 def finish_account_deletions(db: Session) -> None:
     user_ids = db.scalars(select(User.id).where(User.deleted_at.is_not(None))).all()
     for user_id in user_ids:
         try:
             user = db.get(User, user_id)
             if user is not None:
-                delete_account(db, user)
+                notify_deleted_photos(db, delete_account(db, user))
         except UserGone:
             db.rollback()  # 요청 처리가 먼저 끝냈다.
         except Exception:
@@ -310,6 +361,128 @@ def clean_objects(db: Session, now: datetime) -> None:
             db.rollback()
 
 
+UNFUNDED_MESSAGE = (
+    "공유 앨범에 보관 용량이 없어요",
+    "'{title}'에 용량을 나눠 준 구성원이 없어 {days}일 뒤 사진이 지워져요. "
+    "필요한 사진은 앨범에서 기기 사진첩에 저장하거나, 구독 후 용량을 나눠 주세요.",
+)
+
+
+def expire_unfunded_albums(db: Session, now: datetime, notify: Notifier = send_push) -> None:
+    """용량을 나눠 준 사람이 하나도 남지 않은 공유 앨범을 정리한다 (docs/PRICING.md §3.5).
+
+    용량을 바꾸는 일이 생길 때 refresh_funding이 unfunded_since를 표시해 두므로, 표시된 앨범만 본다.
+    먼저 구성원에게 알리고, 알린 때부터 기한(SHARED_ALBUM_GRACE_DAYS)이 지나면 항목을 모두 빼고 올린
+    사람이 구독하지 않는 파일을 지운다 (나간 구성원이 남긴 사진 포함). 아직 구독 중인 사람의 파일은
+    그 사람의 개인 사용량으로 돌아간다. 기한 안에 누가 용량을 나눠 주면 표시가 지워져 그대로
+    이어진다.
+    """
+    days = get_settings().shared_album_grace_days
+    album_ids = db.scalars(
+        select(SharedAlbum.id).where(SharedAlbum.unfunded_since.is_not(None))
+    ).all()
+    for album_id in album_ids:
+        by_author: dict[str, list[str]] = {}
+        try:
+            album = lock_album_row(db, album_id)
+            if album is None:
+                db.rollback()
+                continue
+            # 표시한 뒤 다시 구독한 사람이 있을 수 있어 정리하기 전에 다시 확인한다.
+            refresh_funding(db, album)
+            if album.unfunded_since is None:
+                db.commit()
+                continue
+            if album.unfunded_notified_at is None:
+                album.unfunded_notified_at = now
+                title = album.title
+                members = db.scalars(
+                    select(SharedAlbumMember.user_id).where(SharedAlbumMember.album_id == album_id)
+                ).all()
+                db.commit()
+                for member_id in members:
+                    try:
+                        notify(
+                            db,
+                            member_id,
+                            UNFUNDED_MESSAGE[0],
+                            UNFUNDED_MESSAGE[1].format(title=title, days=days),
+                        )
+                        db.commit()
+                    except Exception:
+                        log.warning("unfunded album notice failed: %s", member_id, exc_info=True)
+                        db.rollback()
+                continue
+            if album.unfunded_notified_at + timedelta(days=days) > now:
+                db.commit()
+                continue
+            by_author = release_unfunded_album(db, album)
+            db.commit()
+            log.info("released unfunded shared album %s", album_id)
+        except Exception:
+            log.exception("unfunded album cleanup failed: %s", album_id)
+            db.rollback()
+            continue
+        # 파일은 올린 사람의 행을 잠그고 지운다 (잠그는 순서: 사용자 → 앨범).
+        for author_id in sorted(by_author):
+            try:
+                user = lock_user(db, author_id)
+                for moment_id in delete_unneeded_files(db, author_id, by_author[author_id]):
+                    moment = db.get(Moment, (author_id, moment_id))
+                    if moment is not None:
+                        user.sync_seq += 1
+                        moment.seq = user.sync_seq
+                db.commit()
+            except UserGone:
+                db.rollback()
+            except Exception:
+                log.exception("unfunded album file cleanup failed: %s", author_id)
+                db.rollback()
+
+
+def reconcile_shared_usage(db: Session) -> None:
+    """저장해 둔 공유 앨범 사용량을 모두 다시 센다. 바뀐 만큼 고치는 값이 어긋나도 하루 안에
+    맞춘다."""
+    for album_id in db.scalars(select(SharedAlbum.id).order_by(SharedAlbum.id)).all():
+        try:
+            album = lock_album_row(db, album_id)
+            if album is not None:
+                recount_album(db, album)
+                # 결제 설정을 바꾸는 등 구독 변경을 거치지 않고 용량이 바뀐 경우도 맞춘다.
+                refresh_funding(db, album)
+            db.commit()
+        except Exception:
+            log.exception("shared usage reconcile failed: %s", album_id)
+            db.rollback()
+    # 항목이 없어진 기록도 shared_moments에서 빠지도록, 행이 남은 사용자도 다시 센다.
+    user_ids = set(db.scalars(select(SharedAlbumItem.author_id).distinct())) | set(
+        db.scalars(select(SharedMoment.user_id).distinct())
+    )
+    for user_id in sorted(user_ids):
+        try:
+            moments = set(
+                db.scalars(
+                    select(SharedAlbumItem.moment_id).where(SharedAlbumItem.author_id == user_id)
+                )
+            ) | set(
+                db.scalars(select(SharedMoment.moment_id).where(SharedMoment.user_id == user_id))
+            )
+            recount(db, user_id, moments, [])
+            db.flush()
+            total = db.scalar(
+                select(func.coalesce(func.sum(SharedMoment.bytes), 0)).where(
+                    SharedMoment.user_id == user_id
+                )
+            )
+            usage = db.get(Usage, user_id, populate_existing=True)
+            if usage is not None:
+                usage.shared_bytes = total
+            db.commit()
+        except Exception:
+            log.exception("shared usage reconcile failed for %s", user_id)
+            db.rollback()
+
+
 def run(db: Session, now: datetime | None = None, notify: Notifier = send_push) -> None:
     now = now or datetime.now(UTC)
     # 각 단계는 따로 실패해도 다음 단계가 돌도록 나눈다.
@@ -319,6 +492,9 @@ def run(db: Session, now: datetime | None = None, notify: Notifier = send_push) 
         lambda: notify_grace(db, now, notify),
         lambda: expire_grace(db, now),
         lambda: clean_objects(db, now),
+        lambda: expire_unfunded_albums(db, now, notify),
+        # 하루 한 번 (새벽 4시 실행에서)
+        lambda: reconcile_shared_usage(db) if now.hour == 4 else None,
         lambda: sweep_storage_cleanups(db, now),
         lambda: prune_billing_events(db, now),
     ):
@@ -349,4 +525,8 @@ if __name__ == "__main__":
     init_sentry()
     wait_for_db()
     with SessionLocal() as session:
-        run(session)
+        # `python -m app.jobs reconcile`: 공유 앨범 사용량만 지금 다시 센다 (배포 직후 등).
+        if sys.argv[1:] == ["reconcile"]:
+            reconcile_shared_usage(session)
+        else:
+            run(session)

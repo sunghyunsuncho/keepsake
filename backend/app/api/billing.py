@@ -17,6 +17,7 @@ from app.api.deps import DbSession
 from app.cloud import activate, refresh_from_revenuecat, start_grace
 from app.config import get_settings
 from app.models.cloud import BillingEvent, Entitlement
+from app.plans import plan_limit
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -108,7 +109,15 @@ def _handle_event(db: Session, raw: bytes) -> None:
         for user_id in _candidate_user_ids(event):
             entitlement = db.get(Entitlement, user_id)
             # 우리 계정이 아닌 ID(예: 삭제된 계정)는 재시도해도 복구되지 않으므로 기록만 남긴다.
-            if entitlement is not None and not refresh_from_revenuecat(db, entitlement):
-                _apply_event(entitlement, event)
+            if entitlement is not None:
+                was_counted = plan_limit(entitlement) is not None
+                if not refresh_from_revenuecat(db, entitlement):
+                    _apply_event(entitlement, event)
+                # 만료된 구성원이 다시 구독하면, 용량 없음 경고와 정리 예약을 즉시 해제한다.
+                # active → grace는 모두 앨범 용량에 들어가므로 이 호출은 필요 없다.
+                if was_counted != (plan_limit(entitlement) is not None):
+                    from app.shared import funding_changed_for_user
+
+                    funding_changed_for_user(db, user_id)
     record.processed_at = datetime.now(UTC)
     db.commit()

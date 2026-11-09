@@ -8,6 +8,7 @@ import { pushDeviceLinks, restoreDeviceLinks } from '@/lib/cloud/device-links';
 import { adoptPhotosWithoutAlbum, countPendingUploads, releaseUnwantedPhotos, uploadPending } from '@/lib/cloud/photos';
 import { clearPurchasesUser, setPurchasesUser } from '@/lib/cloud/purchases';
 import { registerPushToken } from '@/lib/cloud/push';
+import { refreshSharedItems } from '@/lib/cloud/shared';
 import {
   ACCOUNT_UNAVAILABLE,
   type Account,
@@ -160,6 +161,8 @@ async function runOnce(db: SQLiteDatabase, onlyIfLocalChanges: boolean) {
     // 사진을 올리기 전에 받는다: 이미 Cloud에 있는 사진(다시 로그인한 계정, 다른 기기가 올린 사진)은
     // pull이 '올라감'으로 표시하므로 다시 올리지 않는다.
     await pullChanges(db);
+    // 내가 공유 앨범에 담은 사진(다른 기기에서 담은 것 포함)도 올리고 남긴다. 지우기 전에 받아야 한다.
+    await refreshSharedItems(db);
     // 연결은 없어도 사진을 Cloud에서 볼 수 있으므로, 실패해도 백업을 멈추지 않고 다음에 다시 한다.
     await restoreDeviceLinks(db, session.userId).catch(() => {});
     await pushDeviceLinks(db, session.userId).catch(() => {});
@@ -168,14 +171,16 @@ async function runOnce(db: SQLiteDatabase, onlyIfLocalChanges: boolean) {
     // 실행해야, 아직 안전 앨범으로 옮기지 못한 이전 버전의 사진을 release가 지우지 않는다.
     await adoptPhotosWithoutAlbum(db);
     let released = await releaseUnwantedPhotos(db);
-    if (subscription.can_upload) {
+    // 구독하지 않았어도 공유 앨범에 담은 사진은 앨범 용량(다른 구성원이 나눠 준 용량)으로 올린다.
+    {
+      const sharedOnly = !subscription.can_upload;
       const settings = await getSettings(db);
       const cellular = network.type === Network.NetworkStateType.CELLULAR;
       if (settings.wifi_only_upload && cellular) {
         problem = 'Wi-Fi에 연결되면 사진을 올릴게요.';
       } else {
         try {
-          uploaded = await uploadPending(db, () => stopRequested);
+          uploaded = await uploadPending(db, () => stopRequested, sharedOnly);
           // 효율 보관으로 바꾼 동영상의 원본은 720p 영상(compact)이 올라간 뒤에야 지울 수 있다.
           if (uploaded > 0) released += await releaseUnwantedPhotos(db);
         } catch (e) {

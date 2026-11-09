@@ -71,7 +71,7 @@ async function resolveVideoUri(moment: PhotoMoment, signedIn: boolean) {
   return null;
 }
 
-function Player({
+export function Player({
   uri,
   style,
   contentFit,

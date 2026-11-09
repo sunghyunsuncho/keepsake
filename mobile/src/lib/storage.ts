@@ -4,6 +4,7 @@ import { Directory, Paths } from 'expo-file-system';
 // OS가 지워도 다시 만들거나 받을 수 있다.
 //
 //   <cache>/cloud-display/{moment_id}.jpg   Cloud에서 받은 표시용 사진 (기기 사진첩에 원본이 없을 때)
+//   <cache>/shared-display/{item_id}.jpg     공유 앨범에서 다른 구성원이 올린 표시용 사진
 //   <cache>/upload/                          Cloud에 올리는 동안만 두는 임시 파일
 
 export function cacheDir(name: string) {
@@ -14,8 +15,16 @@ export function cacheDir(name: string) {
 
 /** Cloud에서 받아 둔 표시용 사진을 지운다. 서버 데이터가 지워진 뒤 기기에 남기지 않기 위해서다. */
 export function clearCloudDisplayCache() {
-  const dir = new Directory(Paths.cache, 'cloud-display');
-  if (dir.exists) dir.delete();
+  for (const name of ['cloud-display', 'shared-display']) {
+    const dir = new Directory(Paths.cache, name);
+    if (dir.exists) dir.delete();
+  }
+}
+
+/** 용량 단위로 정한 값(할당 등)은 "10GB"처럼 소수점 없이 보여 준다. */
+export function formatSize(bytes: number) {
+  const gb = bytes / 1024 / 1024 / 1024;
+  return Number.isInteger(gb) && gb > 0 ? `${gb}GB` : formatBytes(bytes);
 }
 
 export function formatBytes(bytes: number) {

@@ -250,6 +250,300 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/shared-albums": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Albums */
+        get: operations["shared_albums_list_albums"];
+        put?: never;
+        /**
+         * Create Album
+         * @description 공유 앨범은 안전 보관 요금제의 기능이다. 요금제마다 소유할 수 있는 수가 정해져 있고,
+         *     만드는 사람은 자기 용량에서 앨범 용량을 떼어 준다.
+         *
+         *     moment_ids(안전 앨범 바꾸기): 그 사진이 이미 쓰던 개인 용량은 앨범 용량으로 옮겨 센다.
+         *     할당이 그 사진들보다 작으면 거절한다.
+         */
+        post: operations["shared_albums_create_album"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/my-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Items */
+        get: operations["shared_albums_my_items"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/my-items/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove My Moments
+         * @description 내 기록을 모든 공유 앨범에서 뺀다. 기록을 지우며 공유 앨범에서도 빼기로 했을 때 기기가
+         *     부른다.
+         */
+        post: operations["shared_albums_remove_my_moments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/invites/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Invite */
+        get: operations["shared_albums_preview_invite"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join Album
+         * @description 초대 코드로 참여한다. 구독 중이면 내 용량에서 앨범 용량을 떼어 줄 수 있다.
+         */
+        post: operations["shared_albums_join_album"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/{album_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Album */
+        get: operations["shared_albums_get_album"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Album
+         * @description 관리자가 앨범을 지운다. 구성원의 기록은 남고, 다른 앨범에 필요 없는 파일은 각자의 기기가
+         *     지운다.
+         */
+        delete: operations["shared_albums_delete_album"];
+        options?: never;
+        head?: never;
+        /** Update Album */
+        patch: operations["shared_albums_update_album"];
+        trace?: never;
+    };
+    "/shared-albums/{album_id}/owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transfer Owner
+         * @description 소유자를 넘긴다. 받는 사람은 구독 중이고 요금제의 공유 앨범 수에 여유가 있어야 한다.
+         */
+        post: operations["shared_albums_transfer_owner"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/{album_id}/invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Invite
+         * @description 새 초대 코드를 만든다. 이전 코드는 더 쓸 수 없다.
+         */
+        post: operations["shared_albums_create_invite"];
+        /** Revoke Invite */
+        delete: operations["shared_albums_revoke_invite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/{album_id}/members/{member_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Member
+         * @description 스스로 나가거나, 관리자가 구성원을 내보낸다. 그 사람의 할당도 빠진다.
+         *
+         *     photos=keep: 그 사람이 담은 사진을 앨범에 남긴다. 용량이 넘치면 새 사진을 받지 않고,
+         *     관리자가 사진을 정리하거나 다른 구성원이 할당을 늘려 푼다.
+         */
+        delete: operations["shared_albums_remove_member"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Member
+         * @description 이름과 할당은 자기 것만 바꾼다. 역할은 관리자가 바꾼다 (관리자는 여럿일 수 있다).
+         *
+         *     소유자는 관리자에서 해제할 수 없고, 관리자가 한 명도 없게 만들 수는 없다.
+         *     할당은 내 남은 용량 안에서 늘리고, 앨범이 이미 쓰는 만큼보다 작게 줄일 수 없다.
+         */
+        patch: operations["shared_albums_update_member"];
+        trace?: never;
+    };
+    "/shared-albums/{album_id}/members/{member_id}/leave-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Leave Preview */
+        get: operations["shared_albums_leave_preview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/{album_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Items */
+        get: operations["shared_albums_list_items"];
+        put?: never;
+        /**
+         * Add Items
+         * @description 내 기록을 담는다. 개인 안전 보관에 이미 있는 파일은 다시 올리지 않고 앨범 용량으로 옮겨 센다.
+         *     없는 파일은 내 기기가 다음 동기화에서 올린다. 앨범 용량을 넘으면 담지 않는다.
+         */
+        post: operations["shared_albums_add_items"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/{album_id}/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Item
+         * @description 올린 사람이나 관리자만 뺀다. 올린 사람의 기록은 남는다.
+         */
+        delete: operations["shared_albums_remove_item"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/{album_id}/authors/{author_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Author Items
+         * @description 한 사람이 담은 사진을 모두 뺀다. 넘친 용량을 정리할 때 쓴다 (나간 구성원의 사진 등).
+         */
+        delete: operations["shared_albums_remove_author_items"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/{album_id}/items/{item_id}/photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Item
+         * @description 구성원이면 볼 수 있다. 파일은 올린 사람의 Cloud 파일 그대로이고, 보는 사람의 구독은 묻지
+         *     않는다.
+         */
+        get: operations["shared_albums_download_item"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/billing/revenuecat": {
         parameters: {
             query?: never;
@@ -283,6 +577,72 @@ export interface components {
             usage: components["schemas"]["StorageUsage"];
             /** Has Records */
             has_records: boolean;
+        };
+        /** AddItemsRequest */
+        AddItemsRequest: {
+            /** Moment Ids */
+            moment_ids: string[];
+        };
+        /** AddItemsResponse */
+        AddItemsResponse: {
+            /** Added */
+            added: number;
+        };
+        /** AlbumStorage */
+        AlbumStorage: {
+            /** Bytes Total */
+            bytes_total: number;
+            /** Capacity Bytes */
+            capacity_bytes: number;
+            /** Extra Bytes */
+            extra_bytes: number;
+            /** My Allocation */
+            my_allocation: number;
+            /** Over Capacity */
+            over_capacity: boolean;
+            /** Cleanup After */
+            cleanup_after: string | null;
+        };
+        /**
+         * ContributorOut
+         * @description 사진을 담은 사람별 사용량. 용량이 넘쳤을 때 누구의 사진을 정리할지 고르는 데 쓴다.
+         */
+        ContributorOut: {
+            /** Author Id */
+            author_id: string;
+            /** Display Name */
+            display_name: string | null;
+            /** Is Member */
+            is_member: boolean;
+            /** Is Me */
+            is_me: boolean;
+            /** Item Count */
+            item_count: number;
+            /** Bytes */
+            bytes: number;
+        };
+        /** CreateSharedAlbumRequest */
+        CreateSharedAlbumRequest: {
+            /** Title */
+            title: string;
+            /**
+             * Relation
+             * @default other
+             * @enum {string}
+             */
+            relation: "family" | "friends" | "partner" | "other";
+            /**
+             * Photo Quality
+             * @default original
+             * @enum {string}
+             */
+            photo_quality: "original" | "display";
+            /** Display Name */
+            display_name: string;
+            /** Allocated Bytes */
+            allocated_bytes: number;
+            /** Moment Ids */
+            moment_ids?: string[];
         };
         /** CreateUploadRequest */
         CreateUploadRequest: {
@@ -358,6 +718,112 @@ export interface components {
              */
             status: "ok";
         };
+        /** InviteOut */
+        InviteOut: {
+            /** Code */
+            code: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /** InvitePreview */
+        InvitePreview: {
+            /** Album Id */
+            album_id: string;
+            /** Title */
+            title: string;
+            /**
+             * Relation
+             * @enum {string}
+             */
+            relation: "family" | "friends" | "partner" | "other";
+            /** Member Count */
+            member_count: number;
+            /** Invited By */
+            invited_by: string | null;
+            /** Already Member */
+            already_member: boolean;
+        };
+        /** JoinRequest */
+        JoinRequest: {
+            /** Code */
+            code: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Allocated Bytes
+             * @default 0
+             */
+            allocated_bytes: number;
+        };
+        /**
+         * LeavePreview
+         * @description 구성원이 빠지면 그 사람의 할당만큼 용량이 준다. 사진을 남길지 고르기 전에 보여준다.
+         */
+        LeavePreview: {
+            /** Capacity Before */
+            capacity_before: number;
+            /** Capacity After */
+            capacity_after: number;
+            /** Bytes Total */
+            bytes_total: number;
+            /** Member Bytes */
+            member_bytes: number;
+            /** Member Items */
+            member_items: number;
+            /** Over If Kept */
+            over_if_kept: boolean;
+            /** Over If Removed */
+            over_if_removed: boolean;
+        };
+        /** MemberOut */
+        MemberOut: {
+            /** User Id */
+            user_id: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "admin" | "member";
+            /** Is Owner */
+            is_owner: boolean;
+            /** Allocated Bytes */
+            allocated_bytes: number;
+            /** Allocation Counted */
+            allocation_counted: boolean;
+            /**
+             * Joined At
+             * Format: date-time
+             */
+            joined_at: string;
+            /** Is Me */
+            is_me: boolean;
+        };
+        /** MyItemRow */
+        MyItemRow: {
+            /** Album Id */
+            album_id: string;
+            /** Moment Id */
+            moment_id: string;
+            /**
+             * Photo Quality
+             * @enum {string}
+             */
+            photo_quality: "original" | "display";
+        };
+        /**
+         * MyItemsResponse
+         * @description 내가 담은 항목 전체 (나간 앨범에 남긴 사진 포함). 기기는 이 목록으로 올릴 파일과
+         *     지우면 안 되는 파일을 정한다.
+         */
+        MyItemsResponse: {
+            /** Items */
+            items: components["schemas"]["MyItemRow"][];
+        };
         /** PhotoRef */
         PhotoRef: {
             /** Moment Id */
@@ -400,6 +866,16 @@ export interface components {
             /** Links */
             links: components["schemas"]["DeviceLinkRow"][];
         };
+        /** RemoveMyItemsRequest */
+        RemoveMyItemsRequest: {
+            /** Moment Ids */
+            moment_ids: string[];
+        };
+        /** RemoveMyItemsResponse */
+        RemoveMyItemsResponse: {
+            /** Removed */
+            removed: number;
+        };
         /** SessionResponse */
         SessionResponse: {
             /** Access Token */
@@ -412,6 +888,146 @@ export interface components {
             token_type: "bearer";
             /** User Id */
             user_id: string;
+        };
+        /** SharedAlbumDetail */
+        SharedAlbumDetail: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /**
+             * Relation
+             * @enum {string}
+             */
+            relation: "family" | "friends" | "partner" | "other";
+            /**
+             * Photo Quality
+             * @enum {string}
+             */
+            photo_quality: "original" | "display";
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "admin" | "member";
+            /** Is Owner */
+            is_owner: boolean;
+            /** Member Count */
+            member_count: number;
+            /** Item Count */
+            item_count: number;
+            /** Cover Item Id */
+            cover_item_id: string | null;
+            storage: components["schemas"]["AlbumStorage"];
+            /** Writable */
+            writable: boolean;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Members */
+            members: components["schemas"]["MemberOut"][];
+            /** Contributors */
+            contributors: components["schemas"]["ContributorOut"][];
+            invite: components["schemas"]["InviteOut"] | null;
+        };
+        /** SharedAlbumList */
+        SharedAlbumList: {
+            /** Albums */
+            albums: components["schemas"]["SharedAlbumSummary"][];
+            /** Owned */
+            owned: number;
+            /** Limit */
+            limit: number;
+            /** Free Bytes */
+            free_bytes: number;
+            /** Suggested Allocation */
+            suggested_allocation: number;
+        };
+        /** SharedAlbumSummary */
+        SharedAlbumSummary: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /**
+             * Relation
+             * @enum {string}
+             */
+            relation: "family" | "friends" | "partner" | "other";
+            /**
+             * Photo Quality
+             * @enum {string}
+             */
+            photo_quality: "original" | "display";
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "admin" | "member";
+            /** Is Owner */
+            is_owner: boolean;
+            /** Member Count */
+            member_count: number;
+            /** Item Count */
+            item_count: number;
+            /** Cover Item Id */
+            cover_item_id: string | null;
+            storage: components["schemas"]["AlbumStorage"];
+            /** Writable */
+            writable: boolean;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SharedItemOut */
+        SharedItemOut: {
+            /** Id */
+            id: string;
+            /** Author Id */
+            author_id: string;
+            /** Author Name */
+            author_name: string;
+            /** Is Mine */
+            is_mine: boolean;
+            /** Can Delete */
+            can_delete: boolean;
+            /** Moment Id */
+            moment_id: string | null;
+            /**
+             * Media Type
+             * @enum {string}
+             */
+            media_type: "photo" | "video";
+            /** Duration */
+            duration: number | null;
+            /** Taken At */
+            taken_at: string | null;
+            /** Taken Tz Offset */
+            taken_tz_offset: number | null;
+            /** Width */
+            width: number | null;
+            /** Height */
+            height: number | null;
+            /** Stored Variants */
+            stored_variants: ("display" | "original" | "compact")[];
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+        };
+        /** SharedItemsPage */
+        SharedItemsPage: {
+            /** Items */
+            items: components["schemas"]["SharedItemOut"][];
+            /** Cursor */
+            cursor: number;
+            /** Has More */
+            has_more: boolean;
         };
         /** SignInRequest */
         SignInRequest: {
@@ -431,6 +1047,8 @@ export interface components {
             bytes_total: number;
             /** Object Count */
             object_count: number;
+            /** Allocated Bytes */
+            allocated_bytes: number;
             /** Max Bytes */
             max_bytes: number;
         };
@@ -488,6 +1106,29 @@ export interface components {
              * @enum {string}
              */
             kind: "review_sessions" | "albums" | "album_moments";
+        };
+        /** TransferOwnerRequest */
+        TransferOwnerRequest: {
+            /** User Id */
+            user_id: string;
+        };
+        /** UpdateMemberRequest */
+        UpdateMemberRequest: {
+            /** Role */
+            role?: ("admin" | "member") | null;
+            /** Display Name */
+            display_name?: string | null;
+            /** Allocated Bytes */
+            allocated_bytes?: number | null;
+        };
+        /** UpdateSharedAlbumRequest */
+        UpdateSharedAlbumRequest: {
+            /** Title */
+            title?: string | null;
+            /** Relation */
+            relation?: ("family" | "friends" | "partner" | "other") | null;
+            /** Photo Quality */
+            photo_quality?: ("original" | "display") | null;
         };
         /** UploadResponse */
         UploadResponse: {
@@ -930,6 +1571,628 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_list_albums: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedAlbumList"];
+                };
+            };
+        };
+    };
+    shared_albums_create_album: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSharedAlbumRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedAlbumDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_my_items: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyItemsResponse"];
+                };
+            };
+        };
+    };
+    shared_albums_remove_my_moments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoveMyItemsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoveMyItemsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_preview_invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitePreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_join_album: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedAlbumDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_get_album: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedAlbumDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_delete_album: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_update_album: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSharedAlbumRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedAlbumDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_transfer_owner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferOwnerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedAlbumDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_create_invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_revoke_invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_remove_member: {
+        parameters: {
+            query?: {
+                photos?: "keep" | "remove";
+            };
+            header?: never;
+            path: {
+                album_id: string;
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_update_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedAlbumDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_leave_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeavePreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_list_items: {
+        parameters: {
+            query?: {
+                cursor?: number;
+            };
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedItemsPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_add_items: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddItemsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddItemsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_remove_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_remove_author_items: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+                author_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_download_item: {
+        parameters: {
+            query: {
+                variant: "display" | "original" | "compact";
+            };
+            header?: never;
+            path: {
+                album_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

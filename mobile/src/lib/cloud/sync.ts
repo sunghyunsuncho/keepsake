@@ -224,7 +224,7 @@ async function mergeRecord(db: SQLiteDatabase, remote: SyncRecordRow) {
 export async function resetAccountSpace(db: SQLiteDatabase) {
   await keepLinkedMomentsInLocal(db);
   await inTransaction(db, async () => {
-    for (const table of ['moments', ...RECORD_KINDS, 'upload_queue', 'local_imports']) {
+    for (const table of ['moments', ...RECORD_KINDS, 'upload_queue', 'local_imports', 'shared_items', 'shared_downloads']) {
       await db.runAsync(`DELETE FROM ${table}`);
     }
   });

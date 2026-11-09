@@ -14,7 +14,24 @@ from sqlalchemy import select, update
 from app.api.deps import CurrentUser, DbSession, require_read, require_write
 from app.cloud import lock_active_user
 from app.config import get_settings
-from app.models.cloud import CloudObject, Moment, StorageCleanup, Usage
+from app.models.cloud import (
+    CloudObject,
+    Moment,
+    SharedAlbum,
+    SharedAlbumItem,
+    StorageCleanup,
+    Usage,
+    User,
+)
+from app.shared import (
+    album_usage,
+    capacity,
+    lock_album_row,
+    objects_changed,
+    personal_free,
+    shared_needs,
+    wanted_variants,
+)
 from app.storage import (
     UPLOAD_SETTLE_AFTER,
     UPLOAD_URL_TTL,
@@ -120,7 +137,6 @@ class DownloadResponse(BaseModel):
 
 @router.post("/uploads", response_model=UploadResponse)
 def create_upload(payload: CreateUploadRequest, user: CurrentUser, db: DbSession) -> UploadResponse:
-    require_write(db, user)
     # 용량 확인과 사용량 변경이 같은 사용자의 다른 요청과 겹치지 않게 한다.
     lock_active_user(db, user.id)
     moment = db.get(Moment, (user.id, payload.moment_id))
@@ -139,9 +155,7 @@ def create_upload(payload: CreateUploadRequest, user: CurrentUser, db: DbSession
     if current is not None and current.status == "stored":
         # 기록의 사진은 바뀌지 않는다. 다른 기기가 이미 올렸으면 그 사진을 그대로 쓴다.
         raise HTTPException(status.HTTP_409_CONFLICT, "photo is already stored")
-    if usage.bytes_total + payload.size > get_settings().cloud_max_bytes:
-        # 용량 초과: 새 업로드만 막고 기존 백업은 그대로 둔다.
-        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Cloud storage limit reached")
+    _check_space(db, user, payload.moment_id, payload.variant, payload.size)
 
     content_type = payload.content_type.lower()
     validate_upload_kind(moment, payload.variant, content_type)
@@ -184,6 +198,58 @@ def create_upload(payload: CreateUploadRequest, user: CurrentUser, db: DbSession
     )
 
 
+def _shared_albums_using(db: DbSession, user_id: str, moment_id: str, variant: str) -> list[str]:
+    """새 파일이 완료된 뒤 해당 변형을 쓸 앨범.
+
+    ``shared_needs``는 이미 *stored* 상태인 파일만 보고 계산한다. 따라서 효율 보관 동영상의
+    첫 compact 업로드는 아직 stored가 아니어도 compact가 필요하지만, 그것만으로 계산하면
+    원본만 필요한 것으로 나온다. 업로드하려는 변형을 미리 가진 것으로 보고 판정한다.
+    """
+    stored = set(
+        db.scalars(
+            select(CloudObject.variant).where(
+                CloudObject.user_id == user_id,
+                CloudObject.moment_id == moment_id,
+                CloudObject.status == "stored",
+            )
+        )
+    )
+    stored.add(variant)
+    return sorted(
+        album_id
+        for album_id, media_type, quality in db.execute(
+            select(
+                SharedAlbumItem.album_id,
+                SharedAlbumItem.media_type,
+                SharedAlbum.photo_quality,
+            )
+            .join(SharedAlbum, SharedAlbum.id == SharedAlbumItem.album_id)
+            .where(
+                SharedAlbumItem.author_id == user_id,
+                SharedAlbumItem.moment_id == moment_id,
+            )
+        )
+        if variant in wanted_variants(quality, media_type, stored)
+    )
+
+
+def _check_space(db: DbSession, user: User, moment_id: str, variant: str, size: int) -> None:
+    """공유 앨범이 쓰는 파일은 그 앨범의 용량(구성원 할당의 합)에서 센다. 앨범 공간이 있으면
+    구독하지 않은 구성원도 올린다. 나머지는 개인 용량(요금제 용량 − 공유 앨범 할당)에서 센다.
+    용량 초과: 새 업로드만 막고 기존 백업은 그대로 둔다.
+    """
+    albums = _shared_albums_using(db, user.id, moment_id, variant)
+    if not albums:
+        require_write(db, user)
+        if personal_free(db, user.id) < size:
+            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Cloud storage limit reached")
+        return
+    for album_id in albums:
+        album = lock_album_row(db, album_id)
+        if album is not None and album_usage(album) + size > capacity(db, album):
+            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "shared album storage is full")
+
+
 @router.post("/uploads/{upload_id}/complete", status_code=status.HTTP_204_NO_CONTENT)
 def complete_upload(upload_id: str, user: CurrentUser, db: DbSession) -> None:
     # 잠근 뒤에 읽어야 같은 완료 요청이 두 번 와도 사용량을 한 번만 더한다.
@@ -193,7 +259,8 @@ def complete_upload(upload_id: str, user: CurrentUser, db: DbSession) -> None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "upload not found")
     if obj.status == "stored":
         return  # 응답을 못 받은 기기가 다시 부른 경우
-    require_write(db, user)
+    if not _shared_albums_using(db, user.id, obj.moment_id, obj.variant):
+        require_write(db, user)
     try:
         head = r2_client().head_object(Bucket=get_settings().r2_bucket, Key=obj.r2_key)
     except ClientError as exc:
@@ -221,6 +288,8 @@ def complete_upload(upload_id: str, user: CurrentUser, db: DbSession) -> None:
     if moment is not None:
         locked.sync_seq += 1
         moment.seq = locked.sync_seq
+    # 이 파일을 쓰는 공유 앨범의 사용량을 고친다.
+    objects_changed(db, user.id, [obj.moment_id])
     db.commit()
 
 
@@ -265,16 +334,21 @@ def delete_photos(payload: DeletePhotosRequest, user: CurrentUser, db: DbSession
     wanted = {(photo.moment_id, photo.variant) for photo in payload.photos}
     if not wanted:
         return
+    moment_ids = sorted({moment_id for moment_id, _ in wanted})
+    found = db.scalars(
+        select(CloudObject).where(
+            CloudObject.user_id == user.id,
+            CloudObject.moment_id.in_(moment_ids),
+            CloudObject.status.in_(("stored", "pending")),
+        )
+    ).all()
+    # 공유 앨범이 쓰는 파일은 남긴다. 다른 기기가 담은 것을 이 기기가 아직 모를 수 있다.
+    shared = shared_needs(db, user.id, moment_ids)
     objects = [
         obj
-        for obj in db.scalars(
-            select(CloudObject).where(
-                CloudObject.user_id == user.id,
-                CloudObject.moment_id.in_({moment_id for moment_id, _ in wanted}),
-                CloudObject.status.in_(("stored", "pending")),
-            )
-        ).all()
+        for obj in found
         if (obj.moment_id, obj.variant) in wanted
+        and not any(obj.variant in v for v in shared.get(obj.moment_id, {}).values())
     ]
     usage = db.get(Usage, user.id)
     for obj in objects:
@@ -287,9 +361,13 @@ def delete_photos(payload: DeletePhotosRequest, user: CurrentUser, db: DbSession
         .values(status="deleting")
     )
     # 다른 기기가 다음 pull에서 '올라감' 표시를 버리도록 기록의 변경 번호를 올린다.
-    for moment_id in sorted({obj.moment_id for obj in objects}):
+    # 남긴 파일도 올려서, 지웠다고 여긴 기기가 pull에서 '올라감' 표시를 되찾는다.
+    for moment_id in sorted(
+        {obj.moment_id for obj in found if (obj.moment_id, obj.variant) in wanted}
+    ):
         moment = db.get(Moment, (user.id, moment_id))
         if moment is not None:
             locked.sync_seq += 1
             moment.seq = locked.sync_seq
+    objects_changed(db, user.id, [obj.moment_id for obj in objects])
     db.commit()

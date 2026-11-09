@@ -4,6 +4,7 @@ from uuid import uuid4
 from sqlalchemy import (
     BigInteger,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -152,6 +153,130 @@ class CloudObject(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class SharedAlbum(Base):
+    """여러 계정이 함께 쓰는 안전 앨범 (가족·친구·파트너). 서버가 기준이라 sync_records에 없다.
+
+    파일은 올린 사람의 Cloud 파일(cloud_objects) 그대로 두고 복사·이동하지 않는다. 용량만 나눠 센다:
+    앨범이 쓰는 파일은 올린 사람의 개인 사용량이 아니라 앨범 사용량이고, 앨범 용량은 구성원이 각자
+    자기 안전 보관 용량에서 떼어 준 할당의 합이다. 앨범 수는 소유자의 요금제에 묶인다
+    (app/plans.py).
+    """
+
+    __tablename__ = "shared_albums"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    title: Mapped[str] = mapped_column(String(80))
+    # 'family' | 'friends' | 'partner' | 'other'. 목록의 아이콘과 문구만 바꾼다.
+    relation: Mapped[str] = mapped_column(String(16), default="other")
+    # 구성원이 담은 사진을 올릴 화질. 'original' | 'display' (안전 앨범과 같다)
+    photo_quality: Mapped[str] = mapped_column(String(16), default="original")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+    # 항목 번호. 앨범 행을 잠그고 올려서 목록 커서가 추가 순서를 따른다.
+    item_seq: Mapped[int] = mapped_column(BigInteger, default=0)
+    # 이 앨범을 자기 요금제의 공유 앨범 수로 세는 사람 (관리자 중 한 명).
+    owner_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # 추가 구매한 용량. 결제는 아직 없다 (docs/PRICING.md).
+    extra_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    # 앨범이 쓰는 파일 크기의 합 (항목 bytes의 합). 바뀔 때마다 그 차이만 더한다 (app/shared.py
+    # recount).
+    bytes_total: Mapped[int] = mapped_column(BigInteger, default=0)
+    # 사진이 있는데 앨범 용량이 0이 된 시각 (나눠 준 구성원이 모두 나갔거나 구독이 끝났다).
+    # 용량을 바꾸는 일이 생길 때 고친다 (app/shared.py refresh_funding). 주기 작업은 이 값이
+    # 있는 앨범만 본다.
+    unfunded_since: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    # 구성원에게 정리 기한을 알린 시각. 기한은 이때부터 센다 (알림 없이 지우지 않는다).
+    unfunded_notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class SharedAlbumMember(Base):
+    __tablename__ = "shared_album_members"
+    album_id: Mapped[str] = mapped_column(
+        ForeignKey("shared_albums.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    # admin: 앨범·구성원·모든 사진 관리 / member: 사진을 담고, 자신이 담은 사진만 지운다
+    role: Mapped[str] = mapped_column(String(16), default="member")
+    # 이 앨범에서 보일 이름 ("엄마", "지민"). 계정 이메일은 다른 구성원에게 보여주지 않는다.
+    display_name: Mapped[str] = mapped_column(String(40))
+    # 내 안전 보관 용량에서 이 앨범에 떼어 준 용량. 쓰지 않아도 내 남은 용량에서 빠진다.
+    # 구독이 끝나면(유예가 지나면) 앨범 용량에 세지 않는다.
+    allocated_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SharedAlbumInvite(Base):
+    """초대 코드. 앨범마다 하나만 살아 있고, 기한 안에는 여러 사람이 같은 코드로 참여한다."""
+
+    __tablename__ = "shared_album_invites"
+    code: Mapped[str] = mapped_column(String(16), primary_key=True)
+    album_id: Mapped[str] = mapped_column(
+        ForeignKey("shared_albums.id", ondelete="CASCADE"), unique=True
+    )
+    created_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SharedAlbumItem(Base):
+    """공유 앨범에 담은 사진 한 장. 올린 사람의 기록과 그 Cloud 파일을 가리킨다.
+
+    담을 때 촬영 정보를 옮겨 둔다. 올린 사람이 자기 기록을 지우거나 앨범을 나가도(사진을 남기기로
+    했으면) 앨범에 남고, 그 파일은 앨범이 쓰는 동안 지우지 않는다.
+    """
+
+    __tablename__ = "shared_album_items"
+    __table_args__ = (
+        UniqueConstraint("album_id", "author_id", "moment_id", name="uq_shared_item_moment"),
+        Index("ix_shared_items_album_seq", "album_id", "seq"),
+        # 올린 사람의 기기가 자기가 담은 항목을 찾는다 (올릴 파일).
+        Index("ix_shared_items_author", "author_id", "moment_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    album_id: Mapped[str] = mapped_column(ForeignKey("shared_albums.id", ondelete="CASCADE"))
+    # 나간 구성원·지운 계정의 사진도 남을 수 있어 FK를 두지 않는다.
+    author_id: Mapped[str] = mapped_column(String(36))
+    # 올린 사람의 기록 id (그 사람의 기기가 원본을 찾아 올릴 때 쓴다)
+    moment_id: Mapped[str] = mapped_column(String(36))
+    seq: Mapped[int] = mapped_column(BigInteger)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # 담을 때의 촬영 정보. 메모와 장소는 개인 기록이라 옮기지 않는다.
+    media_type: Mapped[str] = mapped_column(String(8), default="photo")
+    duration: Mapped[float | None] = mapped_column(Float, nullable=True)
+    taken_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    taken_tz_offset: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 이 항목이 앨범 화질로 쓰는 파일 크기 (저장된 것만). 앨범 bytes_total의 한 몫이다.
+    bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
+class SharedMoment(Base):
+    """내 기록 하나를 공유 앨범들이 함께 쓰는 파일 크기 (여러 앨범에 담아도 파일은 한 벌이라 한
+    번 센다).
+
+    합이 usage.shared_bytes이고, 개인 사용량은 bytes_total에서 이것을 뺀 값이다.
+    행을 잠그고 다시 세서 같은 기록을 두 앨범이 동시에 고쳐도 어긋나지 않는다.
+    """
+
+    __tablename__ = "shared_moments"
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    moment_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
 class Usage(Base):
     __tablename__ = "usage"
     user_id: Mapped[str] = mapped_column(
@@ -159,6 +284,8 @@ class Usage(Base):
     )
     bytes_total: Mapped[int] = mapped_column(BigInteger, default=0)
     object_count: Mapped[int] = mapped_column(Integer, default=0)
+    # bytes_total 중 공유 앨범이 쓰는 파일 (그 앨범 용량에서 센다). shared_moments의 합이다.
+    shared_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
 
 
 class Device(Base):

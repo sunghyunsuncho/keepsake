@@ -1,9 +1,10 @@
 import * as Notifications from 'expo-notifications';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Alert, AppState } from 'react-native';
+import { AppState } from 'react-native';
 import { BellIcon, ClockIcon, RepeatIcon, WarningCircleIcon } from 'phosphor-react-native';
 
+import { showActionSheet } from '@/components/action-sheet';
 import { DateSheet } from '@/components/date-sheet';
 import { SettingsRow, SettingsSwitchRow } from '@/components/settings-list';
 import { REMINDER_FREQUENCIES, type Settings } from '@/db/settings';
@@ -26,8 +27,9 @@ export function ReminderRows({ settings }: { settings: Settings | undefined }) {
   const time = settings?.reminder_time ?? '21:00';
   const frequency = settings?.reminder_frequency ?? 'every_2_days';
 
+  // 선택지 3개 + 취소라 시트로 연다 (안드로이드 Alert는 버튼을 3개까지만 보여 준다).
   const chooseFrequency = () =>
-    Alert.alert('알림 빈도', '마지막으로 고른 뒤 이 기간이 지나고 새 사진이 있으면 알려드려요.', [
+    showActionSheet('알림 빈도', '마지막으로 고른 뒤 이 기간이 지나고 새 사진이 있으면 알려드려요.', [
       ...REMINDER_FREQUENCIES.map((option) => ({
         text: `${REMINDER_FREQUENCY_LABEL[option]}${option === frequency ? ' ✓' : ''}`,
         onPress: () => setReminderSchedule(db, { frequency: option }),

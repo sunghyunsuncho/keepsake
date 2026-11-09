@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     cloud_billing_enabled: bool = False
     cloud_max_bytes: int = 50 * 1024 * 1024 * 1024
     cloud_grace_days: int = 30
+    # 기본 안전 보관 요금제의 공유 앨범 규칙 (app/plans.py, docs/PRICING.md)
+    shared_album_limit: int = 1
+    # 공유 앨범 용량이 0이 된 뒤 사진을 정리하기까지. 구독하지 않은 구성원도 내려받을 시간을 준다.
+    shared_album_grace_days: int = 30
     # ID 토큰의 aud. Apple은 번들 ID, Google은 쉼표로 구분한 OAuth 클라이언트 ID(웹·iOS).
     apple_client_id: str | None = None
     google_client_id: str | None = None

@@ -12,6 +12,7 @@ import { CloudAlbumGuide } from '@/components/library-guide';
 import { LibraryIntro } from '@/components/library-intro';
 import { NotificationBell } from '@/components/notification-bell';
 import { PhotoQualityBadge } from '@/components/photo-quality';
+import { SharedAlbumSection } from '@/components/shared-album-section';
 import { ThemedText } from '@/components/themed-text';
 import { HeaderButton } from '@/components/stack-header';
 import { TabTitle } from '@/components/tab-title';
@@ -80,6 +81,8 @@ export default function CloudLibraryScreen() {
               </ThemedText>
               <Button label={session ? '구독하기' : '안전 보관 알아보기'} onPress={() => router.push('/cloud')} />
             </View>
+            {/* 초대받은 공유 앨범은 구독하지 않아도 본다. */}
+            {session && <SharedAlbumSection canCreate={false} />}
           </>
         )}
 
@@ -148,20 +151,26 @@ function CloudAlbums() {
             width={cardWidth}
             height={topCardHeight}
             label="새 안전 앨범"
-            caption="새로 만들거나 연결해요"
+            caption="나만 보기 · 함께 쓰기"
             onPress={() => router.push('/cloud-albums/new')}
           />
         )}
       </View>
 
       {account?.usage && (
-        <StorageMeter used={account.usage.bytes_total} max={account.usage.max_bytes} note={syncLine} problem={problem} />
+        <StorageMeter
+          used={account.usage.bytes_total}
+          allocated={account.usage.allocated_bytes}
+          max={account.usage.max_bytes}
+          note={syncLine}
+          problem={problem}
+        />
       )}
 
       {cloudAlbums.length > 0 ? (
         <View style={styles.createdAlbums}>
           <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionTitle}>
-            안전 앨범
+            나만 보는 안전 앨범
           </ThemedText>
           <View style={styles.albumStack}>
             {cloudAlbums.map((album) => (
@@ -177,14 +186,32 @@ function CloudAlbums() {
         </ThemedText>
       )}
 
+      <SharedAlbumSection canCreate={canUpload} />
+
     </>
   );
 }
 
-/** 사용한 공간과 동기화 상태. 앨범의 보관 화질을 고를 때 참고하도록 목록 위에 둔다. */
-function StorageMeter({ used, max, note, problem }: { used: number; max: number; note: string | null; problem: string | null }) {
+/**
+ * 사용한 공간과 동기화 상태. 앨범의 보관 화질을 고를 때 참고하도록 목록 위에 둔다.
+ * allocated: 공유 앨범에 나눠 준 용량. 공유 앨범의 사진은 개인 사용량이 아니라 그 안에서 센다.
+ */
+function StorageMeter({
+  used,
+  allocated,
+  max,
+  note,
+  problem,
+}: {
+  used: number;
+  allocated: number;
+  max: number;
+  note: string | null;
+  problem: string | null;
+}) {
   const theme = useTheme();
   const ratio = max > 0 ? Math.min(used / max, 1) : 0;
+  const sharedRatio = max > 0 ? Math.min(allocated / max, 1 - ratio) : 0;
   return (
     <View style={styles.meter}>
       <View style={styles.meterLabels}>
@@ -192,17 +219,28 @@ function StorageMeter({ used, max, note, problem }: { used: number; max: number;
           사용한 공간
         </ThemedText>
         <ThemedText type="small">
-          {formatBytes(used)} / {formatBytes(max)}
+          {formatBytes(used + allocated)} / {formatBytes(max)}
         </ThemedText>
       </View>
-      <View style={[styles.meterTrack, { backgroundColor: theme.backgroundElement }]}>
+      <View style={[styles.meterTrack, styles.meterRow, { backgroundColor: theme.backgroundElement }]}>
         <View
           style={[
             styles.meterFill,
-            { width: `${Math.max(ratio * 100, used > 0 ? 2 : 0)}%`, backgroundColor: ratio > 0.9 ? theme.danger : theme.accent },
+            {
+              width: `${Math.max(ratio * 100, used > 0 ? 2 : 0)}%`,
+              backgroundColor: ratio + sharedRatio > 0.9 ? theme.danger : theme.accent,
+            },
           ]}
         />
+        {allocated > 0 && (
+          <View style={[styles.meterFill, { width: `${sharedRatio * 100}%`, backgroundColor: theme.textSecondary }]} />
+        )}
       </View>
+      {allocated > 0 && (
+        <ThemedText type="small" themeColor="textSecondary">
+          내 사진 {formatBytes(used)} · 공유 앨범에 나눠 줌 {formatBytes(allocated)}
+        </ThemedText>
+      )}
       {problem ? (
         <ThemedText type="small" style={{ color: theme.danger }}>
           {problem}
@@ -254,6 +292,7 @@ const styles = StyleSheet.create({
   meterLabels: { flexDirection: 'row', justifyContent: 'space-between' },
   meterTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
   meterFill: { height: 6, borderRadius: 3 },
+  meterRow: { flexDirection: 'row' },
   topRow: {
     flexDirection: 'row',
     gap: Spacing.three,

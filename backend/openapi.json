@@ -579,6 +579,999 @@
         ]
       }
     },
+    "/shared-albums": {
+      "get": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "List Albums",
+        "operationId": "shared_albums_list_albums",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedAlbumList"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Create Album",
+        "description": "공유 앨범은 안전 보관 요금제의 기능이다. 요금제마다 소유할 수 있는 수가 정해져 있고,\n만드는 사람은 자기 용량에서 앨범 용량을 떼어 준다.\n\nmoment_ids(안전 앨범 바꾸기): 그 사진이 이미 쓰던 개인 용량은 앨범 용량으로 옮겨 센다.\n할당이 그 사진들보다 작으면 거절한다.",
+        "operationId": "shared_albums_create_album",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSharedAlbumRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedAlbumDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/shared-albums/my-items": {
+      "get": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "My Items",
+        "operationId": "shared_albums_my_items",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyItemsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/shared-albums/my-items/remove": {
+      "post": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Remove My Moments",
+        "description": "내 기록을 모든 공유 앨범에서 뺀다. 기록을 지우며 공유 앨범에서도 빼기로 했을 때 기기가\n부른다.",
+        "operationId": "shared_albums_remove_my_moments",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveMyItemsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoveMyItemsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/shared-albums/invites/{code}": {
+      "get": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Preview Invite",
+        "operationId": "shared_albums_preview_invite",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitePreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shared-albums/join": {
+      "post": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Join Album",
+        "description": "초대 코드로 참여한다. 구독 중이면 내 용량에서 앨범 용량을 떼어 줄 수 있다.",
+        "operationId": "shared_albums_join_album",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedAlbumDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/shared-albums/{album_id}": {
+      "get": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Get Album",
+        "operationId": "shared_albums_get_album",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedAlbumDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Update Album",
+        "operationId": "shared_albums_update_album",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSharedAlbumRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedAlbumDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Delete Album",
+        "description": "관리자가 앨범을 지운다. 구성원의 기록은 남고, 다른 앨범에 필요 없는 파일은 각자의 기기가\n지운다.",
+        "operationId": "shared_albums_delete_album",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shared-albums/{album_id}/owner": {
+      "post": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Transfer Owner",
+        "description": "소유자를 넘긴다. 받는 사람은 구독 중이고 요금제의 공유 앨범 수에 여유가 있어야 한다.",
+        "operationId": "shared_albums_transfer_owner",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferOwnerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedAlbumDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shared-albums/{album_id}/invite": {
+      "post": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Create Invite",
+        "description": "새 초대 코드를 만든다. 이전 코드는 더 쓸 수 없다.",
+        "operationId": "shared_albums_create_invite",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Revoke Invite",
+        "operationId": "shared_albums_revoke_invite",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shared-albums/{album_id}/members/{member_id}": {
+      "patch": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Update Member",
+        "description": "이름과 할당은 자기 것만 바꾼다. 역할은 관리자가 바꾼다 (관리자는 여럿일 수 있다).\n\n소유자는 관리자에서 해제할 수 없고, 관리자가 한 명도 없게 만들 수는 없다.\n할당은 내 남은 용량 안에서 늘리고, 앨범이 이미 쓰는 만큼보다 작게 줄일 수 없다.",
+        "operationId": "shared_albums_update_member",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMemberRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedAlbumDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Remove Member",
+        "description": "스스로 나가거나, 관리자가 구성원을 내보낸다. 그 사람의 할당도 빠진다.\n\nphotos=keep: 그 사람이 담은 사진을 앨범에 남긴다. 용량이 넘치면 새 사진을 받지 않고,\n관리자가 사진을 정리하거나 다른 구성원이 할당을 늘려 푼다.",
+        "operationId": "shared_albums_remove_member",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "photos",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "keep",
+                "remove"
+              ],
+              "type": "string",
+              "default": "remove",
+              "title": "Photos"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shared-albums/{album_id}/members/{member_id}/leave-preview": {
+      "get": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Leave Preview",
+        "operationId": "shared_albums_leave_preview",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeavePreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shared-albums/{album_id}/items": {
+      "get": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "List Items",
+        "operationId": "shared_albums_list_items",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedItemsPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Add Items",
+        "description": "내 기록을 담는다. 개인 안전 보관에 이미 있는 파일은 다시 올리지 않고 앨범 용량으로 옮겨 센다.\n없는 파일은 내 기기가 다음 동기화에서 올린다. 앨범 용량을 넘으면 담지 않는다.",
+        "operationId": "shared_albums_add_items",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddItemsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddItemsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shared-albums/{album_id}/items/{item_id}": {
+      "delete": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Remove Item",
+        "description": "올린 사람이나 관리자만 뺀다. 올린 사람의 기록은 남는다.",
+        "operationId": "shared_albums_remove_item",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shared-albums/{album_id}/authors/{author_id}/items": {
+      "delete": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Remove Author Items",
+        "description": "한 사람이 담은 사진을 모두 뺀다. 넘친 용량을 정리할 때 쓴다 (나간 구성원의 사진 등).",
+        "operationId": "shared_albums_remove_author_items",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          },
+          {
+            "name": "author_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Author Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shared-albums/{album_id}/items/{item_id}/photo": {
+      "get": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Download Item",
+        "description": "구성원이면 볼 수 있다. 파일은 올린 사람의 Cloud 파일 그대로이고, 보는 사람의 구독은 묻지\n않는다.",
+        "operationId": "shared_albums_download_item",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "variant",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "display",
+                "original",
+                "compact"
+              ],
+              "type": "string",
+              "title": "Variant"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/billing/revenuecat": {
       "post": {
         "tags": [
@@ -666,6 +1659,186 @@
           "has_records"
         ],
         "title": "AccountResponse"
+      },
+      "AddItemsRequest": {
+        "properties": {
+          "moment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Moment Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "moment_ids"
+        ],
+        "title": "AddItemsRequest"
+      },
+      "AddItemsResponse": {
+        "properties": {
+          "added": {
+            "type": "integer",
+            "title": "Added"
+          }
+        },
+        "type": "object",
+        "required": [
+          "added"
+        ],
+        "title": "AddItemsResponse"
+      },
+      "AlbumStorage": {
+        "properties": {
+          "bytes_total": {
+            "type": "integer",
+            "title": "Bytes Total"
+          },
+          "capacity_bytes": {
+            "type": "integer",
+            "title": "Capacity Bytes"
+          },
+          "extra_bytes": {
+            "type": "integer",
+            "title": "Extra Bytes"
+          },
+          "my_allocation": {
+            "type": "integer",
+            "title": "My Allocation"
+          },
+          "over_capacity": {
+            "type": "boolean",
+            "title": "Over Capacity"
+          },
+          "cleanup_after": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cleanup After"
+          }
+        },
+        "type": "object",
+        "required": [
+          "bytes_total",
+          "capacity_bytes",
+          "extra_bytes",
+          "my_allocation",
+          "over_capacity",
+          "cleanup_after"
+        ],
+        "title": "AlbumStorage"
+      },
+      "ContributorOut": {
+        "properties": {
+          "author_id": {
+            "type": "string",
+            "title": "Author Id"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "is_member": {
+            "type": "boolean",
+            "title": "Is Member"
+          },
+          "is_me": {
+            "type": "boolean",
+            "title": "Is Me"
+          },
+          "item_count": {
+            "type": "integer",
+            "title": "Item Count"
+          },
+          "bytes": {
+            "type": "integer",
+            "title": "Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "author_id",
+          "display_name",
+          "is_member",
+          "is_me",
+          "item_count",
+          "bytes"
+        ],
+        "title": "ContributorOut",
+        "description": "사진을 담은 사람별 사용량. 용량이 넘쳤을 때 누구의 사진을 정리할지 고르는 데 쓴다."
+      },
+      "CreateSharedAlbumRequest": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "family",
+              "friends",
+              "partner",
+              "other"
+            ],
+            "title": "Relation",
+            "default": "other"
+          },
+          "photo_quality": {
+            "type": "string",
+            "enum": [
+              "original",
+              "display"
+            ],
+            "title": "Photo Quality",
+            "default": "original"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Display Name"
+          },
+          "allocated_bytes": {
+            "type": "integer",
+            "maximum": 10995116277760.0,
+            "minimum": 0.0,
+            "title": "Allocated Bytes"
+          },
+          "moment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5000,
+            "title": "Moment Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "display_name",
+          "allocated_bytes"
+        ],
+        "title": "CreateSharedAlbumRequest"
       },
       "CreateUploadRequest": {
         "properties": {
@@ -853,6 +2026,246 @@
         ],
         "title": "HealthResponse"
       },
+      "InviteOut": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "expires_at"
+        ],
+        "title": "InviteOut"
+      },
+      "InvitePreview": {
+        "properties": {
+          "album_id": {
+            "type": "string",
+            "title": "Album Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "family",
+              "friends",
+              "partner",
+              "other"
+            ],
+            "title": "Relation"
+          },
+          "member_count": {
+            "type": "integer",
+            "title": "Member Count"
+          },
+          "invited_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invited By"
+          },
+          "already_member": {
+            "type": "boolean",
+            "title": "Already Member"
+          }
+        },
+        "type": "object",
+        "required": [
+          "album_id",
+          "title",
+          "relation",
+          "member_count",
+          "invited_by",
+          "already_member"
+        ],
+        "title": "InvitePreview"
+      },
+      "JoinRequest": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 4,
+            "title": "Code"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Display Name"
+          },
+          "allocated_bytes": {
+            "type": "integer",
+            "maximum": 10995116277760.0,
+            "minimum": 0.0,
+            "title": "Allocated Bytes",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "display_name"
+        ],
+        "title": "JoinRequest"
+      },
+      "LeavePreview": {
+        "properties": {
+          "capacity_before": {
+            "type": "integer",
+            "title": "Capacity Before"
+          },
+          "capacity_after": {
+            "type": "integer",
+            "title": "Capacity After"
+          },
+          "bytes_total": {
+            "type": "integer",
+            "title": "Bytes Total"
+          },
+          "member_bytes": {
+            "type": "integer",
+            "title": "Member Bytes"
+          },
+          "member_items": {
+            "type": "integer",
+            "title": "Member Items"
+          },
+          "over_if_kept": {
+            "type": "boolean",
+            "title": "Over If Kept"
+          },
+          "over_if_removed": {
+            "type": "boolean",
+            "title": "Over If Removed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "capacity_before",
+          "capacity_after",
+          "bytes_total",
+          "member_bytes",
+          "member_items",
+          "over_if_kept",
+          "over_if_removed"
+        ],
+        "title": "LeavePreview",
+        "description": "구성원이 빠지면 그 사람의 할당만큼 용량이 준다. 사진을 남길지 고르기 전에 보여준다."
+      },
+      "MemberOut": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "member"
+            ],
+            "title": "Role"
+          },
+          "is_owner": {
+            "type": "boolean",
+            "title": "Is Owner"
+          },
+          "allocated_bytes": {
+            "type": "integer",
+            "title": "Allocated Bytes"
+          },
+          "allocation_counted": {
+            "type": "boolean",
+            "title": "Allocation Counted"
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Joined At"
+          },
+          "is_me": {
+            "type": "boolean",
+            "title": "Is Me"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "display_name",
+          "role",
+          "is_owner",
+          "allocated_bytes",
+          "allocation_counted",
+          "joined_at",
+          "is_me"
+        ],
+        "title": "MemberOut"
+      },
+      "MyItemRow": {
+        "properties": {
+          "album_id": {
+            "type": "string",
+            "title": "Album Id"
+          },
+          "moment_id": {
+            "type": "string",
+            "title": "Moment Id"
+          },
+          "photo_quality": {
+            "type": "string",
+            "enum": [
+              "original",
+              "display"
+            ],
+            "title": "Photo Quality"
+          }
+        },
+        "type": "object",
+        "required": [
+          "album_id",
+          "moment_id",
+          "photo_quality"
+        ],
+        "title": "MyItemRow"
+      },
+      "MyItemsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MyItemRow"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "MyItemsResponse",
+        "description": "내가 담은 항목 전체 (나간 앨범에 남긴 사진 포함). 기기는 이 목록으로 올릴 파일과\n지우면 안 되는 파일을 정한다."
+      },
       "PhotoRef": {
         "properties": {
           "moment_id": {
@@ -980,6 +2393,37 @@
         ],
         "title": "PutDeviceLinksRequest"
       },
+      "RemoveMyItemsRequest": {
+        "properties": {
+          "moment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Moment Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "moment_ids"
+        ],
+        "title": "RemoveMyItemsRequest"
+      },
+      "RemoveMyItemsResponse": {
+        "properties": {
+          "removed": {
+            "type": "integer",
+            "title": "Removed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "removed"
+        ],
+        "title": "RemoveMyItemsResponse"
+      },
       "SessionResponse": {
         "properties": {
           "access_token": {
@@ -1003,6 +2447,406 @@
           "user_id"
         ],
         "title": "SessionResponse"
+      },
+      "SharedAlbumDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "family",
+              "friends",
+              "partner",
+              "other"
+            ],
+            "title": "Relation"
+          },
+          "photo_quality": {
+            "type": "string",
+            "enum": [
+              "original",
+              "display"
+            ],
+            "title": "Photo Quality"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "member"
+            ],
+            "title": "Role"
+          },
+          "is_owner": {
+            "type": "boolean",
+            "title": "Is Owner"
+          },
+          "member_count": {
+            "type": "integer",
+            "title": "Member Count"
+          },
+          "item_count": {
+            "type": "integer",
+            "title": "Item Count"
+          },
+          "cover_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Item Id"
+          },
+          "storage": {
+            "$ref": "#/components/schemas/AlbumStorage"
+          },
+          "writable": {
+            "type": "boolean",
+            "title": "Writable"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/MemberOut"
+            },
+            "type": "array",
+            "title": "Members"
+          },
+          "contributors": {
+            "items": {
+              "$ref": "#/components/schemas/ContributorOut"
+            },
+            "type": "array",
+            "title": "Contributors"
+          },
+          "invite": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InviteOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "relation",
+          "photo_quality",
+          "role",
+          "is_owner",
+          "member_count",
+          "item_count",
+          "cover_item_id",
+          "storage",
+          "writable",
+          "updated_at",
+          "members",
+          "contributors",
+          "invite"
+        ],
+        "title": "SharedAlbumDetail"
+      },
+      "SharedAlbumList": {
+        "properties": {
+          "albums": {
+            "items": {
+              "$ref": "#/components/schemas/SharedAlbumSummary"
+            },
+            "type": "array",
+            "title": "Albums"
+          },
+          "owned": {
+            "type": "integer",
+            "title": "Owned"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "free_bytes": {
+            "type": "integer",
+            "title": "Free Bytes"
+          },
+          "suggested_allocation": {
+            "type": "integer",
+            "title": "Suggested Allocation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "albums",
+          "owned",
+          "limit",
+          "free_bytes",
+          "suggested_allocation"
+        ],
+        "title": "SharedAlbumList"
+      },
+      "SharedAlbumSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "family",
+              "friends",
+              "partner",
+              "other"
+            ],
+            "title": "Relation"
+          },
+          "photo_quality": {
+            "type": "string",
+            "enum": [
+              "original",
+              "display"
+            ],
+            "title": "Photo Quality"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "member"
+            ],
+            "title": "Role"
+          },
+          "is_owner": {
+            "type": "boolean",
+            "title": "Is Owner"
+          },
+          "member_count": {
+            "type": "integer",
+            "title": "Member Count"
+          },
+          "item_count": {
+            "type": "integer",
+            "title": "Item Count"
+          },
+          "cover_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Item Id"
+          },
+          "storage": {
+            "$ref": "#/components/schemas/AlbumStorage"
+          },
+          "writable": {
+            "type": "boolean",
+            "title": "Writable"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "relation",
+          "photo_quality",
+          "role",
+          "is_owner",
+          "member_count",
+          "item_count",
+          "cover_item_id",
+          "storage",
+          "writable",
+          "updated_at"
+        ],
+        "title": "SharedAlbumSummary"
+      },
+      "SharedItemOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "author_id": {
+            "type": "string",
+            "title": "Author Id"
+          },
+          "author_name": {
+            "type": "string",
+            "title": "Author Name"
+          },
+          "is_mine": {
+            "type": "boolean",
+            "title": "Is Mine"
+          },
+          "can_delete": {
+            "type": "boolean",
+            "title": "Can Delete"
+          },
+          "moment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moment Id"
+          },
+          "media_type": {
+            "type": "string",
+            "enum": [
+              "photo",
+              "video"
+            ],
+            "title": "Media Type"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
+          },
+          "taken_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken At"
+          },
+          "taken_tz_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken Tz Offset"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "stored_variants": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "display",
+                "original",
+                "compact"
+              ]
+            },
+            "type": "array",
+            "title": "Stored Variants"
+          },
+          "added_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Added At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "author_id",
+          "author_name",
+          "is_mine",
+          "can_delete",
+          "moment_id",
+          "media_type",
+          "duration",
+          "taken_at",
+          "taken_tz_offset",
+          "width",
+          "height",
+          "stored_variants",
+          "added_at"
+        ],
+        "title": "SharedItemOut"
+      },
+      "SharedItemsPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SharedItemOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "cursor": {
+            "type": "integer",
+            "title": "Cursor"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "cursor",
+          "has_more"
+        ],
+        "title": "SharedItemsPage"
       },
       "SignInRequest": {
         "properties": {
@@ -1049,6 +2893,10 @@
             "type": "integer",
             "title": "Object Count"
           },
+          "allocated_bytes": {
+            "type": "integer",
+            "title": "Allocated Bytes"
+          },
           "max_bytes": {
             "type": "integer",
             "title": "Max Bytes"
@@ -1058,6 +2906,7 @@
         "required": [
           "bytes_total",
           "object_count",
+          "allocated_bytes",
           "max_bytes"
         ],
         "title": "StorageUsage"
@@ -1212,6 +3061,118 @@
           "kind"
         ],
         "title": "SyncRecordRow"
+      },
+      "TransferOwnerRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "maxLength": 36,
+            "title": "User Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "title": "TransferOwnerRequest"
+      },
+      "UpdateMemberRequest": {
+        "properties": {
+          "role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "admin",
+                  "member"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "allocated_bytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10995116277760.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allocated Bytes"
+          }
+        },
+        "type": "object",
+        "title": "UpdateMemberRequest"
+      },
+      "UpdateSharedAlbumRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "relation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "family",
+                  "friends",
+                  "partner",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relation"
+          },
+          "photo_quality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "original",
+                  "display"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Quality"
+          }
+        },
+        "type": "object",
+        "title": "UpdateSharedAlbumRequest"
       },
       "UploadResponse": {
         "properties": {

@@ -9,6 +9,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 
 import { AlbumNameSheet } from '@/components/album-name-sheet';
 import { AlbumCoverSheet } from '@/components/album-cover-sheet';
+import { showActionSheet } from '@/components/action-sheet';
 import { Button } from '@/components/button';
 import { BackButton, HeaderButton } from '@/components/stack-header';
 import { PHOTO_QUALITY, PHOTO_QUALITIES, PhotoQualityBadge } from '@/components/photo-quality';
@@ -210,10 +211,20 @@ export default function AlbumScreen() {
       : [{ text: '안전 보관에 연결', onPress: () => router.push({ pathname: '/cloud-albums/new', params: { source: id } }) }];
   };
 
+  // 선택지가 많아 Alert 대신 시트로 연다 (안드로이드 Alert는 버튼을 3개까지만 보여 준다).
   const showAlbumMenu = () => {
-    Alert.alert(title ?? '', undefined, [
+    showActionSheet(title ?? '', undefined, [
       { text: '새 사진에서 고르기', onPress: pickForAlbum },
       ...(isCloud ? [{ text: '보관 화질 바꾸기', onPress: chooseQuality }] : cloudLink()),
+      // 나만 보던 안전 앨범을 가족·친구와 함께 쓰는 공유 앨범으로 바꾼다 (같은 파일을 그대로 쓴다).
+      ...(isCloud && canUpload
+        ? [
+            {
+              text: '공유 앨범으로 바꾸기',
+              onPress: () => router.push({ pathname: '/cloud-albums/new', params: { convert: id } }),
+            },
+          ]
+        : []),
       { text: '표지 바꾸기', onPress: () => setChoosingCover(true) },
       { text: '이름 바꾸기', onPress: () => setRenaming(true) },
       {

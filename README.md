@@ -5,6 +5,7 @@
 - 제품 비전: [STARTING_POINT.md](STARTING_POINT.md)
 - 개발 계획: [docs/PLAN.md](docs/PLAN.md)
 - 출시 전 QA: [docs/QA.md](docs/QA.md)
+- 요금제: [docs/PRICING.md](docs/PRICING.md)
 
 ## 구조
 
@@ -12,7 +13,7 @@
 backend/   FastAPI (Python 3.13, uv) — 계정, 구독 상태, 백업·동기화
 mobile/    Expo (SDK 54, TypeScript, expo-router) — vernissage와 같은 버전 — iOS / Android 앱
   modules/ 앱 안의 로컬 네이티브 모듈 (photo-meta: 사진 좌표 → 주소, 원본 EXIF 시간대, 동영상 변환·파일 해시)
-docs/      계획, QA 체크리스트, 스토어 등록 정보(store/)
+docs/      계획, 요금제, QA 체크리스트, 스토어 등록 정보(store/)
 ```
 
 ## 처음 설정

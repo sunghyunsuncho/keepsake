@@ -16,6 +16,7 @@ from sqlalchemy import delete, select, update
 from app.api.deps import CurrentUser, DbSession
 from app.cloud import lock_active_user, stored_variants
 from app.models.cloud import CloudObject, DeviceLink, Moment, SyncRecord, Usage
+from app.shared import objects_changed, shared_needs
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 
@@ -175,6 +176,7 @@ def push(payload: PushRequest, user: CurrentUser, db: DbSession) -> PushResponse
 
     if deleted_moments:
         _release_photos(db, user.id, deleted_moments)
+        objects_changed(db, user.id, deleted_moments)
         db.execute(
             delete(DeviceLink).where(
                 DeviceLink.user_id == user.id, DeviceLink.moment_id.in_(deleted_moments)
@@ -186,14 +188,22 @@ def push(payload: PushRequest, user: CurrentUser, db: DbSession) -> PushResponse
 
 
 def _release_photos(db: DbSession, user_id: str, moment_ids: list[str]) -> None:
-    """지운 기록의 사진은 정리 작업이 R2에서 지운다. 사용량은 바로 돌려준다."""
-    objects = db.scalars(
-        select(CloudObject).where(
-            CloudObject.user_id == user_id,
-            CloudObject.moment_id.in_(moment_ids),
-            CloudObject.status.in_(("stored", "pending")),
-        )
-    ).all()
+    """지운 기록의 사진은 정리 작업이 R2에서 지운다. 사용량은 바로 돌려준다.
+
+    공유 앨범에 담은 사진은 앨범에 남으므로 그 앨범이 쓰는 파일은 지우지 않는다.
+    """
+    needs = shared_needs(db, user_id, moment_ids)
+    objects = [
+        obj
+        for obj in db.scalars(
+            select(CloudObject).where(
+                CloudObject.user_id == user_id,
+                CloudObject.moment_id.in_(moment_ids),
+                CloudObject.status.in_(("stored", "pending")),
+            )
+        ).all()
+        if not any(obj.variant in v for v in needs.get(obj.moment_id, {}).values())
+    ]
     usage = db.get(Usage, user_id)
     for obj in objects:
         if obj.status == "stored" and usage is not None:

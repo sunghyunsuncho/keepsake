@@ -26,6 +26,7 @@ import { useDbQuery } from '@/db/changes';
 import { getMoment, updateMoment, type Moment, type MomentEdit } from '@/db/moments';
 import { useTheme } from '@/hooks/use-theme';
 import { fillPlaceFromPhoto, removeMoment } from '@/lib/capture';
+import { removeFromSharedAlbums, sharedAlbumCount } from '@/lib/cloud/shared';
 import { formatFullDate, formatTime, localDateKey } from '@/lib/dates';
 
 export default function MomentScreen() {
@@ -102,22 +103,42 @@ function MomentEditor({ moment }: { moment: Moment }) {
     }
   };
 
-  const confirmRemove = () => {
-    Alert.alert('기록에서 뺄까요?', '모든 앨범에서 사라지고, 남긴 메모와 장소도 지워져요. 기기 사진첩의 사진은 그대로예요.', [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '빼기',
-        style: 'destructive',
-        onPress: () => {
-          pending.current = {};
-          // 먼저 닫는다. 지운 뒤 닫으면 잠깐 '이 기록을 찾을 수 없어요'가 보인다.
-          router.back();
-          removeMoment(db, moment.id, localDateKey(moment.taken_at)).catch(() => {
-            Alert.alert('기록에서 빼지 못했어요', '잠시 후 다시 시도해 주세요.');
-          });
+  const remove = () => {
+    pending.current = {};
+    // 먼저 닫는다. 지운 뒤 닫으면 잠깐 '이 기록을 찾을 수 없어요'가 보인다.
+    router.back();
+    removeMoment(db, moment.id, localDateKey(moment.taken_at)).catch(() => {
+      Alert.alert('기록에서 빼지 못했어요', '잠시 후 다시 시도해 주세요.');
+    });
+  };
+
+  const confirmRemove = async () => {
+    const message = '모든 앨범에서 사라지고, 남긴 메모와 장소도 지워져요. 기기 사진첩의 사진은 그대로예요.';
+    // 공유 앨범에 담은 사진은 구성원과 함께 보는 사진이라 기본으로 앨범에 남긴다. 함께 뺄지 묻는다.
+    const shared = await sharedAlbumCount(db, moment.id).catch(() => 0);
+    if (shared === 0) {
+      Alert.alert('기록에서 뺄까요?', message, [
+        { text: '취소', style: 'cancel' },
+        { text: '빼기', style: 'destructive', onPress: remove },
+      ]);
+      return;
+    }
+    Alert.alert(
+      '기록에서 뺄까요?',
+      `${message}\n\n이 사진은 공유 앨범 ${shared}개에 담겨 있어요. 공유 앨범에서도 뺄까요? 남기면 구성원은 계속 볼 수 있어요.`,
+      [
+        { text: '공유 앨범에는 남기기', onPress: remove },
+        {
+          text: '공유 앨범에서도 빼기',
+          style: 'destructive',
+          onPress: () =>
+            removeFromSharedAlbums(db, [moment.id]).then(remove, () =>
+              Alert.alert('공유 앨범에서 빼지 못했어요', '인터넷 연결을 확인해 주세요. 기록은 그대로예요.'),
+            ),
         },
-      },
-    ]);
+        { text: '취소', style: 'cancel' },
+      ],
+    );
   };
 
   return (

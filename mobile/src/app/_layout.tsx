@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, useColorScheme, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { ActionSheetHost } from '@/components/action-sheet';
 import { CloudSync } from '@/components/cloud-sync';
 import { LocalImportPrompt } from '@/components/local-import-prompt';
 import { NotificationInbox } from '@/components/notification-inbox';
@@ -61,7 +62,12 @@ function RootLayout() {
                 <Stack.Screen name="open-source-licenses" options={{ title: '오픈소스 라이선스', header: StackHeader }} />
                 <Stack.Screen name="cloud-albums/new" options={{ title: '새 안전 앨범', presentation: 'modal', header: ModalHeader }} />
                 <Stack.Screen name="cloud-import" options={{ title: '기기 기록 올리기', presentation: 'modal', header: ModalHeader }} />
+                <Stack.Screen name="shared-albums/join" options={{ title: '공유 앨범 참여', presentation: 'modal', header: ModalHeader }} />
+                <Stack.Screen name="shared-albums/[id]/index" options={{ title: '', header: StackHeader }} />
+                <Stack.Screen name="shared-albums/[id]/add" options={{ title: '', presentation: 'modal', header: ModalHeader }} />
+                <Stack.Screen name="shared-albums/[id]/members" options={{ title: '앨범 관리', header: StackHeader }} />
               </Stack>
+              <ActionSheetHost />
             </SQLiteProvider>
           </Suspense>
         )}

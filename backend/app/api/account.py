@@ -19,6 +19,7 @@ from app.cloud import (
 )
 from app.config import get_settings
 from app.models.cloud import Device, Entitlement, Moment, SyncRecord, Usage, User
+from app.shared import allocated_total, personal_used
 
 log = logging.getLogger(__name__)
 
@@ -35,8 +36,11 @@ class SubscriptionState(BaseModel):
 
 
 class StorageUsage(BaseModel):
+    # 개인 사용량. 공유 앨범이 쓰는 파일은 그 앨범에서 세므로 뺀다.
     bytes_total: int
     object_count: int
+    # 공유 앨범에 떼어 준 용량 (쓰지 않아도 남은 용량에서 빠진다)
+    allocated_bytes: int
     max_bytes: int
 
 
@@ -86,8 +90,9 @@ def account_response(db: DbSession, user: User) -> AccountResponse:
             can_download=can_read(entitlement),
         ),
         usage=StorageUsage(
-            bytes_total=usage.bytes_total if usage else 0,
+            bytes_total=personal_used(db, user.id),
             object_count=usage.object_count if usage else 0,
+            allocated_bytes=allocated_total(db, user.id),
             max_bytes=get_settings().cloud_max_bytes,
         ),
         has_records=has_records,
@@ -130,10 +135,15 @@ def remove_account(user: CurrentUser, db: DbSession) -> None:
     # 표시를 남기지 못하면 삭제가 이어지지 않으므로 앱에 실패로 알린다.
     mark_account_deleted(db, user)
     try:
-        delete_account(db, user)
+        notices = delete_account(db, user)
     except UserGone:
         db.rollback()  # 주기 작업이 먼저 끝냈다.
     except Exception:
         # 남은 정리는 주기 작업이 다시 하므로 앱에는 성공으로 알린다.
         log.exception("account deletion will be retried: %s", user_id)
         db.rollback()
+    else:
+        # 사진이 빠진 공유 앨범의 관리자에게 알린다 (주기 작업이 끝낸 경우는 그쪽이 알린다).
+        from app.jobs import notify_deleted_photos
+
+        notify_deleted_photos(db, notices)

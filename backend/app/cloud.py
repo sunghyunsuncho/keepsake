@@ -4,7 +4,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -171,12 +171,22 @@ def purge_photos(db: Session, user_id: str, now: datetime) -> None:
     사진이 있던 기록은 변경 번호를 올려서, 기기가 다음 pull에서 '올라감' 표시를 버리게 한다.
     R2 객체는 커밋 뒤 정리 작업이 지운다. 먼저 지우면 일부 실패 때 없는 사진이 저장된 것으로 남는다.
     """
+    # 공유 앨범이 쓰는 파일은 남긴다. 그 용량은 앨범 구성원의 할당이 맡는다.
+    # (app.shared는 이 모듈의 구독 규칙을 쓰므로 여기서 불러온다.)
+    from app.shared import shared_needs
+
     user = lock_user(db, user_id)
     db.merge(StorageCleanup(prefix=user_prefix(user_id), not_before=now))
-    moment_ids = set(
-        db.scalars(select(CloudObject.moment_id).where(CloudObject.user_id == user_id)).all()
-    )
-    db.execute(delete(CloudObject).where(CloudObject.user_id == user_id))
+    needs = shared_needs(db, user_id)
+    kept: list[CloudObject] = []
+    moment_ids: set[str] = set()
+    for obj in db.scalars(select(CloudObject).where(CloudObject.user_id == user_id)).all():
+        albums = needs.get(obj.moment_id, {})
+        if obj.status == "stored" and any(obj.variant in v for v in albums.values()):
+            kept.append(obj)
+        else:
+            moment_ids.add(obj.moment_id)
+            db.delete(obj)
     for moment_id in sorted(moment_ids):
         moment = db.get(Moment, (user_id, moment_id))
         if moment is not None:
@@ -184,7 +194,8 @@ def purge_photos(db: Session, user_id: str, now: datetime) -> None:
             moment.seq = user.sync_seq
     usage = db.get(Usage, user_id)
     if usage is not None:
-        usage.bytes_total, usage.object_count = 0, 0
+        usage.bytes_total = sum(obj.size_bytes for obj in kept)
+        usage.object_count = len(kept)
 
 
 def mark_account_deleted(db: Session, user: User) -> None:
@@ -194,20 +205,27 @@ def mark_account_deleted(db: Session, user: User) -> None:
     db.commit()
 
 
-def delete_account(db: Session, user: User) -> None:
+def delete_account(db: Session, user: User) -> list[tuple[list[str], str, int]]:
     """표시된 계정을 지운다. R2와 RevenueCat을 지운 뒤 계정 행을 지운다 (나머지 행은 FK cascade).
 
     요청 처리와 주기 작업이 겹칠 수 있어 행을 지우기 전에 다시 잠근다. 이미 지워졌으면 UserGone이다.
+    사진이 빠진 공유 앨범의 (관리자, 앨범 이름, 사진 수)를 돌려준다. 부른 쪽이 커밋 뒤 알린다.
     """
     user_id = user.id
     prefix = user_prefix(user_id)
     delete_prefix(prefix)
     delete_revenuecat_customer(user_id)
     locked = lock_user(db, user_id)
+    # 공유 앨범에서 나간다: 담은 사진을 지우고, 소유자·관리자가 남지 않는 앨범은 먼저 넘긴다.
+    # (app.shared는 이 모듈의 구독 규칙을 쓰므로 여기서 불러온다.)
+    from app.shared import leave_all
+
+    notices = leave_all(db, user_id)
     # 삭제 전에 받은 업로드 URL로 늦게 올라온 객체를 한 번 더 지운다.
     db.merge(StorageCleanup(prefix=prefix, not_before=datetime.now(UTC) + UPLOAD_SETTLE_AFTER))
     db.delete(locked)
     db.commit()
+    return notices
 
 
 def stored_variants(db: Session, user_id: str, moment_ids: list[str]) -> dict[str, list[str]]:

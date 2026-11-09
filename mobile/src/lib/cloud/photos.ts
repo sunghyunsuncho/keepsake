@@ -71,29 +71,40 @@ const CONTENT_TYPES: Record<string, string> = {
 const ON_DEVICE = 'deleted_at IS NULL AND source_asset_id IS NOT NULL AND source_missing = 0';
 const UPLOADABLE = `${ON_DEVICE} AND sync_state = 'synced'`;
 
-/** 안전 앨범에 담긴 기록 (moments 테이블 기준). originalOnly: 원본을 보관하는 안전 앨범만. */
-function inCloudAlbum(originalOnly: boolean) {
-  return `EXISTS (
+/**
+ * 안전 앨범이나 내가 담은 공유 앨범에 있는 기록 (moments 테이블 기준). originalOnly: 원본을 보관하는 앨범만.
+ * 공유 앨범의 파일도 내 Cloud 파일 그대로라 안전 앨범과 같은 규칙으로 올리고 지운다 (shared_items, lib/cloud/shared.ts).
+ * 용량은 서버가 나눠 센다: 공유 앨범이 쓰는 파일은 그 앨범 용량이다.
+ * sharedOnly: 공유 앨범만 (구독하지 않은 구성원은 공유 앨범 공간에만 올린다).
+ */
+function inCloudAlbum(originalOnly: boolean, sharedOnly = false) {
+  const shared = `EXISTS (
+    SELECT 1 FROM shared_items s WHERE s.moment_id = moments.id
+      ${originalOnly ? "AND s.photo_quality = 'original'" : ''})`;
+  if (sharedOnly) return `(${shared})`;
+  return `(EXISTS (
     SELECT 1 FROM album_moments am JOIN albums a ON a.id = am.album_id
     WHERE am.moment_id = moments.id AND am.deleted_at IS NULL AND a.deleted_at IS NULL AND a.kind = 'cloud'
-      ${originalOnly ? "AND IFNULL(a.photo_quality, 'original') = 'original'" : ''})`;
+      ${originalOnly ? "AND IFNULL(a.photo_quality, 'original') = 'original'" : ''})
+  OR ${shared})`;
 }
 
 /** 효율 보관 동영상(720p)이 필요한 기록: 안전 앨범에 담겼지만 원본을 보관하는 안전 앨범에는 없는 동영상 */
 const WANTS_COMPACT = `media_type = 'video' AND ${inCloudAlbum(false)} AND NOT ${inCloudAlbum(true)}`;
 
-export async function pendingUploads(db: SQLiteDatabase, now = new Date().toISOString()) {
+export async function pendingUploads(db: SQLiteDatabase, now = new Date().toISOString(), sharedOnly = false) {
   // 표시용 사진을 먼저 올린다. 새 기기에서 사진첩을 빨리 보여주기 위해서다.
+  // 공유 앨범만 올릴 때도 compact 판단은 모든 앨범을 본다 (원본 보관 안전 앨범에 있으면 compact가 필요 없다).
   return db.getAllAsync<PendingUpload>(
     `SELECT p.id, p.variant FROM (
        SELECT id, 'display' AS variant, 0 AS priority, taken_at FROM moments
-       WHERE ${UPLOADABLE} AND display_uploaded = 0 AND ${inCloudAlbum(false)}
+       WHERE ${UPLOADABLE} AND display_uploaded = 0 AND ${inCloudAlbum(false, sharedOnly)}
        UNION ALL
        SELECT id, 'original', 1, taken_at FROM moments
-       WHERE ${UPLOADABLE} AND original_uploaded = 0 AND ${inCloudAlbum(true)}
+       WHERE ${UPLOADABLE} AND original_uploaded = 0 AND ${inCloudAlbum(true, sharedOnly)}
        UNION ALL
        SELECT id, 'compact', 1, taken_at FROM moments
-       WHERE ${UPLOADABLE} AND ${WANTS_COMPACT} AND compact_uploaded = 0
+       WHERE ${UPLOADABLE} AND ${WANTS_COMPACT} AND compact_uploaded = 0 AND ${inCloudAlbum(false, sharedOnly)}
      ) AS p
      LEFT JOIN upload_queue q ON q.moment_id = p.id AND q.variant = p.variant
      WHERE q.next_attempt_at IS NULL OR q.next_attempt_at <= ?
@@ -181,17 +192,26 @@ export async function adoptPhotosWithoutAlbum(db: SQLiteDatabase) {
   await setSetting(db, 'cloud_photos_adopted', true);
 }
 
+/** 서버가 공유 앨범 용량이 찼다고 알리는 413. 그 앨범의 사진만 미루고 다른 사진은 계속 올린다. */
+const SHARED_ALBUM_FULL = 'shared album storage is full';
+const SHARED_FULL_RETRY_MS = 6 * 60 * 60 * 1000;
+
 /**
- * 올릴 사진을 차례로 올린다. 구독이 끝났거나(403) 용량이 찼으면(413) 멈추고 그 이유를 던진다.
- * 그 밖의 실패는 사진별로 기록하고 다음 사진으로 넘어간다.
+ * 올릴 사진을 차례로 올린다. 구독이 끝났거나(403) 개인 용량이 찼으면(413) 멈추고 그 이유를 던진다.
+ * 그 밖의 실패(공유 앨범 용량이 찬 경우 포함)는 사진별로 기록하고 다음 사진으로 넘어간다.
+ * sharedOnly: 구독하지 않았거나 유예 중이면 공유 앨범의 사진만 올린다 (앨범 용량에서 센다).
  */
-export async function uploadPending(db: SQLiteDatabase, shouldStop: () => boolean) {
+export async function uploadPending(db: SQLiteDatabase, shouldStop: () => boolean, sharedOnly = false) {
   let uploaded = 0;
-  for (const item of await pendingUploads(db)) {
+  for (const item of await pendingUploads(db, undefined, sharedOnly)) {
     if (shouldStop()) break;
     try {
       if (await uploadOne(db, item)) uploaded++;
     } catch (e) {
+      if (e instanceof CloudError && e.status === 413 && e.message === SHARED_ALBUM_FULL) {
+        await recordFailure(db, item, e, SHARED_FULL_RETRY_MS);
+        continue;
+      }
       if (e instanceof CloudError && (e.status === 403 || e.status === 413 || e.status === 401)) throw e;
       await recordFailure(db, item, e, e instanceof TooLargeError ? TOO_LARGE_RETRY_MS : undefined);
     }

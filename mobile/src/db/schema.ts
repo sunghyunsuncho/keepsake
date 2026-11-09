@@ -153,6 +153,25 @@ const MIGRATIONS: string[] = [
   ALTER TABLE moments ADD COLUMN duration REAL;
   ALTER TABLE moments ADD COLUMN compact_uploaded INTEGER NOT NULL DEFAULT 0;
   `,
+  // 13: 내가 공유 앨범에 담은 기록 (서버 /shared-albums/my-items의 사본). 공유 앨범은 서버가 기준이라
+  // 동기화할 때마다 통째로 바꾼다. 업로드·정리가 안전 앨범처럼 이 화질로 파일을 올리고 남긴다 (lib/cloud/photos.ts).
+  `
+  CREATE TABLE shared_items (
+    album_id TEXT NOT NULL,
+    moment_id TEXT NOT NULL,
+    photo_quality TEXT NOT NULL,
+    PRIMARY KEY (album_id, moment_id)
+  );
+  CREATE INDEX idx_shared_items_moment ON shared_items (moment_id);
+  `,
+  // 14: 공유 앨범에서 기기 사진첩에 저장한 사진 (다른 구성원이 담은 것). 다시 저장해 사진이 겹치지 않게 한다.
+  `
+  CREATE TABLE shared_downloads (
+    item_id TEXT PRIMARY KEY NOT NULL,
+    asset_id TEXT NOT NULL,
+    saved_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export async function migrateDb(db: SQLiteDatabase) {

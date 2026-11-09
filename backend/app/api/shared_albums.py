@@ -1,0 +1,1048 @@
+"""공유 앨범: 가족·친구·파트너가 함께 사진을 담는 안전 앨범.
+
+docs/PLAN.md §0 '공유 앨범', docs/PRICING.md.
+
+- 서버가 기준이다. 구성원마다 다른 기기에서 동시에 고치므로 계정별 동기화(sync_records)에
+  두지 않는다.
+- 파일은 올린 사람의 Cloud 파일 하나뿐이고 복사·이동하지 않는다. 앨범이 쓰는 파일은 앨범 용량에서
+  센다. 앨범 용량은 구성원이 만들거나 참여할 때 자기 안전 보관 용량에서 떼어 준 할당의 합이다.
+- 소유자(관리자 중 한 명)의 요금제가 공유 앨범 수를 정한다. 관리자는 여럿일 수 있다.
+- 앨범 공간이 남아 있으면 구독하지 않은 구성원도 사진을 담는다. 보기는 로그인만 하면 된다.
+- 사진은 올린 사람이나 관리자만 뺀다.
+- 메모와 장소는 개인 기록이라 다른 구성원에게 보내지 않는다. 촬영 시각과 파일 종류만 보낸다.
+"""
+
+import re
+import secrets
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Literal
+from uuid import uuid4
+
+from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import delete, func, select
+from sqlalchemy.orm import Session
+
+from app.api.deps import CurrentUser, DbSession
+from app.api.uploads import (
+    DOWNLOAD_URL_TTL,
+    EXTENSIONS,
+    VIDEO_DOWNLOAD_URL_TTL,
+    DownloadResponse,
+    Variant,
+)
+from app.cloud import can_write, lock_active_user
+from app.config import get_settings
+from app.models.cloud import (
+    CloudObject,
+    Entitlement,
+    Moment,
+    SharedAlbum,
+    SharedAlbumInvite,
+    SharedAlbumItem,
+    SharedAlbumMember,
+)
+from app.plans import default_plan
+from app.shared import (
+    album_limit,
+    author_usage,
+    can_own_more,
+    capacity,
+    is_counted,
+    items_of_author,
+    lock_album_row,
+    member_count,
+    moment_data,
+    owned_count,
+    personal_free,
+    recount,
+    recount_album,
+    refresh_funding,
+    remove_items,
+    remove_member_rows,
+    remove_my_items,
+    wanted_variants,
+)
+from app.shared import delete_album as delete_album_rows
+from app.storage import r2_client
+
+router = APIRouter(prefix="/shared-albums", tags=["shared_albums"])
+
+MAX_MEMBERS = 30
+ITEM_PAGE_LIMIT = 500
+INVITE_TTL = timedelta(days=7)
+# 헷갈리는 글자(0/O, 1/I/L)를 뺀 대문자·숫자. 말로 불러 주거나 손으로 옮겨 적기 쉽게 한다.
+INVITE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+INVITE_LENGTH = 8
+GIB = 1024 * 1024 * 1024
+# 만드는 사람은 적어도 이만큼 떼어 준다 (빈 앨범으로 시작하지 않게).
+MIN_OWNER_ALLOCATION = GIB
+
+Relation = Literal["family", "friends", "partner", "other"]
+Role = Literal["admin", "member"]
+Quality = Literal["original", "display"]
+DisplayName = Annotated[str, Field(min_length=1, max_length=20)]
+Allocation = Annotated[int, Field(ge=0, le=10 * 1024 * GIB)]
+
+
+def _non_blank(value: str) -> str:
+    """API를 직접 부를 때 공백뿐인 앨범명·표시 이름이 저장되지 않게 한다."""
+    value = value.strip()
+    if not value:
+        raise ValueError("must not be blank")
+    return value
+
+
+class CreateSharedAlbumRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=40)
+    relation: Relation = "other"
+    photo_quality: Quality = "original"
+    # 이 앨범에서 내가 보일 이름
+    display_name: DisplayName
+    # 내 안전 보관 용량에서 이 앨범에 떼어 줄 용량
+    allocated_bytes: Allocation
+    # 나만 보던 안전 앨범을 바꿀 때 그 앨범의 기록. 파일은 다시 올리지 않고 앨범 용량으로 옮겨 센다.
+    moment_ids: list[str] = Field(default_factory=list, max_length=5000)
+
+    @field_validator("title", "display_name")
+    @classmethod
+    def required_text(cls, value: str) -> str:
+        return _non_blank(value)
+
+
+class UpdateSharedAlbumRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=40)
+    relation: Relation | None = None
+    photo_quality: Quality | None = None
+
+    @field_validator("title")
+    @classmethod
+    def required_title(cls, value: str | None) -> str | None:
+        return _non_blank(value) if value is not None else None
+
+
+class AlbumStorage(BaseModel):
+    # 앨범이 쓰는 파일의 크기
+    bytes_total: int
+    # 구성원 할당의 합 (구독이 끝난 사람의 할당은 세지 않는다) + 추가 용량
+    capacity_bytes: int
+    # 추가 구매한 용량 (결제는 아직 없다)
+    extra_bytes: int
+    # 내가 떼어 준 용량
+    my_allocation: int
+    # 사용량이 용량보다 크다 (구성원이 나갔거나 구독이 끝났을 때). 새 사진을 담을 수 없다.
+    over_capacity: bool
+    # 나눠 준 용량이 하나도 없어 사진을 정리할 시각 (구성원에게 알린 뒤에만 값이 있다)
+    cleanup_after: datetime | None
+
+
+class SharedAlbumSummary(BaseModel):
+    id: str
+    title: str
+    relation: Relation
+    photo_quality: Quality
+    role: Role
+    is_owner: bool
+    member_count: int
+    item_count: int
+    # 표지로 쓸 가장 최근 항목 (표시용 사진이 올라간 것)
+    cover_item_id: str | None
+    storage: AlbumStorage
+    # 새 사진을 담을 수 있는지
+    writable: bool
+    updated_at: datetime
+
+
+class MemberOut(BaseModel):
+    user_id: str
+    display_name: str
+    role: Role
+    is_owner: bool
+    allocated_bytes: int
+    # 할당이 앨범 용량에 들어가는지 (구독이 끝나면 들어가지 않는다)
+    allocation_counted: bool
+    joined_at: datetime
+    is_me: bool
+
+
+class ContributorOut(BaseModel):
+    """사진을 담은 사람별 사용량. 용량이 넘쳤을 때 누구의 사진을 정리할지 고르는 데 쓴다."""
+
+    author_id: str
+    display_name: str | None
+    is_member: bool
+    is_me: bool
+    item_count: int
+    bytes: int
+
+
+class InviteOut(BaseModel):
+    code: str
+    expires_at: datetime
+
+
+class SharedAlbumDetail(SharedAlbumSummary):
+    members: list[MemberOut]
+    contributors: list[ContributorOut]
+    # 관리자에게만 보여준다
+    invite: InviteOut | None
+
+
+class SharedAlbumList(BaseModel):
+    albums: list[SharedAlbumSummary]
+    # 내가 소유한 공유 앨범 수와 요금제 한도 (구독하지 않으면 0)
+    owned: int
+    limit: int
+    # 할당이나 개인 사진에 더 쓸 수 있는 내 용량
+    free_bytes: int
+    # 만들거나 참여할 때 처음 보여 줄 할당
+    suggested_allocation: int
+
+
+class SharedItemOut(BaseModel):
+    id: str
+    author_id: str
+    author_name: str
+    is_mine: bool
+    # 올린 사람이거나 관리자
+    can_delete: bool
+    # 내가 담은 항목이면 내 기록 id (기기 사진첩 원본으로 그린다).
+    # 다른 사람의 기록 id는 보내지 않는다.
+    moment_id: str | None
+    media_type: Literal["photo", "video"]
+    duration: float | None
+    taken_at: str | None
+    taken_tz_offset: int | None
+    width: int | None
+    height: int | None
+    stored_variants: list[Literal["display", "original", "compact"]]
+    added_at: datetime
+
+
+class SharedItemsPage(BaseModel):
+    items: list[SharedItemOut]
+    cursor: int
+    has_more: bool
+
+
+class AddItemsRequest(BaseModel):
+    moment_ids: list[str] = Field(min_length=1, max_length=500)
+
+
+class AddItemsResponse(BaseModel):
+    added: int
+
+
+class MyItemRow(BaseModel):
+    album_id: str
+    moment_id: str
+    photo_quality: Quality
+
+
+class MyItemsResponse(BaseModel):
+    """내가 담은 항목 전체 (나간 앨범에 남긴 사진 포함). 기기는 이 목록으로 올릴 파일과
+    지우면 안 되는 파일을 정한다.
+    """
+
+    items: list[MyItemRow]
+
+
+class InvitePreview(BaseModel):
+    album_id: str
+    title: str
+    relation: Relation
+    member_count: int
+    invited_by: str | None
+    already_member: bool
+
+
+class JoinRequest(BaseModel):
+    code: str = Field(min_length=4, max_length=16)
+    display_name: DisplayName
+    # 구독하지 않았으면 0 (보고 담기만 한다)
+    allocated_bytes: Allocation = 0
+
+    @field_validator("display_name")
+    @classmethod
+    def required_display_name(cls, value: str) -> str:
+        return _non_blank(value)
+
+
+class UpdateMemberRequest(BaseModel):
+    role: Role | None = None
+    display_name: DisplayName | None = None
+    # 내 할당만 바꾼다
+    allocated_bytes: Allocation | None = None
+
+    @field_validator("display_name")
+    @classmethod
+    def required_display_name(cls, value: str | None) -> str | None:
+        return _non_blank(value) if value is not None else None
+
+
+class TransferOwnerRequest(BaseModel):
+    user_id: str = Field(max_length=36)
+
+
+class LeavePreview(BaseModel):
+    """구성원이 빠지면 그 사람의 할당만큼 용량이 준다. 사진을 남길지 고르기 전에 보여준다."""
+
+    capacity_before: int
+    capacity_after: int
+    bytes_total: int
+    member_bytes: int
+    member_items: int
+    over_if_kept: bool
+    over_if_removed: bool
+
+
+# ---------------------------------------------------------------------------
+# 권한·용량
+
+
+def _membership(db: Session, album_id: str, user_id: str) -> SharedAlbumMember:
+    member = db.get(SharedAlbumMember, (album_id, user_id))
+    if member is None:
+        # 구성원이 아니면 앨범이 있는지도 알리지 않는다.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "shared album not found")
+    return member
+
+
+def _require_admin(member: SharedAlbumMember) -> None:
+    if member.role != "admin":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "only admins can do this")
+
+
+def _lock_album(db: Session, album_id: str) -> SharedAlbum:
+    album = lock_album_row(db, album_id)
+    if album is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "shared album not found")
+    return album
+
+
+def _require_my_space(db: Session, user_id: str) -> None:
+    """할당을 늘린 뒤 확인한다. 개인 사용량과 할당의 합이 요금제 용량을 넘으면 되돌린다."""
+    if personal_free(db, user_id) < 0:
+        db.rollback()
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "not enough Cloud storage")
+
+
+def _require_room(db: Session, album: SharedAlbum) -> None:
+    """앨범이 쓰는 파일이 앨범 용량을 넘으면 되돌린다."""
+    if album.bytes_total > capacity(db, album):
+        db.rollback()
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "shared album storage is full")
+
+
+def _storage(db: Session, album: SharedAlbum, user_id: str) -> AlbumStorage:
+    used = album.bytes_total
+    cap = capacity(db, album)
+    mine = db.get(SharedAlbumMember, (album.id, user_id))
+    return AlbumStorage(
+        bytes_total=used,
+        capacity_bytes=cap,
+        extra_bytes=album.extra_bytes,
+        my_allocation=mine.allocated_bytes if mine else 0,
+        over_capacity=used > cap,
+        cleanup_after=(
+            album.unfunded_notified_at + timedelta(days=get_settings().shared_album_grace_days)
+            if album.unfunded_since is not None and album.unfunded_notified_at is not None
+            else None
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 응답
+
+
+def _summaries(
+    db: Session, user_id: str, album_ids: list[str] | None = None
+) -> list[SharedAlbumDetail]:
+    query = (
+        select(SharedAlbum, SharedAlbumMember.role)
+        .join(SharedAlbumMember, SharedAlbumMember.album_id == SharedAlbum.id)
+        .where(SharedAlbumMember.user_id == user_id)
+        .order_by(SharedAlbum.updated_at.desc())
+    )
+    if album_ids is not None:
+        query = query.where(SharedAlbum.id.in_(album_ids))
+    rows = db.execute(query).all()
+    ids = [album.id for album, _ in rows]
+    if not ids:
+        return []
+    item_counts = dict(
+        db.execute(
+            select(SharedAlbumItem.album_id, func.count())
+            .where(SharedAlbumItem.album_id.in_(ids))
+            .group_by(SharedAlbumItem.album_id)
+        ).all()
+    )
+    latest = (
+        select(
+            SharedAlbumItem.album_id,
+            SharedAlbumItem.id,
+            func.row_number()
+            .over(partition_by=SharedAlbumItem.album_id, order_by=SharedAlbumItem.seq.desc())
+            .label("rank"),
+        )
+        .join(
+            CloudObject,
+            (CloudObject.user_id == SharedAlbumItem.author_id)
+            & (CloudObject.moment_id == SharedAlbumItem.moment_id)
+            & (CloudObject.variant == "display")
+            & (CloudObject.status == "stored"),
+        )
+        .where(SharedAlbumItem.album_id.in_(ids))
+        .subquery()
+    )
+    covers = dict(
+        db.execute(select(latest.c.album_id, latest.c.id).where(latest.c.rank == 1)).all()
+    )
+    result = []
+    for album, role in rows:
+        storage = _storage(db, album, user_id)
+        result.append(
+            SharedAlbumDetail(
+                id=album.id,
+                title=album.title,
+                relation=album.relation,  # type: ignore[arg-type]
+                photo_quality=album.photo_quality,  # type: ignore[arg-type]
+                role=role,
+                is_owner=album.owner_id == user_id,
+                member_count=member_count(db, album.id),
+                item_count=item_counts.get(album.id, 0),
+                cover_item_id=covers.get(album.id),
+                storage=storage,
+                writable=storage.bytes_total < storage.capacity_bytes,
+                updated_at=album.updated_at,
+                members=[],
+                contributors=[],
+                invite=None,
+            )
+        )
+    return result
+
+
+def _detail(db: Session, album_id: str, user_id: str) -> SharedAlbumDetail:
+    found = _summaries(db, user_id, [album_id])
+    if not found:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "shared album not found")
+    detail = found[0]
+    album = db.get(SharedAlbum, album_id)
+    assert album is not None
+    members = db.scalars(
+        select(SharedAlbumMember)
+        .where(SharedAlbumMember.album_id == album_id)
+        .order_by(SharedAlbumMember.joined_at, SharedAlbumMember.user_id)
+    ).all()
+    names = {member.user_id: member.display_name for member in members}
+    detail.members = [
+        MemberOut(
+            user_id=member.user_id,
+            display_name=member.display_name,
+            role=member.role,  # type: ignore[arg-type]
+            is_owner=member.user_id == album.owner_id,
+            allocated_bytes=member.allocated_bytes,
+            allocation_counted=member.allocated_bytes > 0 and is_counted(db, member.user_id),
+            joined_at=member.joined_at,
+            is_me=member.user_id == user_id,
+        )
+        for member in members
+    ]
+    counts = dict(
+        db.execute(
+            select(SharedAlbumItem.author_id, func.count())
+            .where(SharedAlbumItem.album_id == album_id)
+            .group_by(SharedAlbumItem.author_id)
+        ).all()
+    )
+    sizes = author_usage(db, album_id)
+    detail.contributors = sorted(
+        (
+            ContributorOut(
+                author_id=author_id,
+                display_name=names.get(author_id),
+                is_member=author_id in names,
+                is_me=author_id == user_id,
+                item_count=count,
+                bytes=sizes.get(author_id, 0),
+            )
+            for author_id, count in counts.items()
+        ),
+        key=lambda row: -row.bytes,
+    )
+    if detail.role == "admin":
+        invite = db.scalar(select(SharedAlbumInvite).where(SharedAlbumInvite.album_id == album_id))
+        if invite is not None and _aware(invite.expires_at) > datetime.now(UTC):
+            detail.invite = InviteOut(code=invite.code, expires_at=invite.expires_at)
+    return detail
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+def _number(value: object) -> float | None:
+    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+
+
+def _int(value: object) -> int | None:
+    return int(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+
+
+def _add_items(db: Session, album: SharedAlbum, user_id: str, moment_ids: list[str]) -> int:
+    """내 기록을 항목으로 넣는다 (커밋하지 않는다). 서버에 없거나 지운 기록은 건너뛴다."""
+    wanted = list(dict.fromkeys(moment_ids))
+    moments = {
+        row.id: row
+        for row in db.scalars(
+            select(Moment).where(
+                Moment.user_id == user_id, Moment.id.in_(wanted), Moment.deleted_at.is_(None)
+            )
+        )
+    }
+    existing = set(
+        db.scalars(
+            select(SharedAlbumItem.moment_id).where(
+                SharedAlbumItem.album_id == album.id,
+                SharedAlbumItem.author_id == user_id,
+                SharedAlbumItem.moment_id.in_(wanted),
+            )
+        )
+    )
+    added = 0
+    for moment_id in wanted:
+        moment = moments.get(moment_id)
+        if moment is None or moment_id in existing:
+            continue
+        data = moment_data(moment)
+        album.item_seq += 1
+        db.add(
+            SharedAlbumItem(
+                id=str(uuid4()),
+                album_id=album.id,
+                author_id=user_id,
+                moment_id=moment_id,
+                seq=album.item_seq,
+                media_type="video" if data.get("media_type") == "video" else "photo",
+                duration=_number(data.get("duration")),
+                taken_at=data.get("taken_at") if isinstance(data.get("taken_at"), str) else None,
+                taken_tz_offset=_int(data.get("taken_tz_offset")),
+                width=_int(data.get("width")),
+                height=_int(data.get("height")),
+            )
+        )
+        added += 1
+    if added:
+        album.updated_at = datetime.now(UTC)
+        # 이미 안전 보관한 파일은 담는 순간 앨범 사용량이 된다.
+        recount(db, user_id, wanted, [album])
+    return added
+
+
+# ---------------------------------------------------------------------------
+# 앨범
+
+
+@router.get("", response_model=SharedAlbumList)
+def list_albums(user: CurrentUser, db: DbSession) -> SharedAlbumList:
+    return SharedAlbumList(
+        albums=[
+            SharedAlbumSummary(**row.model_dump(exclude={"members", "contributors", "invite"}))
+            for row in _summaries(db, user.id)
+        ],
+        owned=owned_count(db, user.id),
+        limit=album_limit(db, user.id),
+        free_bytes=max(personal_free(db, user.id), 0),
+        suggested_allocation=default_plan().suggested_allocation,
+    )
+
+
+@router.post("", response_model=SharedAlbumDetail, status_code=status.HTTP_201_CREATED)
+def create_album(
+    payload: CreateSharedAlbumRequest, user: CurrentUser, db: DbSession
+) -> SharedAlbumDetail:
+    """공유 앨범은 안전 보관 요금제의 기능이다. 요금제마다 소유할 수 있는 수가 정해져 있고,
+    만드는 사람은 자기 용량에서 앨범 용량을 떼어 준다.
+
+    moment_ids(안전 앨범 바꾸기): 그 사진이 이미 쓰던 개인 용량은 앨범 용량으로 옮겨 센다.
+    할당이 그 사진들보다 작으면 거절한다.
+    """
+    lock_active_user(db, user.id)
+    if not can_write(db.get(Entitlement, user.id)):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "an active Cloud subscription is required")
+    if not can_own_more(db, user.id):
+        raise HTTPException(status.HTTP_409_CONFLICT, "shared album limit reached")
+    if payload.allocated_bytes < MIN_OWNER_ALLOCATION:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "allocation is too small")
+    album = SharedAlbum(
+        id=str(uuid4()),
+        title=payload.title.strip(),
+        relation=payload.relation,
+        photo_quality=payload.photo_quality,
+        owner_id=user.id,
+    )
+    db.add(album)
+    db.flush()
+    db.add(
+        SharedAlbumMember(
+            album_id=album.id,
+            user_id=user.id,
+            role="admin",
+            display_name=payload.display_name.strip(),
+            allocated_bytes=payload.allocated_bytes,
+        )
+    )
+    db.flush()
+    _add_items(db, album, user.id, payload.moment_ids)
+    _require_room(db, album)
+    _require_my_space(db, user.id)
+    db.commit()
+    return _detail(db, album.id, user.id)
+
+
+@router.get("/my-items", response_model=MyItemsResponse)
+def my_items(user: CurrentUser, db: DbSession) -> MyItemsResponse:
+    rows = db.execute(
+        select(SharedAlbumItem.album_id, SharedAlbumItem.moment_id, SharedAlbum.photo_quality)
+        .join(SharedAlbum, SharedAlbum.id == SharedAlbumItem.album_id)
+        .where(SharedAlbumItem.author_id == user.id)
+        .order_by(SharedAlbumItem.album_id, SharedAlbumItem.moment_id)
+    ).all()
+    return MyItemsResponse(
+        items=[
+            MyItemRow(album_id=album_id, moment_id=moment_id, photo_quality=quality)
+            for album_id, moment_id, quality in rows
+        ]
+    )
+
+
+class RemoveMyItemsRequest(BaseModel):
+    moment_ids: list[str] = Field(min_length=1, max_length=500)
+
+
+class RemoveMyItemsResponse(BaseModel):
+    removed: int
+
+
+@router.post("/my-items/remove", response_model=RemoveMyItemsResponse)
+def remove_my_moments(
+    payload: RemoveMyItemsRequest, user: CurrentUser, db: DbSession
+) -> RemoveMyItemsResponse:
+    """내 기록을 모든 공유 앨범에서 뺀다. 기록을 지우며 공유 앨범에서도 빼기로 했을 때 기기가
+    부른다."""
+    lock_active_user(db, user.id)
+    removed = remove_my_items(db, user.id, list(dict.fromkeys(payload.moment_ids)))
+    db.commit()
+    return RemoveMyItemsResponse(removed=removed)
+
+
+@router.get("/invites/{code}", response_model=InvitePreview)
+def preview_invite(code: str, user: CurrentUser, db: DbSession) -> InvitePreview:
+    invite = _valid_invite(db, code)
+    album = db.get(SharedAlbum, invite.album_id)
+    assert album is not None
+    inviter = (
+        db.get(SharedAlbumMember, (album.id, invite.created_by)) if invite.created_by else None
+    )
+    return InvitePreview(
+        album_id=album.id,
+        title=album.title,
+        relation=album.relation,  # type: ignore[arg-type]
+        member_count=member_count(db, album.id),
+        invited_by=inviter.display_name if inviter else None,
+        already_member=db.get(SharedAlbumMember, (album.id, user.id)) is not None,
+    )
+
+
+@router.post("/join", response_model=SharedAlbumDetail)
+def join_album(payload: JoinRequest, user: CurrentUser, db: DbSession) -> SharedAlbumDetail:
+    """초대 코드로 참여한다. 구독 중이면 내 용량에서 앨범 용량을 떼어 줄 수 있다."""
+    lock_active_user(db, user.id)
+    invite = _valid_invite(db, payload.code)
+    album = _lock_album(db, invite.album_id)
+    if db.get(SharedAlbumMember, (album.id, user.id)) is None:
+        if member_count(db, album.id) >= MAX_MEMBERS:
+            raise HTTPException(status.HTTP_409_CONFLICT, "shared album is full")
+        db.add(
+            SharedAlbumMember(
+                album_id=album.id,
+                user_id=user.id,
+                role="member",
+                display_name=payload.display_name.strip(),
+                allocated_bytes=payload.allocated_bytes,
+            )
+        )
+        album.updated_at = datetime.now(UTC)
+        db.flush()
+        if payload.allocated_bytes > 0:
+            _require_my_space(db, user.id)
+        refresh_funding(db, album)
+        db.commit()
+    return _detail(db, album.id, user.id)
+
+
+def _valid_invite(db: Session, code: str) -> SharedAlbumInvite:
+    # 말로 불러 주거나 옮겨 적은 코드의 공백·하이픈과 대소문자는 무시한다 (앱 normalizeCode와 같다).
+    invite = db.get(SharedAlbumInvite, re.sub(r"[^0-9A-Za-z]", "", code).upper())
+    if invite is None or _aware(invite.expires_at) <= datetime.now(UTC):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "invite not found")
+    return invite
+
+
+@router.get("/{album_id}", response_model=SharedAlbumDetail)
+def get_album(album_id: str, user: CurrentUser, db: DbSession) -> SharedAlbumDetail:
+    _membership(db, album_id, user.id)
+    return _detail(db, album_id, user.id)
+
+
+@router.patch("/{album_id}", response_model=SharedAlbumDetail)
+def update_album(
+    album_id: str, payload: UpdateSharedAlbumRequest, user: CurrentUser, db: DbSession
+) -> SharedAlbumDetail:
+    album = _lock_album(db, album_id)
+    _require_admin(_membership(db, album_id, user.id))
+    if payload.title is not None:
+        album.title = payload.title.strip()
+    if payload.relation is not None:
+        album.relation = payload.relation
+    if payload.photo_quality is not None and payload.photo_quality != album.photo_quality:
+        # 담은 사람의 기기가 다음 동기화에서 새 화질에 맞춰 올리고 지운다 (/shared-albums/my-items).
+        # 필요 없어진 원본은 지금부터 앨범이 아니라 올린 사람의 개인 사용량에서 센다.
+        album.photo_quality = payload.photo_quality
+        recount_album(db, album)
+    album.updated_at = datetime.now(UTC)
+    refresh_funding(db, album)
+    db.commit()
+    return _detail(db, album_id, user.id)
+
+
+@router.delete("/{album_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_album(album_id: str, user: CurrentUser, db: DbSession) -> None:
+    """관리자가 앨범을 지운다. 구성원의 기록은 남고, 다른 앨범에 필요 없는 파일은 각자의 기기가
+    지운다."""
+    album = _lock_album(db, album_id)
+    _require_admin(_membership(db, album_id, user.id))
+    delete_album_rows(db, album)
+    db.commit()
+
+
+@router.post("/{album_id}/owner", response_model=SharedAlbumDetail)
+def transfer_owner(
+    album_id: str, payload: TransferOwnerRequest, user: CurrentUser, db: DbSession
+) -> SharedAlbumDetail:
+    """소유자를 넘긴다. 받는 사람은 구독 중이고 요금제의 공유 앨범 수에 여유가 있어야 한다."""
+    album = _lock_album(db, album_id)
+    _membership(db, album_id, user.id)
+    if album.owner_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "only the owner can transfer the album")
+    target = db.get(SharedAlbumMember, (album_id, payload.user_id))
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "member not found")
+    if payload.user_id != user.id:
+        if not can_own_more(db, payload.user_id):
+            raise HTTPException(status.HTTP_409_CONFLICT, "member cannot own another album")
+        target.role = "admin"
+        album.owner_id = payload.user_id
+        album.updated_at = datetime.now(UTC)
+        db.commit()
+    return _detail(db, album_id, user.id)
+
+
+# ---------------------------------------------------------------------------
+# 초대
+
+
+@router.post("/{album_id}/invite", response_model=InviteOut)
+def create_invite(album_id: str, user: CurrentUser, db: DbSession) -> InviteOut:
+    """새 초대 코드를 만든다. 이전 코드는 더 쓸 수 없다."""
+    _lock_album(db, album_id)
+    _require_admin(_membership(db, album_id, user.id))
+    db.execute(delete(SharedAlbumInvite).where(SharedAlbumInvite.album_id == album_id))
+    code = "".join(secrets.choice(INVITE_ALPHABET) for _ in range(INVITE_LENGTH))
+    invite = SharedAlbumInvite(
+        code=code,
+        album_id=album_id,
+        created_by=user.id,
+        expires_at=datetime.now(UTC) + INVITE_TTL,
+    )
+    db.add(invite)
+    db.commit()
+    return InviteOut(code=invite.code, expires_at=invite.expires_at)
+
+
+@router.delete("/{album_id}/invite", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_invite(album_id: str, user: CurrentUser, db: DbSession) -> None:
+    _lock_album(db, album_id)
+    _require_admin(_membership(db, album_id, user.id))
+    db.execute(delete(SharedAlbumInvite).where(SharedAlbumInvite.album_id == album_id))
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# 구성원
+
+
+@router.patch("/{album_id}/members/{member_id}", response_model=SharedAlbumDetail)
+def update_member(
+    album_id: str,
+    member_id: str,
+    payload: UpdateMemberRequest,
+    user: CurrentUser,
+    db: DbSession,
+) -> SharedAlbumDetail:
+    """이름과 할당은 자기 것만 바꾼다. 역할은 관리자가 바꾼다 (관리자는 여럿일 수 있다).
+
+    소유자는 관리자에서 해제할 수 없고, 관리자가 한 명도 없게 만들 수는 없다.
+    할당은 내 남은 용량 안에서 늘리고, 앨범이 이미 쓰는 만큼보다 작게 줄일 수 없다.
+    """
+    if payload.allocated_bytes is not None:
+        lock_active_user(db, user.id)
+    album = _lock_album(db, album_id)
+    me = _membership(db, album_id, user.id)
+    target = db.get(SharedAlbumMember, (album_id, member_id))
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "member not found")
+    if (payload.display_name is not None or payload.allocated_bytes is not None) and (
+        member_id != user.id
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "you can only change your own settings")
+    if payload.display_name is not None:
+        target.display_name = payload.display_name.strip()
+    if payload.allocated_bytes is not None and payload.allocated_bytes != target.allocated_bytes:
+        smaller = payload.allocated_bytes < target.allocated_bytes
+        target.allocated_bytes = payload.allocated_bytes
+        db.flush()
+        if smaller and album.bytes_total > capacity(db, album):
+            db.rollback()
+            raise HTTPException(status.HTTP_409_CONFLICT, "allocation is below the album usage")
+        if not smaller:
+            _require_my_space(db, user.id)
+    if payload.role is not None and payload.role != target.role:
+        _require_admin(me)
+        if payload.role == "member":
+            if member_id == album.owner_id:
+                raise HTTPException(status.HTTP_409_CONFLICT, "the owner must stay an admin")
+            admins = db.scalar(
+                select(func.count()).where(
+                    SharedAlbumMember.album_id == album_id, SharedAlbumMember.role == "admin"
+                )
+            )
+            if (admins or 0) <= 1:
+                raise HTTPException(status.HTTP_409_CONFLICT, "an album needs at least one admin")
+        target.role = payload.role
+    album.updated_at = datetime.now(UTC)
+    refresh_funding(db, album)
+    db.commit()
+    return _detail(db, album_id, user.id)
+
+
+@router.get("/{album_id}/members/{member_id}/leave-preview", response_model=LeavePreview)
+def leave_preview(album_id: str, member_id: str, user: CurrentUser, db: DbSession) -> LeavePreview:
+    album = db.get(SharedAlbum, album_id)
+    me = _membership(db, album_id, user.id)
+    if member_id != user.id:
+        _require_admin(me)
+    if album is None or db.get(SharedAlbumMember, (album_id, member_id)) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "member not found")
+    usage = author_usage(db, album_id)
+    used = album.bytes_total
+    after = capacity(db, album, without=member_id)
+    theirs = usage.get(member_id, 0)
+    return LeavePreview(
+        capacity_before=capacity(db, album),
+        capacity_after=after,
+        bytes_total=used,
+        member_bytes=theirs,
+        member_items=len(items_of_author(db, album_id, member_id)),
+        over_if_kept=used > after,
+        over_if_removed=used - theirs > after,
+    )
+
+
+@router.delete("/{album_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_member(
+    album_id: str,
+    member_id: str,
+    user: CurrentUser,
+    db: DbSession,
+    photos: Literal["keep", "remove"] = "remove",
+) -> None:
+    """스스로 나가거나, 관리자가 구성원을 내보낸다. 그 사람의 할당도 빠진다.
+
+    photos=keep: 그 사람이 담은 사진을 앨범에 남긴다. 용량이 넘치면 새 사진을 받지 않고,
+    관리자가 사진을 정리하거나 다른 구성원이 할당을 늘려 푼다.
+    """
+    album = _lock_album(db, album_id)
+    me = _membership(db, album_id, user.id)
+    if member_id != user.id:
+        _require_admin(me)
+        if db.get(SharedAlbumMember, (album_id, member_id)) is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "member not found")
+    remove_member_rows(db, album, member_id, keep_photos=photos == "keep")
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# 항목
+
+
+@router.get("/{album_id}/items", response_model=SharedItemsPage)
+def list_items(
+    album_id: str,
+    user: CurrentUser,
+    db: DbSession,
+    cursor: Annotated[int, Query(ge=0)] = 0,
+) -> SharedItemsPage:
+    me = _membership(db, album_id, user.id)
+    album = db.get(SharedAlbum, album_id)
+    assert album is not None
+    rows = db.execute(
+        select(SharedAlbumItem, SharedAlbumMember.display_name)
+        .outerjoin(
+            SharedAlbumMember,
+            (SharedAlbumMember.album_id == SharedAlbumItem.album_id)
+            & (SharedAlbumMember.user_id == SharedAlbumItem.author_id),
+        )
+        .where(SharedAlbumItem.album_id == album_id, SharedAlbumItem.seq > cursor)
+        .order_by(SharedAlbumItem.seq)
+        .limit(ITEM_PAGE_LIMIT + 1)
+    ).all()
+    page = rows[:ITEM_PAGE_LIMIT]
+    stored: dict[tuple[str, str], set[str]] = {}
+    by_author: dict[str, set[str]] = {}
+    for item, _ in page:
+        by_author.setdefault(item.author_id, set()).add(item.moment_id)
+    for author_id, moment_ids in by_author.items():
+        for moment_id, variant in db.execute(
+            select(CloudObject.moment_id, CloudObject.variant).where(
+                CloudObject.user_id == author_id,
+                CloudObject.moment_id.in_(sorted(moment_ids)),
+                CloudObject.status == "stored",
+            )
+        ).all():
+            stored.setdefault((author_id, moment_id), set()).add(variant)
+    items = []
+    for item, name in page:
+        mine = item.author_id == user.id
+        items.append(
+            SharedItemOut(
+                id=item.id,
+                author_id=item.author_id,
+                author_name=name or "나간 구성원",
+                is_mine=mine,
+                can_delete=mine or me.role == "admin",
+                moment_id=item.moment_id if mine else None,
+                media_type="video" if item.media_type == "video" else "photo",
+                duration=item.duration,
+                taken_at=item.taken_at,
+                taken_tz_offset=item.taken_tz_offset,
+                width=item.width,
+                height=item.height,
+                # 효율 보관 앨범은 원본이 개인 Cloud에 남아 있어도 공유하지 않는다.
+                stored_variants=sorted(
+                    stored.get((item.author_id, item.moment_id), set())
+                    & wanted_variants(
+                        album.photo_quality,
+                        item.media_type,
+                        stored.get((item.author_id, item.moment_id), set()),
+                    )
+                ),  # type: ignore[arg-type]
+                added_at=item.added_at,
+            )
+        )
+    return SharedItemsPage(
+        items=items,
+        cursor=page[-1][0].seq if page else cursor,
+        has_more=len(rows) > ITEM_PAGE_LIMIT,
+    )
+
+
+@router.post("/{album_id}/items", response_model=AddItemsResponse)
+def add_items(
+    album_id: str, payload: AddItemsRequest, user: CurrentUser, db: DbSession
+) -> AddItemsResponse:
+    """내 기록을 담는다. 개인 안전 보관에 이미 있는 파일은 다시 올리지 않고 앨범 용량으로 옮겨 센다.
+    없는 파일은 내 기기가 다음 동기화에서 올린다. 앨범 용량을 넘으면 담지 않는다.
+    """
+    album = _lock_album(db, album_id)
+    _membership(db, album_id, user.id)
+    added = _add_items(db, album, user.id, payload.moment_ids)
+    _require_room(db, album)
+    db.commit()
+    return AddItemsResponse(added=added)
+
+
+@router.delete("/{album_id}/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_item(album_id: str, item_id: str, user: CurrentUser, db: DbSession) -> None:
+    """올린 사람이나 관리자만 뺀다. 올린 사람의 기록은 남는다."""
+    album = _lock_album(db, album_id)
+    me = _membership(db, album_id, user.id)
+    item = db.get(SharedAlbumItem, item_id)
+    if item is None or item.album_id != album_id:
+        return  # 다른 구성원이 먼저 뺐다.
+    if item.author_id != user.id and me.role != "admin":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "only the uploader or an admin can remove")
+    remove_items(db, album, [item_id])
+    db.commit()
+
+
+@router.delete("/{album_id}/authors/{author_id}/items", status_code=status.HTTP_204_NO_CONTENT)
+def remove_author_items(album_id: str, author_id: str, user: CurrentUser, db: DbSession) -> None:
+    """한 사람이 담은 사진을 모두 뺀다. 넘친 용량을 정리할 때 쓴다 (나간 구성원의 사진 등)."""
+    album = _lock_album(db, album_id)
+    me = _membership(db, album_id, user.id)
+    if author_id != user.id:
+        _require_admin(me)
+    remove_items(db, album, items_of_author(db, album_id, author_id))
+    db.commit()
+
+
+@router.get("/{album_id}/items/{item_id}/photo", response_model=DownloadResponse)
+def download_item(
+    album_id: str, item_id: str, variant: Variant, user: CurrentUser, db: DbSession
+) -> DownloadResponse:
+    """구성원이면 볼 수 있다. 파일은 올린 사람의 Cloud 파일 그대로이고, 보는 사람의 구독은 묻지
+    않는다."""
+    _membership(db, album_id, user.id)
+    album = db.get(SharedAlbum, album_id)
+    assert album is not None
+    item = db.get(SharedAlbumItem, item_id)
+    if item is None or item.album_id != album_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "item not found")
+    stored = set(
+        db.scalars(
+            select(CloudObject.variant).where(
+                CloudObject.user_id == item.author_id,
+                CloudObject.moment_id == item.moment_id,
+                CloudObject.status == "stored",
+            )
+        )
+    )
+    if variant not in wanted_variants(album.photo_quality, item.media_type, stored):
+        # 효율 보관 앨범에서 개인 원본을 유추하거나 내려받지 못하게, 없는 파일과 같은 응답을 준다.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "photo not found")
+    obj = db.scalar(
+        select(CloudObject).where(
+            CloudObject.user_id == item.author_id,
+            CloudObject.moment_id == item.moment_id,
+            CloudObject.variant == variant,
+            CloudObject.status == "stored",
+        )
+    )
+    if obj is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "photo not found")
+    ttl = VIDEO_DOWNLOAD_URL_TTL if obj.content_type.startswith("video/") else DOWNLOAD_URL_TTL
+    url = r2_client().generate_presigned_url(
+        "get_object",
+        Params={"Bucket": get_settings().r2_bucket, "Key": obj.r2_key},
+        ExpiresIn=int(ttl.total_seconds()),
+    )
+    return DownloadResponse(
+        download_url=url,
+        content_type=obj.content_type,
+        extension=EXTENSIONS.get(obj.content_type, "bin"),
+        size=obj.size_bytes,
+        expires_at=datetime.now(UTC) + ttl,
+    )
