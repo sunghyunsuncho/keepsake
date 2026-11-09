@@ -62,6 +62,6 @@ def test_korean_and_english_versions_match(document: str):
     en = (LEGAL_DIR / "en" / f"{document}.html").read_text(encoding="utf-8")
 
     assert ko.count("<h2>") == en.count("<h2>")
-    assert "2026년 11월 6일" in ko
-    assert "November 6, 2026" in en
+    assert "2026년 11월 16일" in ko
+    assert "November 16, 2026" in en
     assert re.findall(r"<table>", ko) == re.findall(r"<table>", en)
