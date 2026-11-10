@@ -6,7 +6,8 @@
 import { Platform } from 'react-native';
 
 // 중립색(글자·선·회색 바탕)은 Vernissage와 같은 결로 맞춘다: 순검정 대신 네이비 기가 도는 짙은 회색, 차가운 연회색 선.
-// 포인트 색(accent)만 Keepsake의 주황이다. 공유 앨범의 책등만 네이비(navy)로 나만 보는 앨범과 구분한다.
+// 포인트 색(accent, 주황)과 네이비(navy)도 Vernissage의 브랜드 테마 컬러(orange #CD5837, navy #16212B)와 같다.
+// 다크 모드 값은 같은 색상을 검정 바탕에서 읽히도록 밝힌 것이다. 공유 앨범의 책등만 네이비로 나만 보는 앨범과 구분한다.
 export const Colors = {
   light: {
     text: '#171A1E',
@@ -19,11 +20,11 @@ export const Colors = {
     border: '#E7E7EB',
     /** 목록의 '>' 화살표 */
     chevron: '#DEDEE3',
-    accent: '#B5651D',
+    accent: '#CD5837',
     onAccent: '#ffffff',
     danger: '#C2362B',
     /** 공유 앨범의 책등 (나만 보는 앨범은 accent) */
-    navy: '#22385E',
+    navy: '#16212B',
   },
   dark: {
     text: '#ECEDEE',
@@ -34,10 +35,10 @@ export const Colors = {
     textMid: '#B0B4BA',
     border: '#2C2E33',
     chevron: '#4A4D53',
-    accent: '#E39A55',
+    accent: '#E57A5A',
     onAccent: '#1B1208',
     danger: '#FF6B5E',
-    navy: '#5874A6',
+    navy: '#56728C',
   },
 } as const;
 
