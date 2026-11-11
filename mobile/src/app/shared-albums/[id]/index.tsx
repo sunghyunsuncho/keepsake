@@ -80,6 +80,7 @@ export default function SharedAlbumScreen() {
   const [editing, setEditing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [removing, setRemoving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const order = settings?.album_sort_order ?? DEFAULT_SETTINGS.album_sort_order;
 
   const shown = useMemo(
@@ -205,11 +206,48 @@ export default function SharedAlbumScreen() {
       '표지',
     );
   };
+  const downloadToLibrary = async () => {
+    if (downloading) return;
+    const downloadable = await unsavedSharedItems(db, items);
+    if (downloadable.length === 0) {
+      Alert.alert('다운로드할 사진이 없어요', '다른 구성원의 사진은 이미 모두 기기 사진첩에 저장했어요.');
+      return;
+    }
+    Alert.alert(
+      `사진 ${downloadable.length}장을 기기 사진첩으로 다운로드할까요?`,
+      '원본이 있으면 원본을, 효율 보관 사진은 저장된 효율 파일을 내려받아요.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '다운로드',
+          onPress: async () => {
+            setDownloading(true);
+            try {
+              const result = await saveSharedItemsToLibrary(db, id, downloadable, () => {});
+              Alert.alert(
+                result.failed > 0 ? '일부 사진을 다운로드하지 못했어요' : '기기 사진첩으로 다운로드했어요',
+                result.failed > 0 ? `${result.failed}장은 잠시 후 다시 시도해 주세요.` : undefined,
+              );
+            } catch (e) {
+              Alert.alert('사진을 다운로드하지 못했어요', e instanceof SharedSaveError ? e.message : '잠시 후 다시 시도해 주세요.');
+            } finally {
+              setDownloading(false);
+            }
+          },
+        },
+      ],
+    );
+  };
   const showAlbumMenu = () =>
     showActionSheet(album.title, undefined, [
-      { text: '표지 바꾸기', onPress: () => setChoosingCover(true) },
-      { text: '이름 바꾸기', onPress: () => setRenaming(true) },
-      { text: '구성원과 앨범 관리', onPress: openManage },
+      { text: downloading ? '기기 사진첩으로 다운로드 중…' : '기기 사진첩으로 다운로드', onPress: downloadToLibrary },
+      ...(admin
+        ? [
+            { text: '표지 바꾸기', onPress: () => setChoosingCover(true) },
+            { text: '이름 바꾸기', onPress: () => setRenaming(true) },
+            { text: '구성원과 앨범 관리', onPress: openManage },
+          ]
+        : []),
       { text: '취소', style: 'cancel' },
     ]);
 
@@ -236,8 +274,13 @@ export default function SharedAlbumScreen() {
           title: album.title,
           headerRight: () => (
             <View style={styles.headerButtons}>
+              <HeaderButton
+                icon="map-outline"
+                label="앨범 지도"
+                onPress={() => router.push({ pathname: '/album-map', params: { id, kind: 'shared' } })}
+              />
               <HeaderButton icon="people-outline" label="구성원과 앨범 관리" size={22} onPress={openManage} />
-              {admin && <HeaderButton icon="ellipsis-horizontal" label="앨범 메뉴" onPress={showAlbumMenu} />}
+              <HeaderButton icon="ellipsis-horizontal" label="앨범 메뉴" onPress={showAlbumMenu} />
             </View>
           ),
         }}

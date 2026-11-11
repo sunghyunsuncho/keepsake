@@ -19,6 +19,14 @@ export type GeocodedPlace = {
   timeZoneOffsetMinutes?: number;
 };
 
+/** 효율 보관 JPEG에 다시 기록할, 사진 앱이 읽는 핵심 EXIF 값. */
+export type ImageMetadata = {
+  takenAt: string;
+  takenTzOffset: number | null;
+  lat: number | null;
+  lng: number | null;
+};
+
 type PhotoMetaNative = {
   reverseGeocode(
     latitude: number,
@@ -30,6 +38,7 @@ type PhotoMetaNative = {
   trashPhotos(photoIds: string[], videoIds: string[]): Promise<boolean>;
   md5File(uri: string): Promise<string>;
   transcodeVideo(inputUri: string, outputUri: string): Promise<void>;
+  writeImageMetadata(uri: string, metadata: ImageMetadata): Promise<void>;
 };
 
 const PhotoMeta = requireNativeModule<PhotoMetaNative>('PhotoMeta');
@@ -56,4 +65,9 @@ export function md5File(fileUri: string) {
 /** 동영상을 짧은 변 720px 이하의 H.264 mp4로 줄여 outputUri에 쓴다. 원래 작으면 키우지 않는다. */
 export function transcodeVideo(inputUri: string, outputUri: string) {
   return PhotoMeta.transcodeVideo(inputUri, outputUri);
+}
+
+/** 리사이즈한 JPEG에 촬영 일시·시간대·GPS를 EXIF로 다시 쓴다. */
+export function writeImageMetadata(fileUri: string, metadata: ImageMetadata) {
+  return PhotoMeta.writeImageMetadata(fileUri, metadata);
 }

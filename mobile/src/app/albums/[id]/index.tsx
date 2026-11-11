@@ -37,7 +37,8 @@ import type { Moment } from '@/db/moments';
 import { DEFAULT_SETTINGS, getSettings, setSetting } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { useZoomedGallery } from '@/hooks/use-zoomed-gallery';
-import { useCloudState } from '@/lib/cloud/engine';
+import { syncCloud, useCloudState } from '@/lib/cloud/engine';
+import { PhotoSaveError, saveOriginalsToLibrary } from '@/lib/cloud/photos';
 
 // 앨범 하나: 해 → 달 → 날 → 이야기 순으로 당겨 보고(두 손가락 또는 위의 단계 버튼), 사진을 누르면 크게 본다.
 export default function AlbumScreen() {
@@ -52,6 +53,7 @@ export default function AlbumScreen() {
   const [choosingCover, setChoosingCover] = useState(false);
   const [editing, setEditing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [restoring, setRestoring] = useState(false);
   const order = settings?.album_sort_order ?? DEFAULT_SETTINGS.album_sort_order;
   const gallery = useZoomedGallery(moments ?? undefined, {
     order,
@@ -62,7 +64,9 @@ export default function AlbumScreen() {
   const { gesture: pinch, style: pinchStyle } = usePinchZoom(gallery.stepZoom);
   const isCustom = !isBuiltInAlbum(id);
   const isCloud = album?.kind === 'cloud';
-  const canUpload = useCloudState().account?.subscription.can_upload ?? false;
+  const subscription = useCloudState().account?.subscription;
+  const canUpload = subscription?.can_upload ?? false;
+  const canDownload = subscription?.can_download ?? false;
   const fromCloud = source === 'cloud' || isCloud;
   const parentAlbumRoute = fromCloud ? '/cloud-library' : '/album';
   const parentAlbumLabel = fromCloud ? '안전 사진첩으로 돌아가기' : '사진첩으로 돌아가기';
@@ -150,11 +154,58 @@ export default function AlbumScreen() {
       : [{ text: '안전 보관에 연결', onPress: () => router.push({ pathname: '/cloud-albums/new', params: { source: id } }) }];
   };
 
+  // 원본이 있으면 원본을, 효율 보관만 했으면 그 JPEG·720p 영상을 기기 사진첩에 내려받는다.
+  const restoreOriginals = () => {
+    if (restoring) return;
+    const restoreIds = (moments ?? [])
+      .filter(
+        (moment) =>
+          (moment.original_uploaded === 1 || moment.display_uploaded === 1 || moment.compact_uploaded === 1) &&
+          (!moment.source_asset_id || moment.source_missing === 1),
+      )
+      .map((moment) => moment.id);
+    if (restoreIds.length === 0) {
+      Alert.alert('다운로드할 사진이 없어요', '이 앨범의 보관 파일은 이미 모두 기기 사진첩에 연결되어 있어요.');
+      return;
+    }
+    Alert.alert(
+      `사진 ${restoreIds.length}장을 기기 사진첩으로 다운로드할까요?`,
+      '원본 보관 사진은 같은 원본인지 확인해 연결하고, 효율 보관 파일은 같은 파일명으로 이미 받은 사진을 찾아 다시 저장하지 않아요. 다운로드 뒤에는 이 기기의 사진첩 연결도 동기화해요.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '다운로드',
+          onPress: async () => {
+            setRestoring(true);
+            try {
+              const result = await saveOriginalsToLibrary(db, () => {}, { momentIds: restoreIds, includeEfficient: true });
+              // source_link_synced = 0으로 표시한 연결을 바로 계정에 보낸다.
+              await syncCloud(db);
+              const saved = result.total - result.failed - result.linked;
+              Alert.alert(
+                result.failed > 0 ? '일부 사진을 다운로드하지 못했어요' : '기기 사진첩으로 다운로드했어요',
+                `${saved}장을 저장하고, 같은 파일 ${result.linked}장은 기존 사진에 연결했어요.` +
+                  (result.failed > 0 ? `\n${result.failed}장은 잠시 후 다시 시도해 주세요.` : ''),
+              );
+            } catch (e) {
+              Alert.alert('사진을 다운로드하지 못했어요', e instanceof PhotoSaveError ? e.message : '잠시 후 다시 시도해 주세요.');
+            } finally {
+              setRestoring(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   // 선택지가 많아 Alert 대신 시트로 연다 (안드로이드 Alert는 버튼을 3개까지만 보여 준다).
   const showAlbumMenu = () => {
     showActionSheet(title ?? '', undefined, [
       { text: '새 사진에서 고르기', onPress: pickForAlbum },
       ...(isCloud ? [{ text: '보관 화질 바꾸기', onPress: chooseQuality }] : cloudLink()),
+      ...(isCloud && canDownload
+        ? [{ text: restoring ? '기기 사진첩으로 다운로드 중…' : '기기 사진첩으로 다운로드', onPress: restoreOriginals }]
+        : []),
       // 나만 보던 안전 앨범을 가족·친구와 함께 쓰는 공유 앨범으로 바꾼다 (같은 파일을 그대로 쓴다).
       ...(isCloud && canUpload
         ? [
@@ -198,9 +249,16 @@ export default function AlbumScreen() {
         title: title ?? '',
         // 탭 전환으로 들어온 경우에도 기본 back stack에 의존하지 않고 들어온 사진첩으로 돌아간다.
         headerLeft: () => <BackButton label={parentAlbumLabel} onPress={() => router.navigate(parentAlbumRoute)} />,
-        headerRight: isCustom
-          ? () => <HeaderButton icon="ellipsis-horizontal" label="앨범 메뉴" onPress={showAlbumMenu} />
-          : undefined,
+        headerRight: () => (
+          <View style={styles.headerButtons}>
+            <HeaderButton
+              icon="map-outline"
+              label="앨범 지도"
+              onPress={() => router.push({ pathname: '/album-map', params: { id, kind: 'album' } })}
+            />
+            {isCustom && <HeaderButton icon="ellipsis-horizontal" label="앨범 메뉴" onPress={showAlbumMenu} />}
+          </View>
+        ),
       }}
     />
   );
@@ -413,6 +471,7 @@ function CloudAlbumInfo({ album, onPressQuality }: { album: AlbumInfo; onPressQu
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  headerButtons: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   center: { textAlign: 'center' },
   centered: {
     flex: 1,

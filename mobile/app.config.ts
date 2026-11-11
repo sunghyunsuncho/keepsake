@@ -6,6 +6,8 @@ import type { ConfigContext, ExpoConfig } from 'expo/config';
 // 클라이언트 ID가 없으면 Google 로그인 없이 빌드된다 (앱도 버튼을 숨긴다).
 export default ({ config }: ConfigContext): ExpoConfig => {
   const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+  // iOS는 기본 Apple 지도를 쓰므로 키가 필요 없다. Android Google 지도 타일만 빌드 시 키를 넣는다.
+  const mapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
   const googlePlugin: [string, { iosUrlScheme: string }][] = iosClientId
     ? [
         [
@@ -14,5 +16,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         ],
       ]
     : [];
-  return { ...(config as ExpoConfig), plugins: [...(config.plugins ?? []), ...googlePlugin] };
+  return {
+    ...(config as ExpoConfig),
+    android: mapsApiKey
+      ? { ...config.android, config: { ...config.android?.config, googleMaps: { apiKey: mapsApiKey } } }
+      : config.android,
+    plugins: [...(config.plugins ?? []), ...googlePlugin],
+  };
 };

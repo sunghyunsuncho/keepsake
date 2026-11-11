@@ -9,7 +9,8 @@ docs/PLAN.md §0 '공유 앨범', docs/PRICING.md.
 - 소유자(관리자 중 한 명)의 요금제가 공유 앨범 수를 정한다. 관리자는 여럿일 수 있다.
 - 앨범 공간이 남아 있으면 구독하지 않은 구성원도 사진을 담는다. 보기는 로그인만 하면 된다.
 - 사진은 올린 사람이나 관리자만 뺀다.
-- 메모와 장소는 개인 기록이라 다른 구성원에게 보내지 않는다. 촬영 시각과 파일 종류만 보낸다.
+- 메모와 장소 이름은 개인 기록이라 다른 구성원에게 보내지 않는다. 촬영 시각·좌표·파일 종류는
+  공유 사진의 EXIF와 지도 표시에 필요해 구성원에게 보낸다.
 """
 
 import re
@@ -20,7 +21,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, tuple_
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, DbSession
@@ -226,6 +227,8 @@ class SharedItemOut(BaseModel):
     duration: float | None
     taken_at: str | None
     taken_tz_offset: int | None
+    lat: float | None
+    lng: float | None
     width: int | None
     height: int | None
     stored_variants: list[Variant]
@@ -583,6 +586,8 @@ def _add_items(
                 duration=_number(data.get("duration")),
                 taken_at=data.get("taken_at") if isinstance(data.get("taken_at"), str) else None,
                 taken_tz_offset=_int(data.get("taken_tz_offset")),
+                lat=_number(data.get("lat")),
+                lng=_number(data.get("lng")),
                 width=_int(data.get("width")),
                 height=_int(data.get("height")),
             )
@@ -998,9 +1003,21 @@ def list_items(
             )
         ).all():
             stored.setdefault((author_id, moment_id), set()).add(variant)
+    # 좌표 열을 추가하기 전부터 있던 공유 항목도, 원 기록이 남아 있으면 지도에 바로 보인다.
+    # 사진을 남기고 기록을 지운 항목은 당시 스냅샷(null)만 쓰므로 위치를 새로 노출하지 않는다.
+    locations: dict[tuple[str, str], tuple[float | None, float | None]] = {}
+    keys = [(item.author_id, item.moment_id) for item, _ in page]
+    if keys:
+        for moment in db.scalars(select(Moment).where(tuple_(Moment.user_id, Moment.id).in_(keys))):
+            data = moment_data(moment)
+            locations[(moment.user_id, moment.id)] = (
+                _number(data.get("lat")),
+                _number(data.get("lng")),
+            )
     items = []
     for item, name in page:
         mine = item.author_id == user.id
+        saved_lat, saved_lng = locations.get((item.author_id, item.moment_id), (None, None))
         items.append(
             SharedItemOut(
                 id=item.id,
@@ -1013,6 +1030,8 @@ def list_items(
                 duration=item.duration,
                 taken_at=item.taken_at,
                 taken_tz_offset=item.taken_tz_offset,
+                lat=item.lat if item.lat is not None else saved_lat,
+                lng=item.lng if item.lng is not None else saved_lng,
                 width=item.width,
                 height=item.height,
                 # 효율 보관 사진은 원본이 개인 Cloud에 남아 있어도 공유하지 않는다.

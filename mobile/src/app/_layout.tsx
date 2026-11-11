@@ -54,6 +54,7 @@ function RootLayout() {
                 <Stack.Screen name="moment/[id]" options={{ title: '', header: StackHeader }} />
                 <Stack.Screen name="day" options={{ title: '지난 사진', header: StackHeader }} />
                 <Stack.Screen name="albums/[id]/index" options={{ title: '', header: StackHeader }} />
+                <Stack.Screen name="album-map" options={{ title: '앨범 지도', header: StackHeader }} />
                 <Stack.Screen name="albums/[id]/add" options={{ title: '', presentation: 'modal', header: ModalHeader }} />
                 <Stack.Screen name="viewer" options={{ headerShown: false, animation: 'fade' }} />
                 <Stack.Screen name="cleanup" options={{ title: '사진 정리', presentation: 'modal', header: ModalHeader }} />

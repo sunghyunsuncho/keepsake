@@ -26,7 +26,10 @@ import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 // 사진에 들어 있는 좌표·촬영 시간대를 읽는다.
 // Android Geocoder 자체는 위치 권한이 필요 없다 (기기 위치가 아니라 주어진 좌표를 변환한다).
@@ -63,6 +66,42 @@ class PhotoMetaModule : Module() {
         }
       }
       digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    // ImageManipulator가 새 JPEG를 쓸 때 잃는 핵심 EXIF를 다시 넣는다. 제조사 전용 MakerNote 등은
+    // 복사하지 않아 개인정보·깨진 미리보기 데이터를 효율 파일에 싣지 않는다.
+    AsyncFunction("writeImageMetadata") { uri: String, metadata: Map<String, Any?> ->
+      val path = Uri.parse(uri).path ?: throw CodedException("Invalid file uri")
+      val takenAt = metadata["takenAt"] as? String ?: throw CodedException("Missing capture time")
+      val offsetMinutes = (metadata["takenTzOffset"] as? Number)?.toInt()
+      val captured = parseIsoDate(takenAt) ?: throw CodedException("Invalid capture time")
+      val zone = TimeZone.getTimeZone("GMT${offsetName(offsetMinutes ?: 0)}")
+      val dateTime = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).apply { timeZone = zone }.format(captured)
+      ExifInterface(path).apply {
+        setAttribute(ExifInterface.TAG_DATETIME_ORIGINAL, dateTime)
+        setAttribute(ExifInterface.TAG_DATETIME_DIGITIZED, dateTime)
+        setAttribute(ExifInterface.TAG_DATETIME, dateTime)
+        if (offsetMinutes != null) {
+          val offset = offsetName(offsetMinutes)
+          setAttribute(ExifInterface.TAG_OFFSET_TIME_ORIGINAL, offset)
+          setAttribute(ExifInterface.TAG_OFFSET_TIME_DIGITIZED, offset)
+          setAttribute(ExifInterface.TAG_OFFSET_TIME, offset)
+        }
+        val latitude = (metadata["lat"] as? Number)?.toDouble()
+        val longitude = (metadata["lng"] as? Number)?.toDouble()
+        if (latitude != null && longitude != null && latitude.isFinite() && longitude.isFinite()
+          && kotlin.math.abs(latitude) <= 90 && kotlin.math.abs(longitude) <= 180) {
+          setLatLong(latitude, longitude)
+          val utc = TimeZone.getTimeZone("UTC")
+          val gpsDate = SimpleDateFormat("yyyy:MM:dd", Locale.US).apply { timeZone = utc }.format(captured)
+          val gpsClock = SimpleDateFormat("HH:mm:ss", Locale.US).apply { timeZone = utc }.format(captured).split(':')
+          setAttribute(ExifInterface.TAG_GPS_DATESTAMP, gpsDate)
+          setAttribute(ExifInterface.TAG_GPS_TIMESTAMP, "${gpsClock[0]}/1,${gpsClock[1]}/1,${gpsClock[2]}/1")
+        }
+        // ImageManipulator가 픽셀을 회전한 뒤 저장하므로 다시 회전되지 않게 한다.
+        setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
+        saveAttributes()
+      }
     }
 
     // 동영상을 짧은 변 720px 이하의 H.264 mp4로 줄인다 (효율 보관). 원래 작으면 키우지 않는다.
@@ -167,6 +206,24 @@ class PhotoMetaModule : Module() {
     } finally {
       retriever.release()
     }
+  }
+
+  private fun parseIsoDate(value: String): Date? {
+    val patterns = arrayOf("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", "yyyy-MM-dd'T'HH:mm:ss'Z'")
+    for (pattern in patterns) {
+      try {
+        return SimpleDateFormat(pattern, Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.parse(value)
+      } catch (_: Exception) {
+        // 다음 형식도 시도한다.
+      }
+    }
+    return null
+  }
+
+  private fun offsetName(minutes: Int): String {
+    val sign = if (minutes < 0) "-" else "+"
+    val absolute = kotlin.math.abs(minutes)
+    return "%s%02d:%02d".format(Locale.US, sign, absolute / 60, absolute % 60)
   }
 
   private fun toMap(address: Address): Map<String, Any?> = mapOf(

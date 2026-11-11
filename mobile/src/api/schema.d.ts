@@ -1083,6 +1083,10 @@ export interface components {
             taken_at: string | null;
             /** Taken Tz Offset */
             taken_tz_offset: number | null;
+            /** Lat */
+            lat: number | null;
+            /** Lng */
+            lng: number | null;
             /** Width */
             width: number | null;
             /** Height */

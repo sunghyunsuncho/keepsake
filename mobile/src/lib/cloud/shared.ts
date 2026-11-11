@@ -2,6 +2,8 @@ import { File } from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { writeImageMetadata } from '@modules/photo-meta';
+
 import type { components } from '@/api/schema';
 import { albumMomentIds, deleteAlbum } from '@/db/albums';
 import { notifyChange } from '@/db/changes';
@@ -405,6 +407,15 @@ export async function saveSharedItemsToLibrary(
       if (named.exists) named.delete();
       partial.move(named);
       try {
+        // 이전 앱 버전이 올린 표시용 JPEG도 내려받을 때는 기록에 둔 촬영 정보로 EXIF를 채운다.
+        if (variant === 'display' && item.media_type === 'photo' && item.taken_at) {
+          await writeImageMetadata(named.uri, {
+            takenAt: item.taken_at,
+            takenTzOffset: item.taken_tz_offset,
+            lat: item.lat,
+            lng: item.lng,
+          }).catch(() => {});
+        }
         const asset = await MediaLibrary.createAssetAsync(named.uri);
         await db.runAsync(
           'INSERT OR REPLACE INTO shared_downloads (item_id, asset_id, saved_at) VALUES (?, ?, ?)',

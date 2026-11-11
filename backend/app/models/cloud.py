@@ -265,6 +265,10 @@ class SharedAlbumItem(Base):
     duration: Mapped[float | None] = mapped_column(Float, nullable=True)
     taken_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
     taken_tz_offset: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 공유 앨범에서 효율 보관 JPEG를 내려받을 때도 EXIF GPS를 되살리기 위한 좌표.
+    # 장소 이름·메모는 개인 기록이라 계속 공유하지 않는다.
+    lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lng: Mapped[float | None] = mapped_column(Float, nullable=True)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # 이 항목이 앨범 화질로 쓰는 파일 크기 (저장된 것만). 앨범 bytes_total의 한 몫이다.

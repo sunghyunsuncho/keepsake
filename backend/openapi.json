@@ -2992,6 +2992,28 @@
             ],
             "title": "Taken Tz Offset"
           },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lng": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lng"
+          },
           "width": {
             "anyOf": [
               {
@@ -3057,6 +3079,8 @@
           "duration",
           "taken_at",
           "taken_tz_offset",
+          "lat",
+          "lng",
           "width",
           "height",
           "stored_variants",

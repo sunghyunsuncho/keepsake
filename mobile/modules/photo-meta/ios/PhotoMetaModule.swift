@@ -3,6 +3,7 @@ import CoreLocation
 import CryptoKit
 import ExpoModulesCore
 import ImageIO
+import UniformTypeIdentifiers
 
 // 사진에 들어 있는 좌표·촬영 시간대를 읽는다.
 // 기기 위치를 읽는 게 아니라 사진의 좌표를 주소로 바꾸기만 하므로 위치 권한이 필요 없다.
@@ -68,6 +69,76 @@ public class PhotoMetaModule: Module {
       return hash.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
+    // ImageManipulator가 만든 JPEG에 촬영 시각·시간대·GPS를 다시 기록한다. 원본의 제조사 전용
+    // MakerNote 등은 복사하지 않아 불필요한 개인정보이나 호환성 문제를 효율 파일에 넣지 않는다.
+    AsyncFunction("writeImageMetadata") { (
+      uri: String, metadata: [String: Any]
+    ) throws in
+      guard
+        let url = URL(string: uri),
+        let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+        let capturedText = metadata["takenAt"] as? String,
+        let captured = ISO8601DateFormatter().date(from: capturedText)
+      else {
+        throw Exception(name: "InvalidImageMetadata", description: "Cannot write image metadata")
+      }
+      let offset = metadata["takenTzOffset"] as? Int
+      let timezone = TimeZone(secondsFromGMT: (offset ?? 0) * 60) ?? .gmt
+      let formatter = DateFormatter()
+      formatter.locale = Locale(identifier: "en_US_POSIX")
+      formatter.timeZone = timezone
+      formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+      let dateTime = formatter.string(from: captured)
+      let gpsFormatter = DateFormatter()
+      gpsFormatter.locale = Locale(identifier: "en_US_POSIX")
+      gpsFormatter.timeZone = .gmt
+      gpsFormatter.dateFormat = "yyyy:MM:dd"
+      let gpsDate = gpsFormatter.string(from: captured)
+      gpsFormatter.dateFormat = "HH:mm:ss"
+      let gpsTime = gpsFormatter.string(from: captured).split(separator: ":")
+
+      var properties = (CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any]) ?? [:]
+      var exif = (properties[kCGImagePropertyExifDictionary as String] as? [String: Any]) ?? [:]
+      exif[kCGImagePropertyExifDateTimeOriginal as String] = dateTime
+      exif[kCGImagePropertyExifDateTimeDigitized as String] = dateTime
+      if let offset {
+        let text = offsetText(offset)
+        exif["OffsetTimeOriginal"] = text
+        exif["OffsetTimeDigitized"] = text
+        exif["OffsetTime"] = text
+      }
+      properties[kCGImagePropertyExifDictionary as String] = exif
+      var tiff = (properties[kCGImagePropertyTIFFDictionary as String] as? [String: Any]) ?? [:]
+      tiff[kCGImagePropertyTIFFDateTime as String] = dateTime
+      tiff[kCGImagePropertyTIFFOrientation as String] = 1
+      properties[kCGImagePropertyTIFFDictionary as String] = tiff
+      if let latitude = metadata["lat"] as? Double, let longitude = metadata["lng"] as? Double,
+        latitude.isFinite, longitude.isFinite, abs(latitude) <= 90, abs(longitude) <= 180 {
+        var gps = (properties[kCGImagePropertyGPSDictionary as String] as? [String: Any]) ?? [:]
+        gps[kCGImagePropertyGPSLatitude as String] = abs(latitude)
+        gps[kCGImagePropertyGPSLatitudeRef as String] = latitude < 0 ? "S" : "N"
+        gps[kCGImagePropertyGPSLongitude as String] = abs(longitude)
+        gps[kCGImagePropertyGPSLongitudeRef as String] = longitude < 0 ? "W" : "E"
+        gps[kCGImagePropertyGPSDateStamp as String] = gpsDate
+        if gpsTime.count == 3 {
+          gps[kCGImagePropertyGPSTimeStamp as String] = gpsTime.map { Double($0) ?? 0 }
+        }
+        properties[kCGImagePropertyGPSDictionary as String] = gps
+      }
+      let temporary = url.appendingPathExtension("metadata")
+      try? FileManager.default.removeItem(at: temporary)
+      guard let destination = CGImageDestinationCreateWithURL(temporary as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
+        throw Exception(name: "ImageWriteFailed", description: "Cannot create image destination")
+      }
+      CGImageDestinationAddImageFromSource(destination, source, 0, properties as CFDictionary)
+      guard CGImageDestinationFinalize(destination) else {
+        try? FileManager.default.removeItem(at: temporary)
+        throw Exception(name: "ImageWriteFailed", description: "Cannot write image metadata")
+      }
+      // 원본을 먼저 지우면 move 실패 때 사진을 잃는다. replace는 같은 볼륨 안에서 원자적으로 교체한다.
+      try FileManager.default.replaceItemAt(url, withItemAt: temporary, backupItemName: nil, options: [])
+    }
+
     // 동영상을 짧은 변 720px 이하의 H.264 mp4로 줄인다 (효율 보관). 원래 작으면 키우지 않는다.
     AsyncFunction("transcodeVideo") { (inputUri: String, outputUri: String) async throws in
       guard let input = URL(string: inputUri), let output = URL(string: outputUri) else {
@@ -108,4 +179,10 @@ private func parseOffset(_ value: String) -> Int? {
   }
   let total = hours * 60 + minutes
   return text[0] == "-" ? -total : total
+}
+
+private func offsetText(_ minutes: Int) -> String {
+  let sign = minutes < 0 ? "-" : "+"
+  let value = abs(minutes)
+  return String(format: "%@%02d:%02d", sign, value / 60, value % 60)
 }

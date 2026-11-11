@@ -5,11 +5,11 @@ import * as MediaLibrary from 'expo-media-library';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { getThumbnailAsync } from 'expo-video-thumbnails';
 
-import { md5File, transcodeVideo } from '@modules/photo-meta';
+import { md5File, transcodeVideo, writeImageMetadata, type ImageMetadata } from '@modules/photo-meta';
 
 import { createAlbum, updateAlbumMoments } from '@/db/albums';
 import { notifyChange } from '@/db/changes';
-import { inTransaction, setMomentSource } from '@/db/moments';
+import { inTransaction, setMomentSource, type MediaType } from '@/db/moments';
 import { getSettings, setSetting } from '@/db/settings';
 import { CloudError, cloudApi, unwrap } from '@/lib/cloud/session';
 import { assetFileUri, hasLimitedPhotoAccess, MEDIA_PERMISSIONS, MEDIA_TYPES } from '@/lib/photos';
@@ -268,8 +268,13 @@ async function uploadOne(db: SQLiteDatabase, { id, variant }: PendingUpload) {
     media_type: string;
     width: number | null;
     height: number | null;
+    taken_at: string;
+    taken_tz_offset: number | null;
+    lat: number | null;
+    lng: number | null;
   }>(
-    'SELECT source_asset_id, source_missing, media_type, width, height FROM moments WHERE id = ? AND deleted_at IS NULL',
+    `SELECT source_asset_id, source_missing, media_type, width, height, taken_at, taken_tz_offset, lat, lng
+     FROM moments WHERE id = ? AND deleted_at IS NULL`,
     id,
   );
   if (!row) return false; // 올리는 동안 기록에서 뺐다.
@@ -304,8 +309,8 @@ async function uploadOne(db: SQLiteDatabase, { id, variant }: PendingUpload) {
       ? await makeCompactVideo(sourceUri)
       : variant === 'display' || variant === 'thumb'
         ? await (video
-            ? makeVideoPoster(sourceUri, width, height, IMAGE_SIZES[variant])
-            : makeImage(sourceUri, width, height, IMAGE_SIZES[variant]))
+            ? makeVideoPoster(sourceUri, width, height, IMAGE_SIZES[variant], variant === 'display' ? imageMetadata(row) : undefined)
+            : makeImage(sourceUri, width, height, IMAGE_SIZES[variant], variant === 'display' ? imageMetadata(row) : undefined))
         : video
           ? new File(sourceUri)
           : copyToUploadDir(sourceUri, info.filename);
@@ -389,13 +394,13 @@ async function uploadFile(id: string, variant: Variant, file: File, video: boole
 }
 
 /** 동영상의 대표 장면을 표시용·썸네일 이미지로 만든다 (첫 장면은 검은 화면일 때가 많아 1초 쯤에서). */
-async function makeVideoPoster(uri: string, width: number, height: number, size: ImageSize) {
+async function makeVideoPoster(uri: string, width: number, height: number, size: ImageSize, metadata?: ImageMetadata) {
   const frame = await getThumbnailAsync(uri, { time: POSTER_TIME_MS }).catch(() =>
     // 1초보다 짧은 영상
     getThumbnailAsync(uri, { time: 0 }),
   );
   try {
-    return await makeImage(frame.uri, frame.width || width, frame.height || height, size);
+    return await makeImage(frame.uri, frame.width || width, frame.height || height, size, metadata);
   } finally {
     const file = new File(frame.uri);
     if (file.exists) file.delete();
@@ -423,7 +428,7 @@ const IMAGE_SIZES: Record<'display' | 'thumb', ImageSize> = {
 };
 
 /** 긴 변을 size.longEdge 이하로 줄인 JPEG */
-async function makeImage(uri: string, width: number, height: number, { longEdge, quality }: ImageSize) {
+async function makeImage(uri: string, width: number, height: number, { longEdge, quality }: ImageSize, metadata?: ImageMetadata) {
   const context = ImageManipulator.manipulate(uri);
   if (Math.max(width, height) > longEdge) {
     context.resize(width >= height ? { width: longEdge, height: null } : { width: null, height: longEdge });
@@ -432,11 +437,18 @@ async function makeImage(uri: string, width: number, height: number, { longEdge,
   const image = await context.renderAsync();
   try {
     const result = await image.saveAsync({ format: SaveFormat.JPEG, compress: quality });
+    // 메타데이터를 쓸 수 없는 손상된 원본이 있어도 사진 보관 자체가 멈추면 안 된다.
+    // 촬영 정보는 moments에 이미 별도로 보관·동기화돼 있다.
+    if (metadata) await writeImageMetadata(result.uri, metadata).catch(() => {});
     return new File(result.uri);
   } finally {
     image.release();
     context.release();
   }
+}
+
+function imageMetadata(row: { taken_at: string; taken_tz_offset: number | null; lat: number | null; lng: number | null }): ImageMetadata {
+  return { takenAt: row.taken_at, takenTzOffset: row.taken_tz_offset, lat: row.lat, lng: row.lng };
 }
 
 async function recordFailure(db: SQLiteDatabase, item: PendingUpload, error: unknown, retryAfterMs?: number) {
@@ -528,28 +540,39 @@ export class PhotoSaveError extends Error {}
 export async function saveOriginalsToLibrary(
   db: SQLiteDatabase,
   onProgress: (done: number, total: number) => void,
+  options: { momentIds?: string[]; includeEfficient?: boolean } = {},
 ) {
+  // momentIds를 받으면 안전 앨범 하나만 복원한다. 빈 배열을 IN ()으로 넘기지 않아야 하므로
+  // 권한을 묻기 전 여기서 바로 끝낸다.
+  if (options.momentIds?.length === 0) return { total: 0, failed: 0, linked: 0 };
   // 읽기 권한까지 받는다. iOS의 '추가만 허용'으로는 저장한 사진을 다시 읽지 못해 기록에 이을 수 없고,
   // 저장은 됐는데 실패로 처리되어 다시 시도할 때 사진이 중복된다.
   const permission = await MediaLibrary.requestPermissionsAsync(false, MEDIA_PERMISSIONS);
   if (!permission.granted) throw new PhotoSaveError('사진을 저장하려면 사진 접근을 허용해 주세요.');
 
-  const rows = await db.getAllAsync<{ id: string; original_filename: string | null; taken_at: string }>(
-    `SELECT id, original_filename, taken_at FROM moments
-     WHERE deleted_at IS NULL AND original_uploaded = 1
+  const ids = options.momentIds ?? null;
+  const rows = await db.getAllAsync<DownloadableMoment>(
+    `SELECT id, original_filename, media_type, taken_at, taken_tz_offset, lat, lng,
+       original_uploaded, display_uploaded, compact_uploaded
+     FROM moments
+     WHERE deleted_at IS NULL AND ${options.includeEfficient ? '(original_uploaded = 1 OR display_uploaded = 1 OR compact_uploaded = 1)' : 'original_uploaded = 1'}
        AND (source_asset_id IS NULL OR source_missing = 1)
+       ${ids ? `AND id IN (${ids.map(() => '?').join(', ')})` : ''}
      ORDER BY taken_at`,
+    ...(ids ?? []),
   );
   let failed = 0;
+  let linked = 0;
   try {
     for (const [index, row] of rows.entries()) {
       onProgress(index, rows.length);
       try {
-        const asset = (await findSameAsset(row)) ?? (await saveOriginal(row.id));
+        const result = await saveOrFindPhoto(row, options.includeEfficient ?? false);
+        if (result.linked) linked++;
         await db.runAsync(
           'UPDATE moments SET source_asset_id = ?, source_uri = ?, source_missing = 0, source_link_synced = 0 WHERE id = ?',
-          asset.id,
-          asset.uri,
+          result.asset.id,
+          result.asset.uri,
           row.id,
         );
       } catch (e) {
@@ -562,26 +585,68 @@ export async function saveOriginalsToLibrary(
     notifyChange();
   }
   onProgress(rows.length, rows.length);
-  return { total: rows.length, failed };
+  return { total: rows.length, failed, linked };
 }
 
-async function saveOriginal(momentId: string) {
+/**
+ * 원본은 MD5까지 같은 사진첩 항목을 찾아 연결한다. 효율 보관 파일은 원본과 같은 바이트일 수 없으므로,
+ * 안정적으로 만든 파일명으로 다시 찾는다. 이 파일명은 첫 다운로드에서도 사진첩에 그대로 저장된다.
+ */
+type DownloadableMoment = {
+  id: string;
+  original_filename: string | null;
+  media_type: MediaType;
+  taken_at: string;
+  taken_tz_offset: number | null;
+  lat: number | null;
+  lng: number | null;
+  original_uploaded: number;
+  display_uploaded: number;
+  compact_uploaded: number;
+};
+
+function downloadVariant(row: DownloadableMoment, includeEfficient: boolean): Variant {
+  if (row.original_uploaded === 1) return 'original';
+  if (!includeEfficient) throw new Error('원본이 없어요');
+  if (row.media_type === 'video' && row.compact_uploaded === 1) return 'compact';
+  if (row.display_uploaded === 1) return 'display';
+  // compact만 남은 비정상 상태도 내려받을 수 있게 한다.
+  if (row.compact_uploaded === 1) return 'compact';
+  throw new Error('다운로드할 파일이 없어요');
+}
+
+async function saveOrFindPhoto(row: DownloadableMoment, includeEfficient: boolean) {
+  const variant = downloadVariant(row, includeEfficient);
   const dir = cacheDir('upload');
-  const file = new File(dir, `${momentId}-original`);
-  const ext = await downloadTo(momentId, 'original', file);
+  const file = new File(dir, `${row.id}-${variant}`);
+  const ext = await downloadTo(row.id, variant, file);
   // 사진첩이 형식을 확장자로 판단하므로 받은 형식의 확장자를 붙인다.
-  const named = new File(dir, `${momentId}.${ext}`);
+  const filename = downloadedFilename(row, ext, variant);
+  const named = new File(dir, filename);
   if (named.exists) named.delete();
   file.move(named);
   try {
-    return await MediaLibrary.createAssetAsync(named.uri);
+    // 예전 효율 보관 JPEG에는 EXIF가 없을 수 있다. 기록에 둔 값으로 내려받는 파일에는 채운다.
+    if (variant === 'display' && row.media_type === 'photo') await writeImageMetadata(named.uri, imageMetadata(row)).catch(() => {});
+    const existing = variant === 'original' ? await findSameOriginal(row, named.uri) : await findSameNamedAsset(row, filename);
+    if (existing) return { asset: existing, linked: true };
+    return { asset: await MediaLibrary.createAssetAsync(named.uri), linked: false };
   } finally {
     if (named.exists) named.delete();
   }
 }
 
-// 파일 이름이 같고 촬영 시각이 2초 안이면 같은 사진으로 본다.
-async function findSameAsset(row: { original_filename: string | null; taken_at: string }) {
+function downloadedFilename(row: Pick<DownloadableMoment, 'id' | 'original_filename'>, ext: string, variant: Variant) {
+  // 파일명은 원래 사진첩이 정한 값이지만, 동기화 데이터가 깨져 경로 문자가 들어와도 캐시 밖을 건드리지 않게 한다.
+  const original = row.original_filename?.split(/[\\/]/).pop();
+  const base = original?.replace(/\.[^.]+$/, '') || `Keepsake_${row.id}`;
+  // 원본은 카메라·iCloud 사진과 비교할 수 있게 원래 파일명을 유지한다. 효율 파일은 서로 다른
+  // IMG_0001 같은 이름이 임시 폴더에서 충돌하지 않게 기록 id를 붙이고, 다음 다운로드 때도 같은 이름을 쓴다.
+  return variant === 'original' ? `${base}.${ext}` : `Keepsake_${row.id.slice(0, 8)}_${base}.${ext}`;
+}
+
+// 파일 이름과 촬영 시각이 가까운 항목만 읽어서, 원본 파일의 MD5까지 같은지 확인한다.
+async function findSameOriginal(row: Pick<DownloadableMoment, 'original_filename' | 'taken_at'>, originalUri: string) {
   if (!row.original_filename) return null;
   const taken = new Date(row.taken_at).getTime();
   const page = await MediaLibrary.getAssetsAsync({
@@ -590,7 +655,26 @@ async function findSameAsset(row: { original_filename: string | null; taken_at: 
     createdBefore: taken + 2001,
     first: 20,
   });
-  return page.assets.find((asset) => asset.filename === row.original_filename) ?? null;
+  const originalMd5 = await md5File(originalUri);
+  for (const candidate of page.assets) {
+    if (candidate.filename !== row.original_filename) continue;
+    const info = await MediaLibrary.getAssetInfoAsync(candidate.id, { shouldDownloadFromNetwork: true }).catch(() => null);
+    const uri = info && assetFileUri(info);
+    if (uri && (await md5File(uri).catch(() => null)) === originalMd5) return candidate;
+  }
+  return null;
+}
+
+// 효율 보관본은 원본과 바이트가 달라 MD5를 비교하지 않는다. 첫 다운로드 때 쓴 파일명을 그대로 찾아 다시 저장하지 않는다.
+async function findSameNamedAsset(row: Pick<DownloadableMoment, 'taken_at'>, filename: string) {
+  const taken = new Date(row.taken_at).getTime();
+  const page = await MediaLibrary.getAssetsAsync({
+    mediaType: MEDIA_TYPES,
+    createdAfter: taken - 2000,
+    createdBefore: taken + 2001,
+    first: 20,
+  });
+  return page.assets.find((asset) => asset.filename === filename) ?? null;
 }
 
 /** 사진 하나를 받아 destination에 둔다. 저장한 형식의 확장자를 돌려준다. */
