@@ -37,6 +37,11 @@ export type Settings = {
   cloud_account_key: string | null;
   /** 이 계정 공간에서 기기 사진 연결을 되살리는 일을 마쳤는지 */
   cloud_links_restored: boolean;
+  /**
+   * 다른 기기의 기록을 이 기기 사진첩과 잇는 일(relinkFromLibrary)을 마지막으로 했을 때의 사진첩 사진 수와
+   * 아직 잇지 못한 기록 수·마지막 변경 시각. 모두 그대로면 다시 찾지 않는다.
+   */
+  cloud_relink_state: { library: number; unlinked: number; latest_updated_at: string | null } | null;
   /** 안전 앨범이 생기기 전에 올린 사진을 '이전에 보관한 사진' 앨범에 담았는지 (lib/cloud/photos.ts) */
   cloud_photos_adopted: boolean;
   /** 서버 데이터가 지워져 파일을 지울 계정 공간의 user_id */
@@ -87,6 +92,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cloud_pull_cursor: 0,
   cloud_account_key: null,
   cloud_links_restored: false,
+  cloud_relink_state: null,
   cloud_photos_adopted: false,
   retired_spaces: [],
   retiring_spaces: [],
@@ -111,6 +117,7 @@ const ACCOUNT_KEYS: readonly (keyof Settings)[] = [
   'cloud_pull_cursor',
   'cloud_account_key',
   'cloud_links_restored',
+  'cloud_relink_state',
   'cloud_photos_adopted',
 ];
 
@@ -165,6 +172,18 @@ const VALIDATORS: Record<keyof Settings, (value: unknown) => boolean> = {
   cloud_pull_cursor: (v) => Number.isInteger(v) && (v as number) >= 0,
   cloud_account_key: (v) => v === null || typeof v === 'string',
   cloud_links_restored: (v) => typeof v === 'boolean',
+  cloud_relink_state: (v) => {
+    if (v === null) return true;
+    if (typeof v !== 'object' || Array.isArray(v)) return false;
+    const s = v as Record<string, unknown>;
+    return (
+      Number.isInteger(s.library) &&
+      (s.library as number) >= 0 &&
+      Number.isInteger(s.unlinked) &&
+      (s.unlinked as number) >= 0 &&
+      isIsoOrNull(s.latest_updated_at)
+    );
+  },
   cloud_photos_adopted: (v) => typeof v === 'boolean',
   retired_spaces: (v) => Array.isArray(v) && v.every((id) => typeof id === 'string'),
   retiring_spaces: (v) => Array.isArray(v) && v.every((id) => typeof id === 'string'),

@@ -12,7 +12,9 @@ import { cloudApi, unwrap } from '@/lib/cloud/session';
 import { MEDIA_PERMISSIONS, MEDIA_TYPES } from '@/lib/photos';
 
 // 기록과 이 기기 사진의 연결을 계정·기기별로 서버에 둔다. 앱을 다시 설치해도 원본을 다시 가리키기 위해서다.
-// 복구하지 못해도 잃는 것은 없다. 사진은 Cloud에서 받아 보여준다.
+// 새 휴대폰처럼 저장해 둔 연결이 없는 기기에서는 사진첩에서 같은 사진(파일 이름·촬영 시각)을 찾아 잇는다.
+// 이으면 무료 회원도 iCloud 사진·Google 포토로 옮겨진 사진을 기록과 함께 본다.
+// 복구하지 못해도 잃는 것은 없다. 안전 앨범의 사진은 Cloud에서 받아 보여준다.
 
 const LINK_BATCH = 200;
 const DEVICE_KEY = 'keepsake.device.id';
@@ -135,4 +137,76 @@ export async function restoreDeviceLinks(db: SQLiteDatabase, userId: string) {
   if (limited) limitedChecked = { userId, visible, at: Date.now() };
   else await setSetting(db, 'cloud_links_restored', true);
   if (restored > 0) notifyChange();
+}
+
+/**
+ * 사진과 이어지지 않은 기록(다른 기기에서 남긴 기록, 새 휴대폰)을 이 기기 사진첩의 같은 사진과 잇는다.
+ * 촬영 시각이 ±2초 안이고 파일 이름까지 같은 사진이 하나뿐일 때만 잇는다. 이미 다른 기록이 가리키는 사진,
+ * 촬영 시각을 고친 기록은 잇지 않는다 (잘못 잇느니 잇지 않는다). 이은 연결은 pushDeviceLinks가 이 기기 몫으로 보낸다.
+ * 사진첩 사진 수·아직 잇지 못한 기록 수·마지막 변경 시각이 지난번과 같으면 다시 찾지 않는다.
+ */
+export async function relinkFromLibrary(db: SQLiteDatabase) {
+  const { granted } = await MediaLibrary.getPermissionsAsync(false, MEDIA_PERMISSIONS);
+  if (!granted) return;
+  const unlinked = await db.getAllAsync<{
+    id: string;
+    original_filename: string;
+    taken_at: string;
+    updated_at: string;
+  }>(
+    `SELECT id, original_filename, taken_at, updated_at FROM moments
+     WHERE deleted_at IS NULL AND source_asset_id IS NULL AND original_filename IS NOT NULL`,
+  );
+  if (unlinked.length === 0) return;
+  const library = (await MediaLibrary.getAssetsAsync({ mediaType: MEDIA_TYPES, first: 1 })).totalCount;
+  const latestUpdatedAt = unlinked.reduce<string | null>(
+    (latest, moment) => (!latest || moment.updated_at > latest ? moment.updated_at : latest),
+    null,
+  );
+  const last = (await getSettings(db)).cloud_relink_state;
+  if (
+    last &&
+    last.library === library &&
+    last.unlinked === unlinked.length &&
+    last.latest_updated_at === latestUpdatedAt
+  ) {
+    return;
+  }
+
+  const used = new Set(
+    (
+      await db.getAllAsync<{ source_asset_id: string }>(
+        'SELECT source_asset_id FROM moments WHERE deleted_at IS NULL AND source_asset_id IS NOT NULL',
+      )
+    ).map((row) => row.source_asset_id),
+  );
+  let relinked = 0;
+  for (const moment of unlinked) {
+    const takenAt = new Date(moment.taken_at).getTime();
+    if (Number.isNaN(takenAt)) continue;
+    const { assets } = await MediaLibrary.getAssetsAsync({
+      mediaType: MEDIA_TYPES,
+      createdAfter: takenAt - SAME_PHOTO_MS,
+      createdBefore: takenAt + SAME_PHOTO_MS,
+      first: 50,
+    });
+    const matches = assets.filter((asset) => asset.filename === moment.original_filename && !used.has(asset.id));
+    if (matches.length !== 1) continue;
+    const [asset] = matches;
+    await db.runAsync(
+      `UPDATE moments SET source_asset_id = ?, source_uri = ?, source_missing = 0, source_link_synced = 0
+       WHERE id = ? AND source_asset_id IS NULL`,
+      asset.id,
+      asset.uri,
+      moment.id,
+    );
+    used.add(asset.id);
+    relinked++;
+  }
+  await setSetting(db, 'cloud_relink_state', {
+    library,
+    unlinked: unlinked.length - relinked,
+    latest_updated_at: latestUpdatedAt,
+  });
+  if (relinked > 0) notifyChange();
 }

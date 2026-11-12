@@ -38,7 +38,7 @@ export function RecordBackupRows() {
       />
       {account && (
         <SettingsRow
-          label="기기 기록 올리기"
+          label="기기 기록 백업하기"
           icon={CloudArrowUpIcon}
           onPress={() => router.push({ pathname: '/cloud-import', params: { all: '1' } })}
         />

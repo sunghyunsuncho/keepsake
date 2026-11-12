@@ -4,7 +4,7 @@ import type { Asset } from 'expo-media-library';
 import { router, useNavigation } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { AlbumNameSheet } from '@/components/album-name-sheet';
@@ -129,6 +129,8 @@ function PermissionIntro({
 /** 처음 실행할 때 어느 사진부터 살펴볼지 정한다. 이후로는 '여기까지 봤어요' 지점부터 이어서 보여준다. */
 function StartPoint() {
   const db = useSQLiteContext();
+  const theme = useTheme();
+  const { language } = useTranslation();
   const [choosingDate, setChoosingDate] = useState(false);
   const [startingArchive, setStartingArchive] = useState(false);
 
@@ -152,29 +154,53 @@ function StartPoint() {
     }
   };
 
+  const since = (date: Date) => {
+    const locale = language === 'en' ? 'en-US' : language === 'ja' ? 'ja-JP' : 'ko-KR';
+    const day = new Intl.DateTimeFormat(locale, { month: 'long', day: 'numeric' }).format(date);
+    return language === 'en' ? `From ${day}` : language === 'ja' ? `${day}から` : `${day}부터`;
+  };
+
   return (
-    <Centered style={styles.startPoint}>
-      <ThemedText type="subtitle" style={styles.center}>
-        어디서부터 고를까요?
-      </ThemedText>
-      <ThemedText themeColor="textSecondary" style={styles.center}>
-        처음부터 시작해도 괜찮아요. 중간에 멈추면 다음번에 그 뒤부터 이어서 보여드려요.{"\n"}
-        {'\n'}
-        필름 한 롤을 다 찍고 나서 남길 사진을 고르듯,{'\n'}
-        Keepsake는 지난번에 살펴본 다음 사진부터 차례로 보여드려요.
-      </ThemedText>
-      <View style={styles.startOptions}>
-        <Button
-          label={startingArchive ? '사진을 찾는 중…' : '처음부터 조금씩 고르기'}
-          variant="secondary"
-          disabled={startingArchive}
+    <ScrollView contentContainerStyle={styles.startPoint}>
+      <View style={styles.startHeading}>
+        <View style={[styles.startIcon, { backgroundColor: theme.accent + '18' }]}>
+          <Ionicons name="film-outline" size={26} color={theme.accent} />
+        </View>
+        <ThemedText style={styles.startTitle} lineBreakStrategyIOS="hangul-word">
+          어디서부터 고를까요?
+        </ThemedText>
+        <ThemedText themeColor="textSecondary" style={styles.center} lineBreakStrategyIOS="hangul-word">
+          필름 한 롤을 다 찍고 고르듯, 살펴본 사진 다음부터 차례로 보여 드려요.
+        </ThemedText>
+      </View>
+      {/* 항목 사이의 가는 선은 바탕(border)이 gap으로 비쳐 보이게 그린다. */}
+      <View style={[styles.startOptions, { backgroundColor: theme.border }]}>
+        <StartOption
+          icon="today-outline"
+          label="오늘 찍은 사진부터"
+          detail="지금부터 찍는 사진을 가볍게 골라요"
+          recommended
+          onPress={() => startFrom(new Date())}
+        />
+        <StartOption icon="calendar-outline" label="최근 1주" detail={since(daysAgo(6))} onPress={() => startFrom(daysAgo(6))} />
+        <StartOption icon="calendar-outline" label="최근 한 달" detail={since(daysAgo(30))} onPress={() => startFrom(daysAgo(30))} />
+        <StartOption
+          icon="calendar-number-outline"
+          label="날짜 고르기"
+          detail="원하는 날부터 시작해요"
+          onPress={() => setChoosingDate(true)}
+        />
+        <StartOption
+          icon="albums-outline"
+          label="처음부터 조금씩 고르기"
+          detail={startingArchive ? '사진을 찾는 중…' : '가장 오래된 사진부터 차례로 봐요'}
+          loading={startingArchive}
           onPress={startFromBeginning}
         />
-        <Button label="오늘 찍은 사진부터" onPress={() => startFrom(new Date())} />
-        <Button label="최근 1주" variant="secondary" onPress={() => startFrom(daysAgo(6))} />
-        <Button label="최근 한 달" variant="secondary" onPress={() => startFrom(daysAgo(30))} />
-        <Button label="날짜 고르기" variant="secondary" onPress={() => setChoosingDate(true)} />
       </View>
+      <ThemedText type="small" themeColor="textSecondary" style={styles.center} lineBreakStrategyIOS="hangul-word">
+        중간에 멈춰도 다음에 이어서 볼 수 있어요.
+      </ThemedText>
       <DateSheet
         visible={choosingDate}
         value={daysAgo(7)}
@@ -186,7 +212,53 @@ function StartPoint() {
         }}
         onCancel={() => setChoosingDate(false)}
       />
-    </Centered>
+    </ScrollView>
+  );
+}
+
+function StartOption({
+  icon,
+  label,
+  detail,
+  recommended,
+  loading,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  detail: string;
+  recommended?: boolean;
+  loading?: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={loading}
+      accessibilityRole="button"
+      style={({ pressed }) => [
+        styles.startOption,
+        { backgroundColor: pressed ? theme.backgroundSelected : theme.backgroundElement },
+      ]}>
+      <View style={[styles.startOptionIcon, { backgroundColor: recommended ? theme.accent : theme.background }]}>
+        <Ionicons name={icon} size={18} color={recommended ? theme.onAccent : theme.textSecondary} />
+      </View>
+      <View style={styles.flex}>
+        <View style={styles.startOptionLabel}>
+          <ThemedText type="smallBold">{label}</ThemedText>
+          {recommended && (
+            <View style={[styles.startBadge, { backgroundColor: theme.accent + '18' }]}>
+              <ThemedText style={[styles.startBadgeText, { color: theme.accent }]}>추천</ThemedText>
+            </View>
+          )}
+        </View>
+        <ThemedText type="small" themeColor="textSecondary">
+          {detail}
+        </ThemedText>
+      </View>
+      {loading ? <ActivityIndicator /> : <Ionicons name="chevron-forward" size={18} color={theme.chevron} />}
+    </Pressable>
   );
 }
 
@@ -724,8 +796,22 @@ function formatMoment(ms: number) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   center: { textAlign: 'center' },
-  startPoint: { paddingHorizontal: Spacing.four },
-  startOptions: { alignSelf: 'stretch', gap: Spacing.two },
+  startPoint: { flexGrow: 1, justifyContent: 'center', padding: Spacing.four, gap: Spacing.four },
+  startHeading: { alignItems: 'center', gap: Spacing.two, paddingHorizontal: Spacing.two },
+  startIcon: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.one },
+  startTitle: { fontSize: 24, lineHeight: 32, fontWeight: 700, textAlign: 'center' },
+  startOptions: { borderRadius: 16, overflow: 'hidden', gap: StyleSheet.hairlineWidth },
+  startOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+  },
+  startOptionIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  startOptionLabel: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: Spacing.two },
+  startBadge: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 1 },
+  startBadgeText: { fontSize: 12, lineHeight: 18, fontWeight: 600 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

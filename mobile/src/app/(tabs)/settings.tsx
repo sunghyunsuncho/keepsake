@@ -3,7 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { CloudArrowUpIcon, FileTextIcon, FlagIcon, GlobeSimpleIcon, ImageSquareIcon, LightbulbIcon, ShieldCheckIcon, SignInIcon, UserIcon } from 'phosphor-react-native';
+import { CloudArrowUpIcon, FileTextIcon, FlagIcon, GlobeSimpleIcon, ImageSquareIcon, LightbulbIcon, ListChecksIcon, ShieldCheckIcon, SignInIcon, UserIcon } from 'phosphor-react-native';
 
 import { AccountRows, CloudLibraryRows, RecordBackupRows } from '@/components/cloud-section';
 import { showActionSheet } from '@/components/action-sheet';
@@ -106,6 +106,7 @@ export default function SettingsScreen() {
 
         <SettingsSection title={t('helpAndInfo')}>
           <SettingsRow label={t('howToUse')} icon={LightbulbIcon} onPress={() => router.push('/welcome')} />
+          <SettingsRow label={t('plansGuide')} icon={ListChecksIcon} onPress={() => router.push('/plans')} />
           <SettingsRow
             label={t('terms')}
             icon={FileTextIcon}
@@ -160,7 +161,9 @@ function ProfileCard({ signedIn, account }: { signedIn: boolean; account: Accoun
           </ThemedText>
         </View>
       </View>
-      {action && <SettingsRow label={action.label} icon={action.icon} onPress={() => router.push('/cloud')} />}
+      {action && (
+        <SettingsRow label={action.label} icon={action.icon} onPress={() => router.push(signedIn ? '/cloud' : '/sign-in')} />
+      )}
     </SettingsCard>
   );
 }

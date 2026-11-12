@@ -235,6 +235,9 @@ export async function resetAccountSpace(db: SQLiteDatabase) {
   });
   await setSetting(db, 'cloud_pull_cursor', 0);
   await setSetting(db, 'cloud_links_restored', false);
+  // 서버 데이터 세대가 바뀌면 기존 기록 수를 기준으로 한 사진첩 재연결 캐시도 쓸 수 없다.
+  // 그대로 두면 새 기록 수와 사진 수가 우연히 같을 때 재연결 탐색을 건너뛴다.
+  await setSetting(db, 'cloud_relink_state', null);
   await setSetting(db, 'cloud_photos_adopted', false);
 }
 

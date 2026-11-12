@@ -3,7 +3,7 @@ import { useNetworkState } from 'expo-network';
 import { router, useNavigation } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useLayoutEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AlbumSectionHeader, MomentsRowCard } from '@/components/album-shelf';
 import { Button } from '@/components/button';
@@ -67,20 +67,7 @@ export default function CloudLibraryScreen() {
           <CloudAlbums />
         ) : (
           <>
-            <View style={styles.lockedIntro}>
-              <ThemedText type="subtitle">안전 보관 사진첩</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                이 계정의 안전 보관 공간에 저장된 사진과 앨범이에요. 기기를 바꿔도 로그인하면 다시 볼 수 있어요.
-              </ThemedText>
-            </View>
-            <View style={styles.empty}>
-              <Ionicons name="cloud-outline" size={40} color={theme.textSecondary} />
-              <ThemedText type="smallBold">아직 안전 보관 사진첩이 없어요</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.center}>
-                구독하면 안전 앨범에 담은 사진을 이 계정에 보관하고, 다른 기기에서도 볼 수 있어요.
-              </ThemedText>
-              <Button label={session ? '구독하기' : '안전 보관 알아보기'} onPress={() => router.push('/cloud')} />
-            </View>
+            <SecureStorageIntro signedIn={Boolean(session)} />
             {/* 초대받은 공유 앨범은 구독하지 않아도 본다. */}
             {session && <SharedAlbumSection canCreate={false} />}
           </>
@@ -89,6 +76,58 @@ export default function CloudLibraryScreen() {
       </ScrollView>
       <CloudAlbumGuide visible={guide} onClose={() => setGuide(false)} />
     </ThemedView>
+  );
+}
+
+const BENEFITS = [
+  { icon: 'shield-checkmark-outline', text: '안전 앨범에 담은 사진을 원본 그대로 보관해요' },
+  { icon: 'phone-portrait-outline', text: '기기 사진첩에서 지워도 남아서 휴대폰이 가벼워져요' },
+  { icon: 'sync-outline', text: '휴대폰을 잃어버려도, 사진첩 백업이 없어도 사진이 돌아와요' },
+] as const;
+
+/**
+ * 구독 전(비로그인·무료 회원)에 보이는 안내. 구독 회원 화면과 같은 '나만 보는 안전 앨범' 섹션에,
+ * 앨범 카드와 같은 모양의 카드로 지금 무엇이 지켜지는지와 구독하면 달라지는 점을 보여준다.
+ */
+function SecureStorageIntro({ signedIn }: { signedIn: boolean }) {
+  const theme = useTheme();
+  const { t } = useTranslation();
+  return (
+    <View style={styles.createdAlbums}>
+      <AlbumSectionHeader title="나만 보는 안전 앨범" />
+      <View style={[styles.intro, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+        <View style={styles.introRow}>
+          <View style={[styles.introTile, { backgroundColor: theme.backgroundSelected }]}>
+            <Ionicons name="cloud-outline" size={22} color={theme.textSecondary} />
+          </View>
+          <View style={styles.introBody}>
+            <ThemedText type="smallBold">남긴 사진을 안전하게 보관해요</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {signedIn
+                ? '지금은 메모·장소·날짜만 백업하고 있어요. 구독하면 사진 파일까지 지켜 드려요.'
+                : '로그인하면 기록을, 구독하면 사진까지 이 계정에 보관해요.'}
+            </ThemedText>
+          </View>
+        </View>
+        <View style={[styles.introDivider, { backgroundColor: theme.border }]} />
+        <View style={styles.benefits}>
+          {BENEFITS.map(({ icon, text }) => (
+            <View key={text} style={styles.benefit}>
+              <Ionicons name={icon} size={18} color={theme.accent} />
+              <ThemedText type="small" style={styles.flex}>
+                {text}
+              </ThemedText>
+            </View>
+          ))}
+        </View>
+        <Button label={signedIn ? '안전 보관 시작하기' : '안전 보관 알아보기'} onPress={() => router.push('/cloud')} />
+        <Pressable onPress={() => router.push('/plans')} accessibilityRole="button" hitSlop={8}>
+          <ThemedText type="smallBold" themeColor="textSecondary" style={[styles.center, styles.link]}>
+            {t('comparePlans')}
+          </ThemedText>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
@@ -254,7 +293,21 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { paddingVertical: Spacing.three, gap: Spacing.four, paddingBottom: Spacing.six },
   headerButtons: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
-  lockedIntro: { gap: Spacing.two, paddingHorizontal: Spacing.three },
+  // 앨범 카드(MomentsRowCard)와 같은 바탕·테두리·모서리
+  intro: {
+    marginHorizontal: Spacing.three,
+    padding: Spacing.three,
+    gap: Spacing.three,
+    borderRadius: Spacing.three,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  introRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  introTile: { width: 48, height: 48, borderRadius: Spacing.one + 2, alignItems: 'center', justifyContent: 'center' },
+  introBody: { flex: 1, gap: Spacing.half },
+  introDivider: { height: StyleSheet.hairlineWidth },
+  benefits: { gap: Spacing.two },
+  benefit: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  link: { textDecorationLine: 'underline' },
   offlineContent: { flexGrow: 1, justifyContent: 'center' },
   empty: { alignItems: 'center', gap: Spacing.two, paddingVertical: Spacing.five, paddingHorizontal: Spacing.three },
   center: { textAlign: 'center' },

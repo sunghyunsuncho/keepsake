@@ -1,14 +1,16 @@
-import * as AppleAuthentication from 'expo-apple-authentication';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import type { PurchasesPackage } from 'react-native-purchases';
 
 import { Button } from '@/components/button';
+import { SignInButtons } from '@/components/sign-in-buttons';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import type { AppLanguage } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { afterSignIn, refreshSubscription, useCloudState } from '@/lib/cloud/engine';
 import {
@@ -18,21 +20,16 @@ import {
   restorePurchases,
 } from '@/lib/cloud/purchases';
 import { useCloudSession } from '@/lib/cloud/session';
+import { useTranslation } from '@/lib/i18n';
 import { openLegalDocument } from '@/lib/legal';
-import {
-  appleSignInAvailable,
-  describeSignInError,
-  googleSignInAvailable,
-  SignInCancelled,
-  signInWithApple,
-  signInWithGoogle,
-} from '@/lib/cloud/sign-in';
+import { describeSignInError, SignInCancelled, signInWithApple, signInWithGoogle } from '@/lib/cloud/sign-in';
+import { formatSize } from '@/lib/storage';
 
-// 소개·가격 → [구독하기]를 누르면 로그인 → 구매 → 올릴 기기 기록 고르기 (docs/PLAN.md §2.4).
+// 소개·등급 비교·가격 → [구독하기]를 누르면 로그인 → 구매 → 기기 기록을 백업할지 묻기 (docs/PLAN.md §2.4).
 // 로그인만 해도 기록(메모·장소·앨범)을 백업하고, 구독하면 안전 앨범의 사진까지 보관한다.
 // 가격은 로그인 없이 볼 수 있다. 이미 구독한 사용자가 새 기기에서 로그인하면 구매 없이 바로 복원이 시작된다.
-// 결제를 연결하기 전(RevenueCat 키 없음)에는 서버가 로그인한 계정을 구독 중으로 보므로 로그인만 받는다.
-
+// 가입하면 무료 회원이다. 결제를 연결하기 전(RevenueCat 키 없음)에는 상품이 없어 구독을 준비 중이라고 알리고,
+// 구독 기능은 관리자가 구독 회원(무상 제공)으로 지정한 계정만 쓴다. 구매 복원·약관 안내도 결제가 있을 때만 보인다.
 
 // 계정 공간으로 바뀌면 내비게이션이 처음으로 돌아가 이미 닫혀 있을 수 있다.
 function closeScreen() {
@@ -42,10 +39,57 @@ function closeScreen() {
 /** 로그인한 뒤 이어서 할 일 */
 type Intent = { kind: 'purchase'; pkg: PurchasesPackage } | { kind: 'signIn' };
 
+/** 무료(로그인)와 안전 보관에서 되는 일. 자세한 등급 안내는 /plans, 기준은 docs/PRICING.md §2. */
+type Row = { text: string; free: boolean };
+const COMPARE: Record<AppLanguage, (size: string) => { free: string; paid: string; rows: Row[] }> = {
+  ko: (size) => ({
+    free: '무료',
+    paid: '안전 보관',
+    rows: [
+      { text: '메모·장소·날짜·앨범 백업', free: true },
+      { text: '새 휴대폰에서 같은 사진과 다시 잇기', free: true },
+      { text: '공유 앨범 참여', free: true },
+      { text: `사진·동영상 파일 보관 (${size})`, free: false },
+      { text: '사진첩에서 지워도 Keepsake에 남기', free: false },
+      { text: '휴대폰을 잃어버려도 사진 되찾기', free: false },
+      { text: '공유 앨범 만들기', free: false },
+    ],
+  }),
+  en: (size) => ({
+    free: 'Free',
+    paid: 'Secure',
+    rows: [
+      { text: 'Back up notes, places, dates, and albums', free: true },
+      { text: 'Reconnect to the same photos on a new phone', free: true },
+      { text: 'Join shared albums', free: true },
+      { text: `Store photo and video files (${size})`, free: false },
+      { text: 'Keep photos after deleting them from your library', free: false },
+      { text: 'Get photos back even if you lose your phone', free: false },
+      { text: 'Create shared albums', free: false },
+    ],
+  }),
+  ja: (size) => ({
+    free: '無料',
+    paid: '安全保管',
+    rows: [
+      { text: 'メモ・場所・日付・アルバムのバックアップ', free: true },
+      { text: '新しいスマホで同じ写真とまたつなぐ', free: true },
+      { text: '共有アルバムへの参加', free: true },
+      { text: `写真・動画ファイルの保管（${size}）`, free: false },
+      { text: 'ライブラリから削除してもKeepsakeに残す', free: false },
+      { text: 'スマホをなくしても写真を取り戻す', free: false },
+      { text: '共有アルバムの作成', free: false },
+    ],
+  }),
+};
+const DEFAULT_SIZE = '50GB';
+
 export default function CloudScreen() {
   const db = useSQLiteContext();
+  const theme = useTheme();
   const session = useCloudSession();
   const { account } = useCloudState();
+  const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   // 로그인 전에 고른 상품. 있으면 로그인 버튼을 보여준다.
   const [intent, setIntent] = useState<Intent | null>(purchasesAvailable ? null : { kind: 'signIn' });
@@ -71,7 +115,7 @@ export default function CloudScreen() {
     if (refreshed.subscription.can_upload) {
       Alert.alert(
         grace ? '다시 구독해 주셔서 고마워요' : '안전 보관을 시작했어요',
-        grace ? '백업한 기록이 그대로 이어져요.' : '올릴 기록을 고르면 백업을 시작해요.',
+        grace ? '백업한 기록이 그대로 이어져요.' : '안전 앨범에 담은 사진을 보관해요.',
       );
       closeScreen();
     } else {
@@ -92,8 +136,8 @@ export default function CloudScreen() {
       const next = intent;
       setIntent(null);
       if (signedIn.subscription.can_upload) {
-        // 이미 구독 중인 계정(또는 결제 연결 전): 구매하지 않고 바로 백업·복원을 시작한다.
-        Alert.alert('안전 보관에 연결했어요', '이 계정의 기록을 받아올게요. 이 기기의 기록은 고른 것만 올라가요.');
+        // 이미 구독 중인 계정(또는 관리자가 무상 제공한 계정): 구매하지 않고 바로 백업·복원을 시작한다.
+        Alert.alert('안전 보관에 연결했어요', '이 계정의 기록을 받아올게요. 이 기기의 기록은 백업하기로 고른 것만 들어가요.');
         closeScreen();
         return;
       }
@@ -104,27 +148,42 @@ export default function CloudScreen() {
       Alert.alert('로그인했어요', '이제 메모·장소·앨범을 이 계정에 백업해요. 사진까지 안전 보관하려면 구독해 주세요.');
     });
 
-  const subscribed = account?.subscription.can_upload ?? false;
+  const subscribed = Boolean(session) && (account?.subscription.can_upload ?? false);
 
   return (
     <ThemedView style={styles.flex}>
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.pitch}>
-          <ThemedText type="subtitle">남긴 사진은 지키고, 휴대폰은 가볍게</ThemedText>
-          <Feature text="로그인만 해도 메모·장소·앨범을 계정에 백업해요. 로그인하지 않으면 이 기기에만 남아요." />
-          <Feature text="구독하면 안전 앨범에 담은 사진을 보관해요. 앨범마다 원본 그대로, 또는 용량을 아끼는 효율 보관을 골라요." />
-          <Feature text="안전 보관이 끝난 사진은 기기 사진첩에서 지워도 Keepsake에 그대로 남아요. 휴대폰을 비워도 돼요." />
-          <Feature text="기기를 바꿔도 로그인만 하면 그대로 돌아와요." />
-          <Feature text="여러 기기에서 같은 사진첩을 볼 수 있어요." />
-          <ThemedText type="small" themeColor="textSecondary">
-            고르기와 사진첩은 이 기기에만 보관해도 모두 쓸 수 있어요. 기기의 기록은 고른 것만 안전 보관함에 복사되고, 구독과 관계없이 그대로 남아요.
+        <View style={styles.hero}>
+          <View style={[styles.heroIcon, { backgroundColor: theme.accent + '18' }]}>
+            <Ionicons name="shield-checkmark-outline" size={26} color={theme.accent} />
+          </View>
+          <ThemedText style={styles.heroTitle}>남긴 사진까지 안전하게</ThemedText>
+          <ThemedText themeColor="textSecondary">
+            로그인하면 기록을 무료로 백업해요. 구독하면 안전 앨범에 담은 사진 파일까지 보관해서, 사진첩에서 지우거나
+            휴대폰을 잃어버려도 사진이 남아요.
           </ThemedText>
         </View>
 
-        {session && subscribed ? (
+        <Compare subscribed={subscribed} />
+
+        <View style={styles.aside}>
+          <ThemedText type="small" themeColor="textSecondary">
+            로그인하지 않아도 사진 고르기·사진첩·정리는 모두 무료로 쓸 수 있어요.
+          </ThemedText>
+          <Pressable
+            onPress={() => router.push({ pathname: '/plans', params: { from: 'cloud' } })}
+            accessibilityRole="link"
+            hitSlop={8}>
+            <ThemedText type="smallBold" themeColor="textSecondary" style={styles.link}>
+              {t('comparePlans')}
+            </ThemedText>
+          </Pressable>
+        </View>
+
+        {subscribed ? (
           <View style={styles.section}>
-            <ThemedText>안전 보관을 사용하고 있어요.</ThemedText>
-            <Button label="닫기" onPress={() => router.back()} />
+            <Notice icon="checkmark-circle" title="안전 보관을 사용하고 있어요." />
+            <Button label="닫기" variant="secondary" onPress={closeScreen} />
           </View>
         ) : !session && intent ? (
           <SignInButtons
@@ -134,7 +193,7 @@ export default function CloudScreen() {
                 ? '백업한 사진을 다른 기기에서도 찾을 수 있도록, 구독 전에 로그인해 주세요.'
                 : purchasesAvailable
                   ? '이미 구독 중이라면 같은 계정으로 로그인하면 백업한 기록을 받아와요.'
-                  : '로그인하면 이 계정의 안전 보관함을 볼 수 있어요. 다른 기기에서 같은 계정으로 로그인하면 기록을 받아와요.'
+                  : '로그인하면 기록을 무료로 백업해요. 다른 기기에서 같은 계정으로 로그인하면 기록을 받아와요.'
             }
             onApple={() => signIn(signInWithApple)}
             onGoogle={() => signIn(signInWithGoogle)}
@@ -160,63 +219,62 @@ export default function CloudScreen() {
   );
 }
 
-function Feature({ text }: { text: string }) {
+/** 무료와 안전 보관을 한 표로 비교한다. 지금 쓰는 쪽 열 제목을 강조한다. */
+function Compare({ subscribed }: { subscribed: boolean }) {
   const theme = useTheme();
+  const { language } = useTranslation();
+  const { account } = useCloudState();
+  const copy = COMPARE[language](account?.usage ? formatSize(account.usage.max_bytes) : DEFAULT_SIZE);
+  const mark = (on: boolean, paid: boolean) => (
+    <View style={styles.cell}>
+      {on ? (
+        <Ionicons name="checkmark" size={18} color={paid ? theme.accent : theme.text} />
+      ) : (
+        <View style={[styles.dash, { backgroundColor: theme.border }]} />
+      )}
+    </View>
+  );
   return (
-    <View style={styles.feature}>
-      <View style={[styles.dot, { backgroundColor: theme.accent }]} />
-      <ThemedText style={styles.flex}>{text}</ThemedText>
+    <View style={[styles.compare, { backgroundColor: theme.backgroundElement }]}>
+      <View style={styles.row}>
+        <View style={styles.flex} />
+        <View style={styles.cell}>
+          <ThemedText type="smallBold" themeColor={subscribed ? 'textSecondary' : 'text'}>
+            {copy.free}
+          </ThemedText>
+        </View>
+        <View style={styles.cell}>
+          <ThemedText type="smallBold" style={{ color: theme.accent }}>
+            {copy.paid}
+          </ThemedText>
+        </View>
+      </View>
+      {copy.rows.map((row) => (
+        <View key={row.text} style={[styles.row, styles.rowLine, { borderTopColor: theme.border }]}>
+          <ThemedText type="small" style={styles.flex}>
+            {row.text}
+          </ThemedText>
+          {mark(row.free, false)}
+          {mark(true, true)}
+        </View>
+      ))}
     </View>
   );
 }
 
-function SignInButtons({
-  busy,
-  reason,
-  onApple,
-  onGoogle,
-  onCancel,
-}: {
-  busy: boolean;
-  reason: string;
-  onApple: () => void;
-  onGoogle: () => void;
-  onCancel?: () => void;
-}) {
-  const scheme = useColorScheme();
-  const [apple, setApple] = useState(false);
-  useEffect(() => {
-    appleSignInAvailable().then(setApple);
-  }, []);
-
+function Notice({ icon, title, text }: { icon: keyof typeof Ionicons.glyphMap; title: string; text?: string }) {
+  const theme = useTheme();
   return (
-    <View style={styles.section}>
-      <ThemedText type="smallBold">로그인</ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">
-        {reason}
-      </ThemedText>
-      {apple && (
-        <AppleAuthentication.AppleAuthenticationButton
-          buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-          buttonStyle={
-            scheme === 'dark'
-              ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
-              : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
-          }
-          cornerRadius={Spacing.three}
-          style={styles.appleButton}
-          onPress={busy ? () => {} : onApple}
-        />
-      )}
-      {googleSignInAvailable && (
-        <Button label="Google로 계속하기" variant="secondary" loading={busy} onPress={onGoogle} />
-      )}
-      {!apple && !googleSignInAvailable && (
-        <ThemedText type="small" themeColor="textSecondary">
-          이 빌드에서는 로그인을 사용할 수 없어요.
-        </ThemedText>
-      )}
-      {onCancel && <Button label="돌아가기" variant="secondary" disabled={busy} onPress={onCancel} />}
+    <View style={[styles.notice, { borderColor: theme.border }]}>
+      <Ionicons name={icon} size={20} color={theme.accent} />
+      <View style={[styles.flex, styles.noticeText]}>
+        <ThemedText type="smallBold">{title}</ThemedText>
+        {text && (
+          <ThemedText type="small" themeColor="textSecondary">
+            {text}
+          </ThemedText>
+        )}
+      </View>
     </View>
   );
 }
@@ -245,6 +303,17 @@ function Paywall({
   }, []);
 
   if (packages === null) return <ActivityIndicator />;
+
+  // 결제를 아직 연결하지 않은 빌드: 살 수도, 복원할 수도 없으니 준비 중이라고만 알린다.
+  if (!purchasesAvailable) {
+    return (
+      <Notice
+        icon="time-outline"
+        title="안전 보관 구독은 준비하고 있어요"
+        text={signedIn ? '지금은 이 계정에 기록을 무료로 백업하고 있어요.' : '지금은 로그인해서 기록을 무료로 백업할 수 있어요.'}
+      />
+    );
+  }
 
   return (
     <View style={styles.section}>
@@ -300,12 +369,26 @@ function periodLabel(period: string | null) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { padding: Spacing.four, gap: Spacing.five, paddingBottom: Spacing.six },
-  pitch: { gap: Spacing.three },
-  feature: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  dot: { width: 6, height: 6, borderRadius: 3 },
+  content: { padding: Spacing.four, gap: Spacing.four, paddingBottom: Spacing.six },
+  hero: { gap: Spacing.two },
+  heroIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.one },
+  heroTitle: { fontSize: 24, lineHeight: 32, fontWeight: 700 },
+  compare: { borderRadius: 16, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two },
+  row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingVertical: Spacing.two },
+  rowLine: { borderTopWidth: StyleSheet.hairlineWidth },
+  cell: { width: 64, alignItems: 'center' },
+  dash: { width: 10, height: 2, borderRadius: 1 },
+  aside: { gap: Spacing.two },
   section: { gap: Spacing.three },
-  appleButton: { height: 48 },
+  notice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  noticeText: { gap: Spacing.one },
   legal: { flexDirection: 'row', gap: Spacing.three },
   link: { textDecorationLine: 'underline' },
 });

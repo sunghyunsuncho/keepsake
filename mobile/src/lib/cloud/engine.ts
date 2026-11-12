@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react';
 
 import { getSettings, setSetting } from '@/db/settings';
 import { isAccountDb, keepAccountSpace, retireAccountSpace } from '@/db/spaces';
-import { pushDeviceLinks, restoreDeviceLinks } from '@/lib/cloud/device-links';
+import { pushDeviceLinks, relinkFromLibrary, restoreDeviceLinks } from '@/lib/cloud/device-links';
 import { adoptPhotosWithoutAlbum, countPendingUploads, releaseUnwantedPhotos, uploadPending } from '@/lib/cloud/photos';
 import { clearPurchasesUser, setPurchasesUser } from '@/lib/cloud/purchases';
 import { registerPushToken } from '@/lib/cloud/push';
@@ -165,6 +165,8 @@ async function runOnce(db: SQLiteDatabase, onlyIfLocalChanges: boolean) {
     await refreshSharedItems(db);
     // 연결은 없어도 사진을 Cloud에서 볼 수 있으므로, 실패해도 백업을 멈추지 않고 다음에 다시 한다.
     await restoreDeviceLinks(db, session.userId).catch(() => {});
+    // 저장해 둔 연결이 없는 기록(새 휴대폰, 다른 기기의 기록)은 사진첩에서 같은 사진을 찾아 잇는다.
+    await relinkFromLibrary(db).catch(() => {});
     await pushDeviceLinks(db, session.userId).catch(() => {});
     // 안전 앨범에서 빠진 사진은 구독 상태와 관계없이 지운다 (용량을 돌려받는 일이라 막지 않는다).
     // 이 마이그레이션은 서버 사진을 지우지 않기 위한 로컬 정리다. 만료 상태에서도 먼저

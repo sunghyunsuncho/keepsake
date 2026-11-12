@@ -81,6 +81,8 @@ function AppStack() {
       <Stack.Screen name="welcome" options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }} />
       <Stack.Screen name="cleanup" options={{ title: title.cleanup, presentation: 'modal', header: ModalHeader }} />
       <Stack.Screen name="cloud" options={{ title: title.cloud, presentation: 'modal', header: ModalHeader }} />
+      <Stack.Screen name="sign-in" options={{ title: title.signIn, presentation: 'modal', header: ModalHeader }} />
+      <Stack.Screen name="plans" options={{ title: title.plans, presentation: 'modal', header: ModalHeader }} />
       <Stack.Screen name="notifications" options={{ title: title.notifications, header: StackHeader }} />
       <Stack.Screen name="open-source-licenses" options={{ title: title.licenses, header: StackHeader }} />
       <Stack.Screen name="cloud-albums/new" options={{ title: title.newAlbum, presentation: 'modal', header: ModalHeader }} />
