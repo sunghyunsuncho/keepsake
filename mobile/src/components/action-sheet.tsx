@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useTranslation } from '@/lib/i18n';
 
 // 선택지가 많은 메뉴. 안드로이드의 Alert는 버튼을 3개까지만 보여 줘서(나머지는 사라진다) 메뉴는 이 시트로 연다.
 // Alert.alert와 같은 모양으로 부른다: showActionSheet(제목, 설명, [{ text, style, onPress }]).
@@ -22,6 +23,7 @@ export function showActionSheet(title: string | undefined, message: string | und
 
 export function ActionSheetHost() {
   const theme = useTheme();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<Sheet | null>(null);
 
@@ -43,7 +45,7 @@ export function ActionSheetHost() {
 
   return (
     <Modal visible={sheet !== null} transparent animationType="fade" onRequestClose={close}>
-      <Pressable style={styles.backdrop} onPress={close} accessibilityLabel="닫기" />
+      <Pressable style={styles.backdrop} onPress={close} accessibilityLabel={t('close')} />
       <View style={[styles.sheet, { backgroundColor: theme.background, paddingBottom: insets.bottom + Spacing.three }]}>
         {(sheet?.title || sheet?.message) && (
           <View style={styles.header}>
@@ -75,7 +77,7 @@ export function ActionSheetHost() {
           accessibilityRole="button"
           style={({ pressed }) => [styles.cancel, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.6 : 1 }]}>
           <ThemedText type="smallBold" style={styles.center}>
-            {cancel?.text ?? '취소'}
+            {cancel?.text ?? t('cancel')}
           </ThemedText>
         </Pressable>
       </View>

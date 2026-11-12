@@ -181,7 +181,7 @@ export function StoryCard({
         onLongPress={selecting ? undefined : onLongPress}
         style={({ pressed }) => [styles.printBody, { opacity: pressed ? 0.7 : 1 }]}>
         {moment.memo.trim() !== '' ? (
-          <ThemedText numberOfLines={3} style={{ color: PRINT.ink }}>
+          <ThemedText numberOfLines={3} style={{ color: PRINT.ink }} localize={false}>
             {moment.memo}
           </ThemedText>
         ) : (

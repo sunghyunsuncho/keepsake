@@ -21,17 +21,19 @@ import { listRecentlySavedMoments } from '@/db/moments';
 import { getSettings, setSetting } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { todayKey } from '@/lib/dates';
+import { useTranslation } from '@/lib/i18n';
 
 // 기기 사진첩 탭: 이 기기에 보관한 '나의 순간들'과 사용자가 만든 앨범을 고른다.
 export default function AlbumsScreen() {
   const db = useSQLiteContext();
+  const { t } = useTranslation();
   const [naming, setNaming] = useState(false);
   const [guide, setGuide] = useState(false);
   const navigation = useNavigation();
   // 제목 바로 오른쪽에 (i) 안내, 오른쪽 위에는 기기 사진첩 설정과 알림 버튼을 둔다.
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerTitle: () => <TabTitle title="기기 사진첩" infoLabel="기기 사진첩 안내" onInfo={() => setGuide(true)} />,
+      headerTitle: () => <TabTitle title={t('deviceLibrary')} infoLabel={t('deviceLibrary')} onInfo={() => setGuide(true)} />,
       headerRight: () => (
         <View style={styles.headerButtons}>
           <HeaderButton
@@ -44,7 +46,7 @@ export default function AlbumsScreen() {
         </View>
       ),
     });
-  }, [navigation]);
+  }, [navigation, t]);
   const today = todayKey();
   const { data: albums } = useDbQuery(() => listAlbums(db), [db]);
   const { data: recentMoments } = useDbQuery(() => listRecentlySavedMoments(db, 3), [db]);
@@ -159,7 +161,7 @@ function OnThisDayCards({ groups, onHide }: { groups: OnThisDay[]; onHide: () =>
                   </ThemedText>
                 </ThemedText>
                 {memo && (
-                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
+                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={2} localize={false}>
                     {memo}
                   </ThemedText>
                 )}

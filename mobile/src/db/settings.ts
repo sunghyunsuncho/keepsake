@@ -7,8 +7,12 @@ import { notifyChange } from '@/db/changes';
 // 동기화 상태(ACCOUNT_KEYS)만 그 계정 공간의 DB에 둔다.
 export type GridColumns = 1 | 2 | 3;
 export type AlbumSortOrder = 'newest' | 'oldest';
+export type AppLanguage = 'ko' | 'en' | 'ja';
+export const APP_LANGUAGES: readonly AppLanguage[] = ['ko', 'en', 'ja'];
 
 export type Settings = {
+  /** 앱에 표시할 언어. 계정과 무관하게 이 기기에서만 기억한다. */
+  language: AppLanguage;
   wifi_only_upload: boolean;
   /** 고르기 화면에서 한 줄에 보여줄 사진 수 */
   pick_grid_columns: GridColumns;
@@ -67,6 +71,7 @@ export type AlbumZoom = 'year' | 'month' | 'day' | 'story';
 export const ALBUM_ZOOMS: readonly AlbumZoom[] = ['year', 'month', 'day', 'story'];
 
 export const DEFAULT_SETTINGS: Settings = {
+  language: 'ko',
   wifi_only_upload: true,
   pick_grid_columns: 3,
   review_cursor: null,
@@ -138,6 +143,7 @@ const isIsoOrNull = (v: unknown) =>
 
 // 저장된 값이 깨졌거나 이전 버전 형식이면 기본값을 쓴다 (화면 계산이 NaN이 되지 않도록).
 const VALIDATORS: Record<keyof Settings, (value: unknown) => boolean> = {
+  language: (v) => APP_LANGUAGES.includes(v as AppLanguage),
   wifi_only_upload: (v) => typeof v === 'boolean',
   pick_grid_columns: (v) => GRID_COLUMN_OPTIONS.includes(v as GridColumns),
   review_cursor: isIsoOrNull,

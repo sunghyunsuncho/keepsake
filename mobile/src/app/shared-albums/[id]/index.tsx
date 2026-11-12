@@ -451,7 +451,7 @@ function AlbumHeader({
           accessibilityLabel="이 앨범에서 보일 내 이름 바꾸기"
           style={({ pressed }) => [styles.myName, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 }]}>
           <ThemedText type="small" themeColor="textSecondary" style={styles.flex} numberOfLines={1}>
-            이 앨범에서 나는 <ThemedText type="smallBold">{me.display_name}</ThemedText>(으)로 보여요
+            이 앨범에서 나는 <ThemedText type="smallBold" localize={false}>{me.display_name}</ThemedText>(으)로 보여요
           </ThemedText>
           <ThemedText type="small" style={{ color: theme.accent, fontWeight: 700 }}>
             바꾸기

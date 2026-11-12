@@ -6,12 +6,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NotificationBell } from '@/components/notification-bell';
 import { TAB_TITLE_STYLE } from '@/components/tab-title';
 import { useTheme } from '@/hooks/use-theme';
+import { useTranslation } from '@/lib/i18n';
 
 const TAB_BAR_HEIGHT = Platform.OS === 'ios' ? 56 : 64;
 const TAB_ICON_SIZE = 24;
 
 export default function TabsLayout() {
   const theme = useTheme();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   // Android는 안전 영역 값이 첫 화면에서 늦게 올 수 있어 제스처 영역을 넘도록 최소 24를 둔다.
   const bottomPad = Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : Math.max(insets.bottom + 10, 24);
@@ -46,28 +48,28 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: '사진 고르기',
+          title: t('choosePhotos'),
           tabBarIcon: ({ color, focused }) => <ImagesIcon size={TAB_ICON_SIZE} color={color} weight={focused ? 'fill' : 'light'} />,
         }}
       />
       <Tabs.Screen
         name="album"
         options={{
-          title: '기기 사진첩',
+          title: t('deviceLibrary'),
           tabBarIcon: ({ color, focused }) => <BookOpenIcon size={TAB_ICON_SIZE} color={color} weight={focused ? 'fill' : 'light'} />,
         }}
       />
       <Tabs.Screen
         name="cloud-library"
         options={{
-          title: '안전 사진첩',
+          title: t('secureLibrary'),
           tabBarIcon: ({ color, focused }) => <CloudIcon size={TAB_ICON_SIZE} color={color} weight={focused ? 'fill' : 'light'} />,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
-          title: '설정',
+          title: t('settings'),
           tabBarIcon: ({ color, focused }) => (
             <GearSixIcon size={TAB_ICON_SIZE} color={color} weight={focused ? 'fill' : 'light'} />
           ),

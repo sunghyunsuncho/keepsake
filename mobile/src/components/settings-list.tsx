@@ -72,7 +72,8 @@ export function SettingsRow({
       style={({ pressed }) => [styles.row, { opacity: rowDisabled ? 0.4 : pressed ? 0.6 : 1 }]}>
       <View style={[styles.divider, { backgroundColor: theme.border }]} />
       {Icon && <Icon size={18} color={destructive ? theme.danger : theme.textSecondary} weight="regular" />}
-      <ThemedText style={[styles.label, { color: tint }]} numberOfLines={1}>
+      {/* 현지화 문구는 언어에 따라 길이가 크게 달라진다. 제목을 자르지 않고 두 줄까지 보여 준다. */}
+      <ThemedText style={[styles.label, { color: tint }]} numberOfLines={2}>
         {label}
       </ThemedText>
       {loading ? (
@@ -109,13 +110,13 @@ export function SettingsSwitchRow({
 }
 
 /** 오늘이면 시각, 아니면 날짜만. 목록 오른쪽 값처럼 좁은 자리에 쓴다. */
-export function shortDateTime(iso: string) {
+export function shortDateTime(iso: string, language: 'ko' | 'en' | 'ja' = 'ko') {
   const date = new Date(iso);
   const now = new Date();
-  const time = `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
-  if (date.toDateString() === now.toDateString()) return `오늘 ${time}`;
-  const sameYear = date.getFullYear() === now.getFullYear();
-  return `${sameYear ? '' : `${date.getFullYear()}년 `}${date.getMonth() + 1}월 ${date.getDate()}일 ${time}`;
+  const locale = language === 'ko' ? 'ko-KR' : language === 'ja' ? 'ja-JP' : 'en-US';
+  const time = new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit' }).format(date);
+  if (date.toDateString() === now.toDateString()) return language === 'ko' ? `오늘 ${time}` : language === 'ja' ? `今日 ${time}` : `Today, ${time}`;
+  return new Intl.DateTimeFormat(locale, { year: date.getFullYear() === now.getFullYear() ? undefined : 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(date);
 }
 
 const CARD_RADIUS = 20;

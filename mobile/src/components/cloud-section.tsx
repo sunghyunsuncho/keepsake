@@ -14,6 +14,7 @@ import { countMissingOriginals, PhotoSaveError, saveOriginalsToLibrary } from '@
 import { MANAGE_SUBSCRIPTION_URL, purchasesAvailable } from '@/lib/cloud/purchases';
 import { useCloudSession } from '@/lib/cloud/session';
 import { formatBytes } from '@/lib/storage';
+import { photoCount, useTranslation } from '@/lib/i18n';
 
 // 설정 탭의 계정·보관 행들. 상태 판단은 서버가 준 subscription 값을 그대로 보여준다.
 // 등급: 로그인하지 않으면 백업 없음 → 로그인하면 기록 백업(RecordBackupRows) → 구독하면 사진 보관(CloudLibraryRows).
@@ -21,6 +22,7 @@ import { formatBytes } from '@/lib/storage';
 /** 기기 사진첩 설정의 기록 백업 행. 로그인했을 때만 보인다 (로그인은 설정 탭 맨 위 계정 행에서 한다). */
 export function RecordBackupRows() {
   const db = useSQLiteContext();
+  const { language } = useTranslation();
   const session = useCloudSession();
   const { account, running, problem, lastSyncedAt } = useCloudState();
   if (!session) return null;
@@ -30,7 +32,7 @@ export function RecordBackupRows() {
       <SettingsRow
         label="기록 백업"
         icon={ArrowsClockwiseIcon}
-        value={problem ?? (lastSyncedAt ? shortDateTime(lastSyncedAt) : account ? null : '확인하는 중')}
+        value={problem ?? (lastSyncedAt ? shortDateTime(lastSyncedAt, language) : account ? null : '확인하는 중')}
         loading={running}
         onPress={() => syncCloud(db)}
       />
@@ -48,6 +50,7 @@ export function RecordBackupRows() {
 /** 안전 사진첩 설정 행. 구독 중이거나 구독이 끝난 뒤 30일 유예 중인 사용자에게만 보인다. */
 export function CloudLibraryRows() {
   const db = useSQLiteContext();
+  const { language } = useTranslation();
   const { account, pendingUploads } = useCloudState();
   const { data: settings } = useDbQuery(() => getSettings(db), [db]);
   const { data: missingOriginals } = useDbQuery(() => countMissingOriginals(db), [db]);
@@ -84,7 +87,7 @@ export function CloudLibraryRows() {
         />
       )}
       <SettingsRow label="사용한 공간" icon={ChartPieSliceIcon} value={`${formatBytes(usage.bytes_total)} / ${formatBytes(usage.max_bytes)}`} />
-      {subscription.can_upload && pendingUploads > 0 && <SettingsRow label="올릴 사진" icon={ArrowCircleUpIcon} value={`${pendingUploads}장`} />}
+      {subscription.can_upload && pendingUploads > 0 && <SettingsRow label="올릴 사진" icon={ArrowCircleUpIcon} value={photoCount(language, pendingUploads)} />}
       {subscription.can_upload && (
         <SettingsSwitchRow
           label="Wi-Fi에서만 사진 올리기"
@@ -99,7 +102,7 @@ export function CloudLibraryRows() {
         <SettingsRow
           label="원본을 기기 사진첩에 저장"
           icon={DownloadSimpleIcon}
-          value={downloading ? `${downloading.done}/${downloading.total}` : `${missingOriginals}장`}
+          value={downloading ? `${downloading.done}/${downloading.total}` : photoCount(language, missingOriginals ?? 0)}
           disabled={downloading !== null}
           onPress={fetchOriginals}
         />

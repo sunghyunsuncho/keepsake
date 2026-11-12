@@ -5,6 +5,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import type { PhotoQuality } from '@/db/albums';
 import { useTheme } from '@/hooks/use-theme';
+import { useTranslation } from '@/lib/i18n';
 
 // 안전 앨범의 보관 화질. 숫자는 docs/PLAN.md §2.2의 추정치다 (사진 기준. 동영상은 길이에 따라 크게 다르다).
 export const PHOTO_QUALITY: Record<
@@ -126,6 +127,7 @@ export function QualityChoice({
  */
 export function QualityTileBadge({ quality }: { quality: PhotoQuality }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   const original = quality === 'original';
   return (
     <View
@@ -133,7 +135,7 @@ export function QualityTileBadge({ quality }: { quality: PhotoQuality }) {
       pointerEvents="none"
       accessibilityLabel={PHOTO_QUALITY[quality].badge}>
       <Ionicons name={PHOTO_QUALITY[quality].icon} size={10} color={original ? theme.onAccent : '#fff'} />
-      <Text style={[styles.tileBadgeText, { color: original ? theme.onAccent : '#fff' }]}>{original ? '원본' : '효율'}</Text>
+      <Text style={[styles.tileBadgeText, { color: original ? theme.onAccent : '#fff' }]}>{original ? (language === 'en' ? 'Original' : language === 'ja' ? 'オリジナル' : '원본') : language === 'en' ? 'Optimized' : language === 'ja' ? '省容量' : '효율'}</Text>
     </View>
   );
 }

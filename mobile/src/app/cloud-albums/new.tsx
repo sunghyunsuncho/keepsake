@@ -416,7 +416,7 @@ function DeviceAlbumOption({
         </View>
       )}
       <View style={styles.flex}>
-        <ThemedText type="smallBold" numberOfLines={1}>
+        <ThemedText type="smallBold" numberOfLines={1} localize={false}>
           {album.title}
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary">

@@ -270,7 +270,7 @@ function MembersSection({ album }: { album: SharedAlbumDetail }) {
                 <ThemedText type="smallBold">{member.display_name.slice(0, 1)}</ThemedText>
               </View>
               <View style={styles.flex}>
-                <ThemedText type="smallBold" numberOfLines={1}>
+                <ThemedText type="smallBold" numberOfLines={1} localize={false}>
                   {member.display_name}
                   {member.is_me ? ' (나)' : ''}
                 </ThemedText>

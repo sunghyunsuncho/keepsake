@@ -8,6 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import type { AlbumSummary } from '@/db/albums';
 import { useTheme } from '@/hooks/use-theme';
+import { photoCount, useTranslation } from '@/lib/i18n';
 
 /** 만든 앨범은 표지와 책등이 느껴지는 세로 목록으로 쌓는다. */
 export function CreatedAlbumCard({
@@ -22,6 +23,7 @@ export function CreatedAlbumCard({
   children?: ReactNode;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   return (
     <Pressable
       onPress={() => router.push({ pathname: '/albums/[id]', params: source ? { id: album.id, source } : { id: album.id } })}
@@ -40,11 +42,11 @@ export function CreatedAlbumCard({
         )}
       </SpringCover>
       <View style={styles.createdAlbumBody}>
-        <ThemedText type="smallBold" numberOfLines={1} style={styles.createdAlbumTitle}>
+        <ThemedText type="smallBold" numberOfLines={1} style={styles.createdAlbumTitle} localize={false}>
           {album.title}
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
-          사진 {album.count}장
+          {photoCount(language, album.count)}
         </ThemedText>
         {album.startAt && album.endAt && (
           <View style={styles.albumKind}>

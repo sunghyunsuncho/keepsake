@@ -77,9 +77,9 @@ function NotificationRow({ entry }: { entry: NotificationEntry }) {
         <Ionicons name={target?.icon ?? 'notifications-outline'} size={18} color={theme.accent} />
       </View>
       <View style={styles.body}>
-        {!!entry.title && <ThemedText type="smallBold">{entry.title}</ThemedText>}
+        {!!entry.title && <ThemedText type="smallBold" localize={false}>{entry.title}</ThemedText>}
         {!!entry.body && (
-          <ThemedText type="small" themeColor={entry.title ? 'textSecondary' : 'text'}>
+          <ThemedText type="small" themeColor={entry.title ? 'textSecondary' : 'text'} localize={false}>
             {entry.body}
           </ThemedText>
         )}

@@ -13,6 +13,7 @@ import { useDbQuery } from '@/db/changes';
 import { useTheme } from '@/hooks/use-theme';
 import { listSharedAlbums, RELATIONS, sharedImageUri, type SharedAlbumSummary } from '@/lib/cloud/shared';
 import { formatBytes, formatSize } from '@/lib/storage';
+import { photoCount, useTranslation } from '@/lib/i18n';
 
 /**
  * 안전 사진첩의 공유 앨범 목록. 나 혼자 쓰는 안전 앨범 아래에 둔다.
@@ -65,6 +66,7 @@ export function SharedAlbumSection({ canCreate }: { canCreate: boolean }) {
 /** 나만 보는 안전 앨범과 같은 스프링 표지에, 책등만 네이비로 구분한다. */
 function SharedAlbumCard({ album }: { album: SharedAlbumSummary }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   const relation = RELATIONS[album.relation];
   return (
     <Pressable
@@ -78,13 +80,13 @@ function SharedAlbumCard({ album }: { album: SharedAlbumSummary }) {
         <Cover album={album} />
       </SpringCover>
       <View style={styles.body}>
-        <ThemedText type="smallBold" numberOfLines={1} style={styles.title}>
+        <ThemedText type="smallBold" numberOfLines={1} style={styles.title} localize={false}>
           {album.title}
         </ThemedText>
         <View style={styles.relation}>
           <Ionicons name={relation.icon} size={14} color={theme.navy} />
           <ThemedText type="small" themeColor="textSecondary">
-            {relation.label} · {album.member_count}명 · 사진 {album.item_count}장
+            {relation.label} · {language === 'en' ? `${album.member_count} members` : language === 'ja' ? `${album.member_count}人` : `${album.member_count}명`} · {photoCount(language, album.item_count)}
           </ThemedText>
         </View>
         <ThemedText type="small" style={album.storage.over_capacity ? { color: theme.danger } : undefined} themeColor="textSecondary">

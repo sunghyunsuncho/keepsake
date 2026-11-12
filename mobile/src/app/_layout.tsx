@@ -14,6 +14,7 @@ import { ReviewReminders } from '@/components/review-reminders';
 import { migrateDb } from '@/db/schema';
 import { getLocalDb } from '@/db/spaces';
 import { useActiveDatabaseName } from '@/lib/cloud/space';
+import { LocalizationProvider, ROUTE_TITLES, useTranslation } from '@/lib/i18n';
 import { initMonitoring, wrapRoot } from '@/lib/monitoring';
 
 initMonitoring();
@@ -44,31 +45,14 @@ function RootLayout() {
           <Suspense fallback={<Loading />}>
             {/* 공간이 바뀌면 화면을 모두 새로 그려 이전 공간의 기록이 남지 않게 한다. */}
             <SQLiteProvider key={databaseName} databaseName={databaseName} onInit={migrateDb} useSuspense>
-              <CloudSync />
-              <LocalImportPrompt />
-              <ReviewReminders />
-              <NotificationInbox />
-              {/* 뒤로 가기가 있는 화면은 배경 없는 '<'로 통일한다 (components/stack-header.tsx). */}
-              <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="moment/[id]" options={{ title: '', header: StackHeader }} />
-                <Stack.Screen name="day" options={{ title: '지난 사진', header: StackHeader }} />
-                <Stack.Screen name="albums/[id]/index" options={{ title: '', header: StackHeader }} />
-                <Stack.Screen name="album-map" options={{ title: '앨범 지도', header: StackHeader }} />
-                <Stack.Screen name="albums/[id]/add" options={{ title: '', presentation: 'modal', header: ModalHeader }} />
-                <Stack.Screen name="viewer" options={{ headerShown: false, animation: 'fade' }} />
-                <Stack.Screen name="cleanup" options={{ title: '사진 정리', presentation: 'modal', header: ModalHeader }} />
-                <Stack.Screen name="cloud" options={{ title: '안전 보관', presentation: 'modal', header: ModalHeader }} />
-                <Stack.Screen name="notifications" options={{ title: '알림', header: StackHeader }} />
-                <Stack.Screen name="open-source-licenses" options={{ title: '오픈소스 라이선스', header: StackHeader }} />
-                <Stack.Screen name="cloud-albums/new" options={{ title: '새 안전 앨범', presentation: 'modal', header: ModalHeader }} />
-                <Stack.Screen name="cloud-import" options={{ title: '기기 기록 올리기', presentation: 'modal', header: ModalHeader }} />
-                <Stack.Screen name="shared-albums/join" options={{ title: '공유 앨범 참여', presentation: 'modal', header: ModalHeader }} />
-                <Stack.Screen name="shared-albums/[id]/index" options={{ title: '', header: StackHeader }} />
-                <Stack.Screen name="shared-albums/[id]/add" options={{ title: '', presentation: 'modal', header: ModalHeader }} />
-                <Stack.Screen name="shared-albums/[id]/members" options={{ title: '앨범 관리', header: StackHeader }} />
-              </Stack>
-              <ActionSheetHost />
+              <LocalizationProvider>
+                <CloudSync />
+                <LocalImportPrompt />
+                <ReviewReminders />
+                <NotificationInbox />
+                <AppStack />
+                <ActionSheetHost />
+              </LocalizationProvider>
             </SQLiteProvider>
           </Suspense>
         )}
@@ -78,6 +62,33 @@ function RootLayout() {
 }
 
 export default wrapRoot(RootLayout);
+
+/** 언어를 바꾸면 현재 열려 있는 모달 제목까지 즉시 갱신한다. */
+function AppStack() {
+  const { language } = useTranslation();
+  const title = ROUTE_TITLES[language];
+  return (
+    <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="moment/[id]" options={{ title: '', header: StackHeader }} />
+      <Stack.Screen name="day" options={{ title: title.day, header: StackHeader }} />
+      <Stack.Screen name="albums/[id]/index" options={{ title: '', header: StackHeader }} />
+      <Stack.Screen name="album-map" options={{ title: title.map, header: StackHeader }} />
+      <Stack.Screen name="albums/[id]/add" options={{ title: '', presentation: 'modal', header: ModalHeader }} />
+      <Stack.Screen name="viewer" options={{ headerShown: false, animation: 'fade' }} />
+      <Stack.Screen name="cleanup" options={{ title: title.cleanup, presentation: 'modal', header: ModalHeader }} />
+      <Stack.Screen name="cloud" options={{ title: title.cloud, presentation: 'modal', header: ModalHeader }} />
+      <Stack.Screen name="notifications" options={{ title: title.notifications, header: StackHeader }} />
+      <Stack.Screen name="open-source-licenses" options={{ title: title.licenses, header: StackHeader }} />
+      <Stack.Screen name="cloud-albums/new" options={{ title: title.newAlbum, presentation: 'modal', header: ModalHeader }} />
+      <Stack.Screen name="cloud-import" options={{ title: title.import, presentation: 'modal', header: ModalHeader }} />
+      <Stack.Screen name="shared-albums/join" options={{ title: title.join, presentation: 'modal', header: ModalHeader }} />
+      <Stack.Screen name="shared-albums/[id]/index" options={{ title: '', header: StackHeader }} />
+      <Stack.Screen name="shared-albums/[id]/add" options={{ title: '', presentation: 'modal', header: ModalHeader }} />
+      <Stack.Screen name="shared-albums/[id]/members" options={{ title: title.manageAlbum, header: StackHeader }} />
+    </Stack>
+  );
+}
 
 function Loading() {
   return (

@@ -8,11 +8,12 @@ import { showActionSheet } from '@/components/action-sheet';
 import { DateSheet } from '@/components/date-sheet';
 import { SettingsRow, SettingsSwitchRow } from '@/components/settings-list';
 import { REMINDER_FREQUENCIES, type Settings } from '@/db/settings';
+import { useTranslation } from '@/lib/i18n';
 import {
   dateToReminderTime,
   enableRemindersFromSettings,
   formatReminderTime,
-  REMINDER_FREQUENCY_LABEL,
+  reminderFrequencyLabel,
   reminderTimeToDate,
   setReminderEnabled,
   setReminderSchedule,
@@ -21,6 +22,7 @@ import {
 /** 설정 목록의 고르기 알림 행들: 켜기, 빈도, 시각. 알림을 허용하지 않았으면 허용 행을 보여준다. */
 export function ReminderRows({ settings }: { settings: Settings | undefined }) {
   const db = useSQLiteContext();
+  const { language, t } = useTranslation();
   const [choosingTime, setChoosingTime] = useState(false);
   const permitted = useNotificationPermission();
   const enabled = settings?.reminder_enabled ?? false;
@@ -29,29 +31,29 @@ export function ReminderRows({ settings }: { settings: Settings | undefined }) {
 
   // 선택지 3개 + 취소라 시트로 연다 (안드로이드 Alert는 버튼을 3개까지만 보여 준다).
   const chooseFrequency = () =>
-    showActionSheet('알림 빈도', '마지막으로 고른 뒤 이 기간이 지나고 새 사진이 있으면 알려드려요.', [
+    showActionSheet(t('reminderFrequency'), undefined, [
       ...REMINDER_FREQUENCIES.map((option) => ({
-        text: `${REMINDER_FREQUENCY_LABEL[option]}${option === frequency ? ' ✓' : ''}`,
+        text: `${reminderFrequencyLabel(option, language)}${option === frequency ? ' ✓' : ''}`,
         onPress: () => setReminderSchedule(db, { frequency: option }),
       })),
-      { text: '취소', style: 'cancel' as const },
+      { text: t('cancel'), style: 'cancel' as const },
     ]);
 
   return (
     <>
       <SettingsSwitchRow
-        label="고르기 알림"
+        label={t('reminder')}
         icon={BellIcon}
         value={enabled}
         onValueChange={(value) => (value ? enableRemindersFromSettings(db) : setReminderEnabled(db, false))}
       />
       {enabled && (
         <>
-          <SettingsRow label="알림 빈도" icon={RepeatIcon} value={REMINDER_FREQUENCY_LABEL[frequency]} onPress={chooseFrequency} />
-          <SettingsRow label="알림 시각" icon={ClockIcon} value={formatReminderTime(time)} onPress={() => setChoosingTime(true)} />
+          <SettingsRow label={t('reminderFrequency')} icon={RepeatIcon} value={reminderFrequencyLabel(frequency, language)} onPress={chooseFrequency} />
+          <SettingsRow label={t('reminderTime')} icon={ClockIcon} value={formatReminderTime(time, language)} onPress={() => setChoosingTime(true)} />
           {permitted === false && (
             // 아직 묻지 않았으면 묻고, 거절했으면 설정 앱으로 안내한다.
-            <SettingsRow label="알림 허용하기" icon={WarningCircleIcon} destructive onPress={() => enableRemindersFromSettings(db)} />
+            <SettingsRow label={t('allowNotifications')} icon={WarningCircleIcon} destructive onPress={() => enableRemindersFromSettings(db)} />
           )}
         </>
       )}

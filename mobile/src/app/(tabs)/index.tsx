@@ -41,6 +41,7 @@ import {
 import { firstPhotoDate, getPhotosSince, subscribeLibraryChanges, usePhotoAccess } from '@/lib/photos';
 import { checkMissedPhotos, clearMissedPhotos, loadMissedPhotos } from '@/lib/missed-photos';
 import { markReviewed, offerReminders } from '@/lib/reminders';
+import { inboxTitle, photoCount, reviewedUntil, selectionSummary, useTranslation } from '@/lib/i18n';
 
 export default function PickScreen() {
   const db = useSQLiteContext();
@@ -214,8 +215,9 @@ function Inbox({
   targetAlbum: { id: string; title: string } | null;
 }) {
   const db = useSQLiteContext();
+  const { language } = useTranslation();
   const navigation = useNavigation();
-  const title = targetAlbum ? `${targetAlbum.title}에 담을 사진` : '새로 찍은 사진';
+  const title = inboxTitle(language, targetAlbum?.title ?? null);
   // 제목은 탭 머리글에 둔다. 알림 버튼 위치가 다른 탭과 같아지도록 머리글을 직접 그리지 않는다.
   useLayoutEffect(() => {
     navigation.setOptions({ headerTitle: title });
@@ -523,7 +525,7 @@ function Inbox({
           title={
             selection.saving
               ? `남기는 중… ${selection.saving.done}/${selection.saving.total}`
-              : `${selection.draft.length}장 골랐어요`
+              : selectionSummary(language, selection.draft.length)
           }
           subtitle={`${seenLabel} 사진까지 본 걸로 기억해요`}
           secondary={{ label: '선택 해제', onPress: selection.clear }}
@@ -572,6 +574,7 @@ function DayHeader({
   onMarkSeen: () => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   return (
     <View style={styles.dayHeader}>
       <View style={styles.flex}>
@@ -579,7 +582,7 @@ function DayHeader({
           {dateKey === todayKey() ? `오늘 · ${formatDay(dateKey)}` : formatDay(dateKey)}
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
-          사진 {count}장{saved > 0 ? ` · ${saved}장 남김` : picked > 0 ? ` · ${picked}장 고름` : ''}
+          {photoCount(language, count)}{saved > 0 ? (language === 'en' ? ` · ${photoCount(language, saved)} saved` : language === 'ja' ? ` · ${photoCount(language, saved)}を保存` : ` · ${photoCount(language, saved)} 남김`) : picked > 0 ? (language === 'en' ? ` · ${photoCount(language, picked)} selected` : language === 'ja' ? ` · ${photoCount(language, picked)}を選択` : ` · ${photoCount(language, picked)} 고름`) : ''}
         </ThemedText>
       </View>
       <Pressable
@@ -598,10 +601,11 @@ function DayHeader({
 }
 
 function MissedHeader({ count }: { count: number }) {
+  const { language } = useTranslation();
   return (
     <View style={styles.dayHeader}>
       <View style={styles.flex}>
-        <ThemedText type="smallBold">놓친 사진 {count}장</ThemedText>
+        <ThemedText type="smallBold">{language === 'en' ? `${photoCount(language, count)} missed` : language === 'ja' ? `見逃した写真 ${photoCount(language, count)}` : `놓친 사진 ${photoCount(language, count)}`}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
           예전에 찍었지만 나중에 보관함에 들어온 사진이에요
         </ThemedText>
@@ -612,12 +616,13 @@ function MissedHeader({ count }: { count: number }) {
 
 function AllCaughtUp({ cursor, cleanup }: { cursor: number; cleanup: React.ReactNode }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   return (
     <Centered>
       <Ionicons name="checkmark-circle-outline" size={40} color={theme.accent} />
       <ThemedText style={styles.center}>새로 찍은 사진을 모두 살펴봤어요</ThemedText>
       <ThemedText type="small" themeColor="textSecondary" style={styles.center}>
-        {formatMoment(cursor)} 사진까지 봤어요.{'\n'}새 사진을 찍으면 여기에서 이어서 고를 수 있어요.
+        {reviewedUntil(language, formatMoment(cursor))}
       </ThemedText>
       <Pressable
         onPress={() => router.push('/day')}
@@ -642,6 +647,7 @@ function AllCaughtUp({ cursor, cleanup }: { cursor: number; cleanup: React.React
 /** 살펴보고 남기지 않은 사진을 정리할지 묻는 카드. 지난 사진 다시 보기 카드와 같은 모양이다. 정리 화면으로 가기 전에는 사진을 전혀 건드리지 않는다. */
 function CleanupCard({ count, onCleanup, onKeep }: { count: number; onCleanup: () => void; onKeep: () => void }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   return (
     <View style={[styles.pastPhotosCard, styles.cleanupCard, { backgroundColor: theme.backgroundElement }]}>
       <View style={styles.cleanupHeading}>
@@ -649,7 +655,7 @@ function CleanupCard({ count, onCleanup, onKeep }: { count: number; onCleanup: (
           <Ionicons name="leaf-outline" size={20} color={theme.accent} />
         </View>
         <View style={styles.flex}>
-          <ThemedText type="smallBold">정리 후보 {count}장</ThemedText>
+          <ThemedText type="smallBold">{language === 'en' ? `${photoCount(language, count)} to review` : language === 'ja' ? `整理候補 ${photoCount(language, count)}` : `정리 후보 ${photoCount(language, count)}`}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
             남기지 않은 사진을 정리해요
           </ThemedText>

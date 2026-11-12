@@ -23,10 +23,12 @@ import { useTheme } from '@/hooks/use-theme';
 import { useCloudState } from '@/lib/cloud/engine';
 import { useCloudSession } from '@/lib/cloud/session';
 import { formatBytes } from '@/lib/storage';
+import { photoCount, useTranslation } from '@/lib/i18n';
 
 /** 계정의 안전 보관 공간: 안전 앨범 목록. 구독 중이거나 유예 기간에만 연다. */
 export default function CloudLibraryScreen() {
   const session = useCloudSession();
+  const { t } = useTranslation();
   const { account } = useCloudState();
   const theme = useTheme();
   const canView = Boolean(session && account?.subscription.can_download);
@@ -39,7 +41,7 @@ export default function CloudLibraryScreen() {
   // 제목 바로 오른쪽에 (i) 안내, 오른쪽 위에는 안전 사진첩 설정(구독 중일 때)과 알림 버튼을 둔다.
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerTitle: () => <TabTitle title="안전 사진첩" infoLabel="안전 사진첩 안내" onInfo={() => setGuide(true)} />,
+      headerTitle: () => <TabTitle title={t('secureLibrary')} infoLabel={t('secureLibrary')} onInfo={() => setGuide(true)} />,
       headerRight: () => (
         <View style={styles.headerButtons}>
           {canView && (
@@ -54,7 +56,7 @@ export default function CloudLibraryScreen() {
         </View>
       ),
     });
-  }, [navigation, theme.text, canView]);
+  }, [navigation, theme.text, canView, t]);
 
   return (
     <ThemedView style={styles.flex}>
@@ -111,6 +113,7 @@ function OfflineNotice() {
 
 function CloudAlbums() {
   const db = useSQLiteContext();
+  const { language } = useTranslation();
   const { account, running, problem, pendingUploads } = useCloudState();
   const { data: albums } = useDbQuery(() => listAlbums(db, 'cloud'), [db]);
   const { data: recentMoments } = useDbQuery(() => listRecentCloudMoments(db, 3), [db]);
@@ -123,7 +126,7 @@ function CloudAlbums() {
   const allAlbum = albums[0];
   const cloudAlbums = albums.slice(1);
   // 할 일이 있을 때만 알린다. 마지막 동기화 시각은 안전 사진첩 설정(⚙)에서 본다.
-  const syncLine = running ? '동기화하는 중…' : canUpload && pendingUploads > 0 ? `올릴 사진 ${pendingUploads}장` : null;
+  const syncLine = running ? (language === 'en' ? 'Syncing…' : language === 'ja' ? '同期中…' : '동기화하는 중…') : canUpload && pendingUploads > 0 ? (language === 'en' ? `${photoCount(language, pendingUploads)} to upload` : language === 'ja' ? `アップロード待ち ${photoCount(language, pendingUploads)}` : `올릴 사진 ${photoCount(language, pendingUploads)}`) : null;
   const newAlbum = canUpload ? [{ icon: 'add' as const, label: '새 안전 앨범', onPress: () => router.push('/cloud-albums/new') }] : [];
 
   return (
@@ -183,6 +186,7 @@ function StorageMeter({
   problem: string | null;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   const ratio = max > 0 ? Math.min(used / max, 1) : 0;
   const sharedRatio = max > 0 ? Math.min(allocated / max, 1 - ratio) : 0;
   return (
@@ -204,7 +208,7 @@ function StorageMeter({
         </View>
         <ThemedText type="small" themeColor="textSecondary" style={styles.meterText}>
           {formatBytes(used + allocated)} / {formatBytes(max)}
-          {allocated > 0 ? ` · 공유 ${formatBytes(allocated)}` : ''}
+          {allocated > 0 ? (language === 'en' ? ` · ${formatBytes(allocated)} shared` : language === 'ja' ? ` · 共有 ${formatBytes(allocated)}` : ` · 공유 ${formatBytes(allocated)}`) : ''}
         </ThemedText>
       </View>
       {problem ? (
@@ -225,6 +229,7 @@ function StorageMeter({
 /** 안전 앨범의 화질·연결·올릴 사진 표시. 카드는 기기 사진첩의 앨범과 같은 모양이다. */
 function CloudAlbumBadges({ album, pending }: { album: AlbumSummary; pending: number }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   return (
     <View style={styles.badges}>
       {album.photoQuality && <PhotoQualityBadge quality={album.photoQuality} />}
@@ -238,7 +243,7 @@ function CloudAlbumBadges({ album, pending }: { album: AlbumSummary; pending: nu
       )}
       {pending > 0 && (
         <ThemedText type="small" themeColor="textSecondary" style={styles.badgeText}>
-          올릴 사진 {pending}장
+          {language === 'en' ? `${photoCount(language, pending)} to upload` : language === 'ja' ? `アップロード待ち ${photoCount(language, pending)}` : `올릴 사진 ${photoCount(language, pending)}`}
         </ThemedText>
       )}
     </View>

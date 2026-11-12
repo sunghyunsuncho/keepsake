@@ -3,9 +3,10 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { CloudArrowUpIcon, FileTextIcon, FlagIcon, ImageSquareIcon, ShieldCheckIcon, SignInIcon, UserIcon } from 'phosphor-react-native';
+import { CloudArrowUpIcon, FileTextIcon, FlagIcon, GlobeSimpleIcon, ImageSquareIcon, ShieldCheckIcon, SignInIcon, UserIcon } from 'phosphor-react-native';
 
 import { AccountRows, CloudLibraryRows, RecordBackupRows } from '@/components/cloud-section';
+import { showActionSheet } from '@/components/action-sheet';
 import { ReminderRows } from '@/components/reminder-section';
 import { SettingsCard, SettingsRow, SettingsSection, shortDateTime } from '@/components/settings-list';
 import { ThemedText } from '@/components/themed-text';
@@ -14,12 +15,13 @@ import { APP_NAME, COMPANY, CONTACT_EMAIL } from '@/constants/app-info';
 import { Spacing } from '@/constants/theme';
 import { useDbQuery } from '@/db/changes';
 import { libraryStats } from '@/db/moments';
-import { getSettings, setSetting } from '@/db/settings';
+import { APP_LANGUAGES, getSettings, setSetting } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { useCloudState } from '@/lib/cloud/engine';
 import { type Account, useCloudSession } from '@/lib/cloud/session';
 import { formatFullDate } from '@/lib/dates';
 import { openLegalDocument } from '@/lib/legal';
+import { LANGUAGE_LABELS, useTranslation } from '@/lib/i18n';
 
 type SectionKey = 'device' | 'cloud';
 
@@ -32,6 +34,7 @@ export default function SettingsScreen() {
   const { data: stats } = useDbQuery(() => libraryStats(db), [db]);
   const session = useCloudSession();
   const { account } = useCloudState();
+  const { language, setLanguage, t } = useTranslation();
   // 안전 사진첩 설정은 구독 중이거나 구독이 끝난 뒤 30일 유예 중(사진을 내려받아야 함)일 때만 보인다.
   const paid = Boolean(session && account?.subscription.can_download);
 
@@ -47,9 +50,21 @@ export default function SettingsScreen() {
   const remember = (key: SectionKey) => (y: number) => setOffsets((prev) => (prev[key] === y ? prev : { ...prev, [key]: y }));
 
   const resetCursor = () =>
-    Alert.alert('고르기 시작 시점을 초기화할까요?', '남긴 사진은 그대로예요. 다음에 고르기 탭을 열면 다시 정해요.', [
-      { text: '취소', style: 'cancel' },
-      { text: '초기화', style: 'destructive', onPress: () => setSetting(db, 'review_cursor', null) },
+    Alert.alert(t('resetStartTitle'), t('resetStartMessage'), [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('reset'), style: 'destructive', onPress: () => setSetting(db, 'review_cursor', null) },
+    ]);
+
+  const chooseLanguage = () =>
+    showActionSheet(t('chooseLanguage'), undefined, [
+      ...APP_LANGUAGES.map((option) => ({
+        text: `${LANGUAGE_LABELS[option]}${option === language ? ' ✓' : ''}`,
+        onPress: () => {
+          // 저장 실패 시 Provider가 이전 언어로 되돌린다. 시트 동작에서 미처리 Promise는 남기지 않는다.
+          void setLanguage(option).catch(() => {});
+        },
+      })),
+      { text: t('cancel'), style: 'cancel' as const },
     ]);
 
   return (
@@ -58,41 +73,45 @@ export default function SettingsScreen() {
         <ProfileCard signedIn={Boolean(session)} account={account} />
 
         <View onLayout={(e) => remember('device')(e.nativeEvent.layout.y)}>
-          <SettingsSection title="기기 사진첩">
+          <SettingsSection title={t('deviceLibrary')}>
             <SettingsRow
-              label="고르기 시작 시점"
+              label={t('startPoint')}
               icon={FlagIcon}
-              value={settings?.review_cursor ? shortDateTime(settings.review_cursor) : '정하지 않음'}
+              value={settings?.review_cursor ? shortDateTime(settings.review_cursor, language) : t('notSet')}
               onPress={settings?.review_cursor ? resetCursor : undefined}
             />
             <ReminderRows settings={settings} />
-            <SettingsRow label="남긴 기록" icon={ImageSquareIcon} value={stats ? `${stats.count}장 · ${stats.days}일` : null} />
+            <SettingsRow label={t('savedRecords')} icon={ImageSquareIcon} value={stats ? statsLabel(stats.count, stats.days, language) : null} />
             <RecordBackupRows />
           </SettingsSection>
         </View>
 
         {paid && (
           <View onLayout={(e) => remember('cloud')(e.nativeEvent.layout.y)}>
-            <SettingsSection title="안전 사진첩">
+            <SettingsSection title={t('secureLibrary')}>
               <CloudLibraryRows />
             </SettingsSection>
           </View>
         )}
 
         {session && (
-          <SettingsSection title="계정">
+          <SettingsSection title={t('account')}>
             <AccountRows />
           </SettingsSection>
         )}
 
-        <SettingsSection title="도움말 및 정보">
+        <SettingsSection title={t('settings')}>
+          <SettingsRow label={t('language')} icon={GlobeSimpleIcon} value={LANGUAGE_LABELS[language]} onPress={chooseLanguage} />
+        </SettingsSection>
+
+        <SettingsSection title={t('helpAndInfo')}>
           <SettingsRow
-            label="이용약관"
+            label={t('terms')}
             icon={FileTextIcon}
             onPress={() => openLegalDocument('terms')}
           />
           <SettingsRow
-            label="개인정보 처리방침"
+            label={t('privacy')}
             icon={ShieldCheckIcon}
             onPress={() => openLegalDocument('privacy')}
           />
@@ -110,12 +129,13 @@ export default function SettingsScreen() {
  */
 function ProfileCard({ signedIn, account }: { signedIn: boolean; account: Account | null }) {
   const theme = useTheme();
+  const { t } = useTranslation();
   const initial = account?.email?.trim()[0]?.toUpperCase();
   const action = !signedIn
-    ? { label: '로그인하고 기록 백업하기', icon: SignInIcon }
+    ? { label: t('signInAndBackup'), icon: SignInIcon }
     : account && !account.subscription.can_upload
       ? {
-          label: account.subscription.status === 'grace' ? '다시 구독하기' : '사진 안전 보관 시작하기',
+          label: account.subscription.status === 'grace' ? t('subscribeAgain') : t('startSecureStorage'),
           icon: CloudArrowUpIcon,
         }
       : null;
@@ -132,10 +152,10 @@ function ProfileCard({ signedIn, account }: { signedIn: boolean; account: Accoun
         </View>
         <View style={styles.userInfo}>
           <ThemedText themeColor="text" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={styles.userName}>
-            {signedIn ? (account?.email ?? '로그인한 계정') : '로그인하지 않았어요'}
+            {signedIn ? (account?.email ?? t('signedInAccount')) : t('notSignedIn')}
           </ThemedText>
           <ThemedText themeColor="textSecondary" numberOfLines={1} style={styles.userSub}>
-            {signedIn ? planText(account) : '기록이 이 기기에만 있어요'}
+            {signedIn ? planText(account, t) : t('localOnly')}
           </ThemedText>
         </View>
       </View>
@@ -144,21 +164,28 @@ function ProfileCard({ signedIn, account }: { signedIn: boolean; account: Accoun
   );
 }
 
-function planText(account: Account | null) {
-  if (!account) return '계정 정보를 불러오는 중이에요';
+function planText(account: Account | null, t: ReturnType<typeof useTranslation>['t']) {
+  if (!account) return t('loadingAccount');
   const { status, grace_until: graceUntil } = account.subscription;
   switch (status) {
     case 'active':
-      return '안전 보관 · 사진까지 보관하고 있어요';
+      return t('secureStorageActive');
     case 'grace':
-      return graceUntil ? `구독 종료 · ${formatFullDate(graceUntil)}까지 사진 내려받기` : '구독 종료 · 30일 동안 사진 내려받기';
+      return graceUntil ? `${t('subscriptionEnded')} (${formatFullDate(graceUntil)})` : t('subscriptionEnded');
     default:
-      return '무료 · 기록을 백업하고 있어요';
+      return t('freeBackup');
   }
+}
+
+function statsLabel(count: number, days: number, language: 'ko' | 'en' | 'ja') {
+  if (language === 'en') return `${count} photos · ${days} days`;
+  if (language === 'ja') return `${count}枚 · ${days}日`;
+  return `${count}장 · ${days}일`;
 }
 
 /** 하단 앱 정보: 이름, 버전·운영사, 문의 메일, 오픈소스 라이선스, 저작권 */
 function AppFooter() {
+  const { t } = useTranslation();
   const version = Application.nativeApplicationVersion ?? '—';
   const build = Application.nativeBuildVersion;
   return (
@@ -167,16 +194,16 @@ function AppFooter() {
         {APP_NAME}
       </ThemedText>
       <ThemedText themeColor="textSecondary" style={styles.footerLine}>
-        버전 {version}
+        {t('version')} {version}
         {build ? ` (${build})` : ''} · {COMPANY}
       </ThemedText>
       <ThemedText themeColor="textSecondary" style={styles.footerLine}>
-        문의 {CONTACT_EMAIL}
+        {t('contact')} {CONTACT_EMAIL}
       </ThemedText>
       <View style={styles.footerBottom}>
         <Pressable onPress={() => router.push('/open-source-licenses')} hitSlop={8} accessibilityRole="link">
           <ThemedText themeColor="textSecondary" style={[styles.footerLine, styles.footerLink]}>
-            오픈소스 라이선스
+            {t('openSource')}
           </ThemedText>
         </Pressable>
         <ThemedText themeColor="textSecondary" style={styles.footerLine}>

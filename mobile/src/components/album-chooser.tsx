@@ -68,7 +68,7 @@ export function AlbumChooserRow({ momentId }: { momentId: string }) {
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked }}
                   style={[styles.option, { borderColor: theme.border }]}>
-                  <ThemedText style={styles.flex} numberOfLines={1}>
+                  <ThemedText style={styles.flex} numberOfLines={1} localize={false}>
                     {album.title}
                   </ThemedText>
                   <Ionicons
@@ -94,7 +94,7 @@ export function AlbumChooserRow({ momentId }: { momentId: string }) {
                       accessibilityState={{ checked }}
                       style={[styles.option, { borderColor: theme.border }]}>
                       <Ionicons name="cloud-outline" size={18} color={theme.textSecondary} />
-                      <ThemedText style={styles.flex} numberOfLines={1}>
+                      <ThemedText style={styles.flex} numberOfLines={1} localize={false}>
                         {album.title}
                       </ThemedText>
                       <Ionicons

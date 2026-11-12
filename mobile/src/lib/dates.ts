@@ -1,6 +1,11 @@
 // 날짜 키는 기기 현지 시간 기준 "YYYY-MM-DD". 같은 날 사진을 묶는 단위다.
 
-const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+let dateLanguage: 'ko' | 'en' | 'ja' = 'ko';
+const DATE_LOCALES = { ko: 'ko-KR', en: 'en-US', ja: 'ja-JP' } as const;
+
+export function setDateLanguage(language: 'ko' | 'en' | 'ja') {
+  dateLanguage = language;
+}
 
 function pad(n: number) {
   return String(n).padStart(2, '0');
@@ -71,14 +76,14 @@ export function dayRange(key: string) {
 
 export function formatDay(key: string) {
   const date = parseDateKey(key);
-  const thisYear = new Date().getFullYear();
-  const md = `${date.getMonth() + 1}월 ${date.getDate()}일 (${WEEKDAYS[date.getDay()]})`;
-  return date.getFullYear() === thisYear ? md : `${date.getFullYear()}년 ${md}`;
+  const options: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', weekday: 'short' };
+  if (date.getFullYear() !== new Date().getFullYear()) options.year = 'numeric';
+  return new Intl.DateTimeFormat(DATE_LOCALES[dateLanguage], options).format(date);
 }
 
 export function formatFullDate(iso: string, offset?: number | null) {
-  const { year, month, day, weekday } = wallClock(iso, offset);
-  return `${year}년 ${month + 1}월 ${day}일 (${WEEKDAYS[weekday]})`;
+  const { year, month, day } = wallClock(iso, offset);
+  return new Intl.DateTimeFormat(DATE_LOCALES[dateLanguage], { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }).format(new Date(year, month, day));
 }
 
 /** "15:00". 촬영지 시간대가 지금 기기와 다르면 "15:00 (GMT+1)"처럼 시간대를 붙인다. */
@@ -100,5 +105,5 @@ export function formatOffset(offset: number) {
 
 export function formatMonth(key: string) {
   const date = parseDateKey(key);
-  return `${date.getFullYear()}년 ${date.getMonth() + 1}월`;
+  return new Intl.DateTimeFormat(DATE_LOCALES[dateLanguage], { year: 'numeric', month: 'long' }).format(date);
 }

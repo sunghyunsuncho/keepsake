@@ -6,9 +6,10 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { MomentPhoto } from '@/components/moment-photo';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import type { AlbumSummary } from '@/db/albums';
+import { isBuiltInAlbum, type AlbumSummary } from '@/db/albums';
 import type { Moment } from '@/db/moments';
 import { useTheme } from '@/hooks/use-theme';
+import { localizeText, photoCount, useTranslation } from '@/lib/i18n';
 
 // 기기 사진첩과 안전 사진첩 맨 위: 기본 보기(모든 사진)를 가로 한 줄 카드로 두고,
 // 새 앨범은 앨범 목록 제목 오른쪽 버튼으로 둔다. 앨범 목록이 화면 위쪽부터 보이게 하려는 것이다.
@@ -29,12 +30,15 @@ export function MomentsRowCard({
   children?: ReactNode;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
+  // 기본 보관함만 앱의 시스템 명칭이다. 사용자가 만든 앨범 제목은 원문을 보존한다.
+  const title = isBuiltInAlbum(album.id) ? localizeText(language, album.title) : album.title;
   const previews = moments?.length ? moments.slice(0, 3) : album.cover ? [album.cover] : [];
   return (
     <Pressable
       onPress={() => router.push({ pathname: '/albums/[id]', params: source ? { id: album.id, source } : { id: album.id } })}
       accessibilityRole="button"
-      accessibilityLabel={`${album.title}, ${album.count}장`}
+      accessibilityLabel={`${title}, ${photoCount(language, album.count)}`}
       style={({ pressed }) => [
         styles.card,
         { backgroundColor: theme.backgroundElement, borderColor: theme.border, opacity: pressed ? 0.8 : 1 },
@@ -52,11 +56,11 @@ export function MomentsRowCard({
           )}
         </View>
         <View style={styles.body}>
-          <ThemedText type="smallBold" numberOfLines={1}>
-            {album.title}
+          <ThemedText type="smallBold" numberOfLines={1} localize={false}>
+            {title}
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            {album.count}장
+            {photoCount(language, album.count)}
           </ThemedText>
         </View>
         <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
