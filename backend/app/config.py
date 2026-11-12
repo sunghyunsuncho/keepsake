@@ -40,9 +40,6 @@ class Settings(BaseSettings):
     # RevenueCat 비밀 API 키(sk_...). 있으면 webhook을 받을 때·삭제 직전에 구독 상태를 재조회한다.
     revenuecat_api_key: str | None = None
     revenuecat_entitlement_id: str = "cloud"
-    # false면 결제 없이 로그인만 하면 Cloud를 쓴다 (스토어·RevenueCat 연결 전 개발용).
-    # ENV=production에서는 반드시 true여야 한다.
-    cloud_billing_enabled: bool = False
     cloud_max_bytes: int = 50 * 1024 * 1024 * 1024
     cloud_grace_days: int = 30
     # 기본 안전 보관 요금제의 공유 앨범 규칙 (app/plans.py, docs/PRICING.md)
@@ -57,6 +54,8 @@ class Settings(BaseSettings):
     # 없으면 Sentry로 보내지 않는다. 커밋 값은 Railway가 넣어 준다.
     sentry_dsn: str | None = None
     railway_git_commit_sha: str | None = None
+    # 관리자 화면(/admin) 토큰. 비어 있으면 관리자 화면과 API를 열지 않는다.
+    admin_token: str | None = None
     # atelierlabs 홈페이지가 법률 문서를 가져올 때 쓰는 공유 토큰. 로컬에서는 비워 둔다.
     public_web_api_token: str = ""
 
@@ -79,8 +78,6 @@ class Settings(BaseSettings):
         ]
         if self.jwt_secret == type(self).model_fields["jwt_secret"].default:
             missing.append("jwt_secret")
-        if self.env == "production" and not self.cloud_billing_enabled:
-            missing.append("cloud_billing_enabled=true")
         # 없으면 유예 만료 삭제 직전에 재구독 여부를 확인하지 못한다.
         if self.env == "production" and not self.revenuecat_api_key:
             missing.append("revenuecat_api_key")

@@ -126,7 +126,12 @@ def notify_grace(db: Session, now: datetime, notify: Notifier = send_push) -> No
     user_ids = db.scalars(
         select(Entitlement.user_id)
         .join(User, User.id == Entitlement.user_id)
-        .where(Entitlement.status == "grace", User.deleted_at.is_(None))
+        .where(
+            Entitlement.status == "grace",
+            # 관리자가 구독 회원으로 둔 계정은 결제가 끝나도 사진을 지우지 않으므로 알리지 않는다.
+            Entitlement.access_override.is_distinct_from("cloud"),
+            User.deleted_at.is_(None),
+        )
     ).all()
     for user_id in user_ids:
         try:
@@ -166,6 +171,7 @@ def expire_grace(db: Session, now: datetime) -> None:
         .where(
             Entitlement.status == "grace",
             Entitlement.grace_until <= now,
+            Entitlement.access_override.is_distinct_from("cloud"),
             User.deleted_at.is_(None),
         )
         # 조회가 계속 실패하는 사용자가 다른 사용자의 처리를 매번 막지 않게 순서를 섞는다.
@@ -196,6 +202,7 @@ def expire_grace(db: Session, now: datetime) -> None:
             db.refresh(entitlement, with_for_update=True)
             if (
                 entitlement.status != "grace"
+                or entitlement.access_override == "cloud"
                 or entitlement.grace_until is None
                 or entitlement.grace_until > now
                 or not _final_notice_given(entitlement, now)

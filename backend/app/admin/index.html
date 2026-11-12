@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Keepsake 관리자</title>
+<style>
+  :root {
+    --bg: #ffffff; --panel: #F7F7F8; --line: #E7E7EB; --text: #171A1E; --muted: #5F6A75;
+    --accent: #CD5837; --on-accent: #ffffff; --danger: #C2362B; --ok: #2E7D4F; --warn: #A86A00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000; --panel: #1C1D20; --line: #2C2E33; --text: #ECEDEE; --muted: #9BA1A6;
+      --accent: #E0704F; --danger: #E5675C; --ok: #5DBB85; --warn: #E0A73D;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Segoe UI", sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { font-size: 20px; margin: 0; flex: 1; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12px; }
+  button, input, select { font: inherit; color: inherit; }
+  button { border: 0; border-radius: 10px; padding: 8px 14px; cursor: pointer; background: var(--panel); }
+  button.primary { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+  input, select { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+  .login { max-width: 380px; margin: 12vh auto; display: grid; gap: 12px; }
+  .banner { background: var(--panel); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .stat { background: var(--panel); border-radius: 12px; padding: 12px 14px; }
+  .stat b { display: block; font-size: 22px; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+  .toolbar input { flex: 1; min-width: 0; }
+  .table { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+  table { width: 100%; border-collapse: collapse; min-width: 880px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; background: var(--panel); }
+  tr:last-child td { border-bottom: 0; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .badge { display: inline-block; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 600; }
+  .badge.active { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+  .badge.none { background: var(--panel); color: var(--muted); border: 1px solid var(--line); }
+  .badge.grace { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+  .badge.expired, .badge.deleted { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+  .email { font-weight: 600; word-break: break-all; }
+  .id { font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--bg);
+    padding: 10px 16px; border-radius: 10px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .error { color: var(--danger); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <section id="login" class="login" hidden>
+    <h1>Keepsake 관리자</h1>
+    <p class="muted">서버의 ADMIN_TOKEN을 입력해 주세요. 이 탭을 닫으면 잊어요.</p>
+    <form id="login-form" style="display:grid;gap:10px">
+      <input id="token" type="password" autocomplete="current-password" placeholder="관리자 토큰" required>
+      <button class="primary" type="submit">들어가기</button>
+      <p id="login-error" class="error small" hidden></p>
+    </form>
+  </section>
+
+  <section id="app" hidden>
+    <header>
+      <h1>회원 관리</h1>
+      <button id="refresh" type="button">새로고침</button>
+      <button id="logout" type="button">나가기</button>
+    </header>
+    <div id="billing" class="banner small"></div>
+    <div class="stats" id="stats"></div>
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="이메일 또는 사용자 ID로 찾기">
+    </div>
+    <div class="table">
+      <table>
+        <thead>
+          <tr>
+            <th>회원</th>
+            <th>가입</th>
+            <th>앱이 보는 상태</th>
+            <th>회원 종류 지정</th>
+            <th class="num">기록</th>
+            <th class="num">사진 용량</th>
+            <th class="num">기기</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p class="muted small" id="footnote"></p>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const STATUS_LABEL = { active: '구독 회원', none: '무료 회원', grace: '만료 · 유예 중', expired: '만료 · 사진 삭제됨' };
+const ACCESS_OPTIONS = [
+  ['default', '결제 상태 따르기'],
+  ['cloud', '구독 회원 (무상 제공)'],
+];
+const $ = (id) => document.getElementById(id);
+let token = '';
+try { token = sessionStorage.getItem('keepsake-admin-token') || ''; } catch {}
+let searchTimer;
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(options.headers || {}) },
+  });
+  if (response.status === 401) { logout('토큰이 맞지 않아요.'); throw new Error('unauthorized'); }
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+function show(loggedIn) {
+  $('login').hidden = loggedIn;
+  $('app').hidden = !loggedIn;
+}
+
+function logout(message) {
+  token = '';
+  try { sessionStorage.removeItem('keepsake-admin-token'); } catch {}
+  $('login-error').textContent = message || '';
+  $('login-error').hidden = !message;
+  show(false);
+}
+
+function toast(message) {
+  const el = $('toast');
+  el.textContent = message;
+  el.classList.add('show');
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return '0';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0; let value = bytes;
+  while (value >= 1024 && i < units.length - 1) { value /= 1024; i++; }
+  return `${value.toFixed(value < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
+}
+
+function formatDate(value) {
+  if (!value) return '';
+  return new Date(value).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function text(tag, value, className) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  el.textContent = value;
+  return el;
+}
+
+function badge(user) {
+  if (user.deleted_at) return text('span', '탈퇴 처리 중', 'badge deleted');
+  return text('span', STATUS_LABEL[user.effective_status] || user.effective_status, `badge ${user.effective_status}`);
+}
+
+function statusDetail(user) {
+  if (user.access === 'cloud') return '관리자가 구독 회원으로 지정 (무상 제공)';
+  if (user.stored_status === 'none') return '결제한 적 없음';
+  if (user.stored_status === 'active' && user.expires_at) return `결제 · ${formatDate(user.expires_at)}까지`;
+  if (user.stored_status === 'grace' && user.grace_until) return `${formatDate(user.grace_until)}에 사진 삭제`;
+  return '';
+}
+
+async function changeAccess(user, select) {
+  const previous = user.access;
+  select.disabled = true;
+  try {
+    await api(`/admin/api/users/${encodeURIComponent(user.id)}/access`, {
+      method: 'PUT',
+      body: JSON.stringify({ access: select.value }),
+    });
+    toast(`${user.email || user.id}: ${select.selectedOptions[0].textContent}(으)로 바꿨어요. 앱을 다시 열면 반영돼요.`);
+    await load();
+  } catch (error) {
+    if (error.message !== 'unauthorized') toast('바꾸지 못했어요. 다시 시도해 주세요.');
+    select.value = previous;
+  } finally {
+    select.disabled = false;
+  }
+}
+
+function render(data) {
+  $('billing').textContent =
+    '가입하면 무료 회원이고, 구독 상태는 스토어 결제(RevenueCat)가 정해요. "구독 회원 (무상 제공)"으로 지정하면 결제 없이 사진 보관까지 쓸 수 있어요. 결제 연결 전 시험이나 무상 제공에 써요.';
+
+  const counts = { all: data.total, active: 0, none: 0, grace: 0 };
+  data.users.forEach((user) => { if (user.effective_status in counts) counts[user.effective_status]++; });
+  $('stats').replaceChildren(
+    ...[['전체 회원', counts.all], ['구독 회원', counts.active], ['무료 회원', counts.none], ['유예 중', counts.grace]]
+      .map(([label, value]) => {
+        const box = text('div', label, 'stat muted small');
+        box.prepend(text('b', String(value)));
+        return box;
+      }),
+  );
+
+  const rows = data.users.map((user) => {
+    const tr = document.createElement('tr');
+
+    const who = document.createElement('td');
+    who.append(text('div', user.email || '(이메일 없음)', 'email'));
+    who.append(text('div', `${user.providers.join(', ') || '로그인 정보 없음'} · ${user.id}`, 'id muted'));
+
+    const joined = text('td', formatDate(user.created_at), 'small');
+
+    const state = document.createElement('td');
+    state.append(badge(user));
+    const detail = statusDetail(user);
+    if (detail) state.append(text('div', detail, 'muted small'));
+
+    const accessCell = document.createElement('td');
+    const select = document.createElement('select');
+    ACCESS_OPTIONS.forEach(([value, label]) => select.append(new Option(label, value, false, value === user.access)));
+    select.disabled = Boolean(user.deleted_at);
+    select.addEventListener('change', () => changeAccess(user, select));
+    accessCell.append(select);
+
+    tr.append(
+      who, joined, state, accessCell,
+      text('td', `${user.moments}개 · 기타 ${user.records}`, 'num small'),
+      text('td', `${formatBytes(user.bytes_total)} · ${user.object_count}개`, 'num small'),
+      text('td', String(user.devices), 'num small'),
+    );
+    return tr;
+  });
+  if (rows.length === 0) {
+    const tr = document.createElement('tr');
+    const td = text('td', '찾는 회원이 없어요.', 'muted');
+    td.colSpan = 7;
+    tr.append(td);
+    rows.push(tr);
+  }
+  $('rows').replaceChildren(...rows);
+  $('footnote').textContent = data.total > data.users.length
+    ? `최근 가입한 ${data.users.length}명만 보여요 (전체 ${data.total}명). 검색으로 좁혀 주세요.`
+    : '';
+}
+
+async function load() {
+  const q = $('search').value.trim();
+  const data = await api(`/admin/api/users${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+  render(data);
+}
+
+$('login-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  token = $('token').value.trim();
+  try {
+    await load();
+    try { sessionStorage.setItem('keepsake-admin-token', token); } catch {}
+    $('token').value = '';
+    show(true);
+  } catch (error) {
+    if (error.message !== 'unauthorized') logout('서버에 연결하지 못했어요.');
+  }
+});
+$('refresh').addEventListener('click', () => load().then(() => toast('새로 불러왔어요.')).catch(() => {}));
+$('logout').addEventListener('click', () => logout());
+$('search').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => load().catch(() => {}), 250);
+});
+
+if (token) load().then(() => show(true)).catch(() => {});
+else show(false);
+</script>
+</body>
+</html>

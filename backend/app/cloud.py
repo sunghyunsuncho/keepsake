@@ -55,12 +55,13 @@ def lock_active_user(db: Session, user_id: str) -> User:
 def subscription_status(entitlement: Entitlement | None) -> str:
     """앱에 보여주고 권한을 판단하는 상태.
 
-    결제 연결 전(CLOUD_BILLING_ENABLED=false)에는 구매한 적 없는 계정도 구독 중으로 본다.
-    저장된 값은 바꾸지 않으므로 결제를 켜면 바로 원래 규칙으로 돌아간다.
+    가입하면 무료 회원(none)이고, RevenueCat 결제로 구독 상태가 바뀐다.
+    관리자가 구독 회원(cloud)으로 정한 계정은 결제와 관계없이 구독 중으로 본다
+    (결제 연결 전 시험, 무상 제공).
     """
     if entitlement is None:
         return "none"
-    if entitlement.status == "none" and not get_settings().cloud_billing_enabled:
+    if entitlement.access_override == "cloud":
         return "active"
     return entitlement.status
 

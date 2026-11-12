@@ -66,6 +66,9 @@ class Entitlement(Base):
     # 마지막으로 반영한 webhook 이벤트 시각. 늦게 도착한 옛 이벤트가 최신 상태를 덮지 않게 한다.
     event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     source: Mapped[str] = mapped_column(String(32), default="revenuecat")
+    # 관리자가 정한 이용 상태. RevenueCat이 바꾸는 status와 따로 둔다 (cloud.subscription_status).
+    # cloud: 결제 없이 구독 회원 / None: 결제 상태를 따른다
+    access_override: Mapped[str | None] = mapped_column(String(16), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )

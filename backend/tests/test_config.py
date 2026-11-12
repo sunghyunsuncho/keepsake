@@ -35,7 +35,6 @@ def test_non_local_env_accepts_explicit_values():
     settings = Settings(
         _env_file=None,
         env="production",
-        cloud_billing_enabled=True,
         revenuecat_api_key="sk_test",
         revenuecat_webhook_secret="whsec",
         **EXPLICIT,
@@ -44,15 +43,9 @@ def test_non_local_env_accepts_explicit_values():
     assert settings.env == "production"
 
 
-def test_production_requires_billing():
-    with pytest.raises(ValidationError, match="cloud_billing_enabled"):
-        Settings(_env_file=None, env="production", **EXPLICIT)
-    assert Settings(_env_file=None, env="staging", **EXPLICIT).cloud_billing_enabled is False
-
-
 def test_production_requires_revenuecat_key():
     with pytest.raises(ValidationError, match="revenuecat_api_key.*revenuecat_webhook_secret"):
-        Settings(_env_file=None, env="production", cloud_billing_enabled=True, **EXPLICIT)
+        Settings(_env_file=None, env="production", **EXPLICIT)
 
 
 def test_production_requires_public_web_token():
@@ -60,7 +53,6 @@ def test_production_requires_public_web_token():
         Settings(
             _env_file=None,
             env="production",
-            cloud_billing_enabled=True,
             revenuecat_api_key="sk_test",
             revenuecat_webhook_secret="whsec",
             **{key: value for key, value in EXPLICIT.items() if key != "public_web_api_token"},

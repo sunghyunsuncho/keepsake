@@ -74,7 +74,6 @@ def client(db, monkeypatch) -> Iterator[TestClient]:
     settings = get_settings()
     monkeypatch.setattr(settings, "revenuecat_webhook_secret", WEBHOOK_SECRET)
     monkeypatch.setattr(settings, "revenuecat_api_key", None)
-    monkeypatch.setattr(settings, "cloud_billing_enabled", True)
     # Apple/Google 서명 검증 대신 토큰 문자열을 subject로 쓴다.
     monkeypatch.setattr(
         auth, "verify_identity_token", lambda provider, token: {"sub": token, "iss": provider}
@@ -219,16 +218,12 @@ def test_account_with_only_sync_records_is_not_empty(client):
     assert client.get("/account", headers=headers).json()["has_records"] is True
 
 
-def test_billing_off_lets_signed_in_users_back_up(client, monkeypatch):
-    monkeypatch.setattr(get_settings(), "cloud_billing_enabled", False)
+def test_new_accounts_start_as_free_members(client):
+    """가입하면 결제 연결 여부와 관계없이 무료 회원이다. 기록 백업은 되고 사진은 올릴 수 없다."""
     _, headers = sign_in(client)
 
-    assert status_of(client, headers) == "active"
-    assert client.post("/sync/push", headers=headers, json={"moments": []}).status_code == 200
-
-    # 결제를 켜면 저장된 상태(none) 그대로 원래 규칙을 따른다. 기록 백업은 계속된다.
-    monkeypatch.setattr(get_settings(), "cloud_billing_enabled", True)
-    assert status_of(client, headers) == "none"
+    subscription = client.get("/account", headers=headers).json()["subscription"]
+    assert (subscription["status"], subscription["can_upload"]) == ("none", False)
     assert client.post("/sync/push", headers=headers, json={"moments": []}).status_code == 200
 
 
