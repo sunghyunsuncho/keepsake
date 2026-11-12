@@ -83,7 +83,7 @@ public class PhotoMetaModule: Module {
         throw Exception(name: "InvalidImageMetadata", description: "Cannot write image metadata")
       }
       let offset = metadata["takenTzOffset"] as? Int
-      let timezone = TimeZone(secondsFromGMT: (offset ?? 0) * 60) ?? .gmt
+      let timezone = TimeZone(secondsFromGMT: (offset ?? 0) * 60) ?? TimeZone(identifier: "UTC")!
       let formatter = DateFormatter()
       formatter.locale = Locale(identifier: "en_US_POSIX")
       formatter.timeZone = timezone
@@ -91,7 +91,7 @@ public class PhotoMetaModule: Module {
       let dateTime = formatter.string(from: captured)
       let gpsFormatter = DateFormatter()
       gpsFormatter.locale = Locale(identifier: "en_US_POSIX")
-      gpsFormatter.timeZone = .gmt
+      gpsFormatter.timeZone = TimeZone(identifier: "UTC")
       gpsFormatter.dateFormat = "yyyy:MM:dd"
       let gpsDate = gpsFormatter.string(from: captured)
       gpsFormatter.dateFormat = "HH:mm:ss"
@@ -136,7 +136,7 @@ public class PhotoMetaModule: Module {
         throw Exception(name: "ImageWriteFailed", description: "Cannot write image metadata")
       }
       // 원본을 먼저 지우면 move 실패 때 사진을 잃는다. replace는 같은 볼륨 안에서 원자적으로 교체한다.
-      try FileManager.default.replaceItemAt(url, withItemAt: temporary, backupItemName: nil, options: [])
+      _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary, backupItemName: nil, options: [])
     }
 
     // 동영상을 짧은 변 720px 이하의 H.264 mp4로 줄인다 (효율 보관). 원래 작으면 키우지 않는다.
