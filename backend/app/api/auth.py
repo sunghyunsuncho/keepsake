@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Literal
@@ -13,6 +14,7 @@ from app.api.deps import DbSession
 from app.config import get_settings
 from app.models.cloud import AuthIdentity, Entitlement, Usage, User
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 PROVIDERS = {
@@ -56,12 +58,33 @@ def verify_identity_token(provider: str, token: str) -> dict[str, object]:
     jwks_url, issuers = PROVIDERS[provider]
     try:
         key = _jwks(jwks_url).get_signing_key_from_jwt(token).key
-        claims = jwt.decode(token, key, algorithms=["RS256"], audience=audiences)
+        # 서버 시계가 발급자보다 몇 초만 늦어도 방금 받은 토큰의 iat가 미래가 된다.
+        claims = jwt.decode(
+            token, key, algorithms=["RS256"], audience=audiences, leeway=timedelta(seconds=60)
+        )
     except jwt.PyJWTError as exc:
+        # 이유가 없으면 401을 추적할 수 없다. 서명 확인 전 aud/iss만 함께 남긴다.
+        unverified = _unverified_claims(token)
+        log.warning(
+            "%s identity token rejected: %s (aud=%s iss=%s, expected aud=%s)",
+            provider,
+            exc,
+            unverified.get("aud"),
+            unverified.get("iss"),
+            audiences,
+        )
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "identity token is invalid") from exc
     if claims.get("iss") not in issuers or not isinstance(claims.get("sub"), str):
+        log.warning("%s identity token rejected: iss=%s", provider, claims.get("iss"))
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "identity token is invalid")
     return claims
+
+
+def _unverified_claims(token: str) -> dict[str, object]:
+    try:
+        return jwt.decode(token, options={"verify_signature": False})
+    except jwt.PyJWTError:
+        return {}
 
 
 def issue_access_token(user_id: str) -> str:
