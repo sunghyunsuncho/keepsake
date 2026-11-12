@@ -1,7 +1,7 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 
-import { type AppLanguage, getSettings, setSetting } from '@/db/settings';
+import { type AppLanguage, deviceLanguage, getSettings, setSetting } from '@/db/settings';
 import { setDateLanguage } from '@/lib/dates';
 import { rescheduleReminders } from '@/lib/reminders';
 
@@ -122,8 +122,9 @@ export function LocalizationProvider({ children }: { children: ReactNode }) {
   const db = useSQLiteContext();
   const [language, setCurrentLanguage] = useState<AppLanguage>(() => {
     // 계정 공간을 전환해 Provider가 새로 생길 때도, 첫 렌더의 언어와 날짜 형식을 맞춘다.
-    setDateLanguage('ko');
-    return 'ko';
+    const initial = deviceLanguage();
+    setDateLanguage(initial);
+    return initial;
   });
   const loadId = useRef(0);
   useEffect(() => {
@@ -145,7 +146,13 @@ export function LocalizationProvider({ children }: { children: ReactNode }) {
     };
   }, [db]);
   const setLanguage = useCallback(async (next: AppLanguage) => {
-    if (next === language) return;
+    // 지금 보이는 언어(기기 언어)를 그대로 골라도 저장한다 — 직접 고른 뒤에는 기기 언어가 바뀌어도 따라가지 않는다.
+    if (next === language) {
+      // 진행 중인 이전 DB 읽기가 방금 저장한 언어와 다른 값으로 화면을 바꾸지 못하게 한다.
+      loadId.current++;
+      await setSetting(db, 'language', next);
+      return;
+    }
     const previous = language;
     // 진행 중인 이전 DB 읽기가 방금 선택한 언어를 덮어쓰지 못하게 한다.
     loadId.current++;

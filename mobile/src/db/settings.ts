@@ -1,3 +1,4 @@
+import { getLocales } from 'expo-localization';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { notifyChange } from '@/db/changes';
@@ -9,6 +10,12 @@ export type GridColumns = 1 | 2 | 3;
 export type AlbumSortOrder = 'newest' | 'oldest';
 export type AppLanguage = 'ko' | 'en' | 'ja';
 export const APP_LANGUAGES: readonly AppLanguage[] = ['ko', 'en', 'ja'];
+
+/** 언어를 직접 고르기 전에는 기기 언어를 따른다. 기기의 선호 언어 중 지원하는 첫 언어, 없으면 영어. */
+export function deviceLanguage(): AppLanguage {
+  const match = getLocales().find(({ languageCode }) => APP_LANGUAGES.includes(languageCode as AppLanguage));
+  return (match?.languageCode as AppLanguage | undefined) ?? 'en';
+}
 
 export type Settings = {
   /** 앱에 표시할 언어. 계정과 무관하게 이 기기에서만 기억한다. */
@@ -71,7 +78,7 @@ export type AlbumZoom = 'year' | 'month' | 'day' | 'story';
 export const ALBUM_ZOOMS: readonly AlbumZoom[] = ['year', 'month', 'day', 'story'];
 
 export const DEFAULT_SETTINGS: Settings = {
-  language: 'ko',
+  language: deviceLanguage(),
   wifi_only_upload: true,
   pick_grid_columns: 3,
   review_cursor: null,
@@ -123,6 +130,7 @@ export async function getSettings(db: SQLiteDatabase): Promise<Settings> {
   ]);
   const rows = [...deviceRows, ...accountRows];
   const settings: Settings = { ...DEFAULT_SETTINGS };
+  let languageStored = false;
   for (const { key, value } of rows) {
     if (!(key in VALIDATORS)) continue;
     let parsed: unknown;
@@ -133,8 +141,12 @@ export async function getSettings(db: SQLiteDatabase): Promise<Settings> {
     }
     if (VALIDATORS[key as keyof Settings](parsed)) {
       (settings as Record<string, unknown>)[key] = parsed;
+      if (key === 'language') languageStored = true;
     }
   }
+  // 저장된 언어가 없으면 읽을 때마다 기기 언어를 다시 본다 (앱을 켠 채 기기 언어를 바꾼 경우).
+  // getLocales()는 동기 네이티브 호출이라, 설정을 자주 읽는 화면에서 매번 부르지 않도록 필요할 때만 부른다.
+  if (!languageStored) settings.language = deviceLanguage();
   return settings;
 }
 
