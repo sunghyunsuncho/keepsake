@@ -11,6 +11,7 @@ import { LocalImportPrompt } from '@/components/local-import-prompt';
 import { NotificationInbox } from '@/components/notification-inbox';
 import { ModalHeader, StackHeader } from '@/components/stack-header';
 import { ReviewReminders } from '@/components/review-reminders';
+import { WelcomeGate } from '@/components/welcome-gate';
 import { migrateDb } from '@/db/schema';
 import { getLocalDb } from '@/db/spaces';
 import { useActiveDatabaseName } from '@/lib/cloud/space';
@@ -47,6 +48,7 @@ function RootLayout() {
             <SQLiteProvider key={databaseName} databaseName={databaseName} onInit={migrateDb} useSuspense>
               <LocalizationProvider>
                 <CloudSync />
+                <WelcomeGate />
                 <LocalImportPrompt />
                 <ReviewReminders />
                 <NotificationInbox />
@@ -76,6 +78,7 @@ function AppStack() {
       <Stack.Screen name="album-map" options={{ title: title.map, header: StackHeader }} />
       <Stack.Screen name="albums/[id]/add" options={{ title: '', presentation: 'modal', header: ModalHeader }} />
       <Stack.Screen name="viewer" options={{ headerShown: false, animation: 'fade' }} />
+      <Stack.Screen name="welcome" options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }} />
       <Stack.Screen name="cleanup" options={{ title: title.cleanup, presentation: 'modal', header: ModalHeader }} />
       <Stack.Screen name="cloud" options={{ title: title.cloud, presentation: 'modal', header: ModalHeader }} />
       <Stack.Screen name="notifications" options={{ title: title.notifications, header: StackHeader }} />

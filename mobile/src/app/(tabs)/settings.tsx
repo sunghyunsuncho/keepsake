@@ -3,7 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { CloudArrowUpIcon, FileTextIcon, FlagIcon, GlobeSimpleIcon, ImageSquareIcon, ShieldCheckIcon, SignInIcon, UserIcon } from 'phosphor-react-native';
+import { CloudArrowUpIcon, FileTextIcon, FlagIcon, GlobeSimpleIcon, ImageSquareIcon, LightbulbIcon, ShieldCheckIcon, SignInIcon, UserIcon } from 'phosphor-react-native';
 
 import { AccountRows, CloudLibraryRows, RecordBackupRows } from '@/components/cloud-section';
 import { showActionSheet } from '@/components/action-sheet';
@@ -105,6 +105,7 @@ export default function SettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title={t('helpAndInfo')}>
+          <SettingsRow label={t('howToUse')} icon={LightbulbIcon} onPress={() => router.push('/welcome')} />
           <SettingsRow
             label={t('terms')}
             icon={FileTextIcon}

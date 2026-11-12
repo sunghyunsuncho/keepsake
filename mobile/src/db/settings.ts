@@ -51,6 +51,8 @@ export type Settings = {
   reminder_frequency: ReminderFrequency;
   /** 처음 [남기기]를 마친 뒤 알림을 받을지 이미 물어봤는지 */
   reminder_prompted: boolean;
+  /** 처음 실행할 때 보여주는 앱 소개(/welcome)를 이미 봤는지. 설정의 [앱 사용법]으로 다시 볼 수 있다. */
+  welcome_seen: boolean;
   /** 고르기 지점보다 이전 시각으로 나중에 들어온 사진(놓친 사진)의 asset id */
   missed_photo_ids: string[];
   /**
@@ -93,6 +95,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reminder_time: '21:00',
   reminder_frequency: 'every_2_days',
   reminder_prompted: false,
+  welcome_seen: false,
   missed_photo_ids: [],
   missed_baseline: null,
   album_zoom: 'month',
@@ -170,6 +173,7 @@ const VALIDATORS: Record<keyof Settings, (value: unknown) => boolean> = {
   reminder_time: (v) => typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v),
   reminder_frequency: (v) => REMINDER_FREQUENCIES.includes(v as ReminderFrequency),
   reminder_prompted: (v) => typeof v === 'boolean',
+  welcome_seen: (v) => typeof v === 'boolean',
   missed_photo_ids: (v) => Array.isArray(v) && v.every((id) => typeof id === 'string'),
   missed_baseline: (v) => {
     if (v === null) return true;
