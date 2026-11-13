@@ -80,7 +80,7 @@ export default function CloudLibraryScreen() {
 }
 
 const BENEFITS = [
-  { icon: 'shield-checkmark-outline', text: '안전 앨범에 담은 사진을 원본 그대로 보관해요' },
+  { icon: 'shield-checkmark-outline', text: '안전 앨범에 담은 사진을 원본 그대로, 또는 용량을 아껴 보관해요' },
   { icon: 'phone-portrait-outline', text: '기기 사진첩에서 지워도 남아서 휴대폰이 가벼워져요' },
   { icon: 'sync-outline', text: '휴대폰을 잃어버려도, 사진첩 백업이 없어도 사진이 돌아와요' },
 ] as const;
