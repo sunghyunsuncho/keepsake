@@ -60,7 +60,10 @@
     "ios": "expo run:ios --port 18082",
     "lint": "expo lint",
     "postinstall": "patch-package",
-    "api:types": "openapi-typescript ../backend/openapi.json -o src/api/schema.d.ts"
+    "api:types": "openapi-typescript ../backend/openapi.json -o src/api/schema.d.ts",
+    "metadata:lint": "node scripts/check-store-metadata.js && eas metadata:lint",
+    "metadata:pull": "eas metadata:pull",
+    "metadata:push": "node scripts/check-store-metadata.js && eas metadata:push"
   },
   "private": true,
   "expo": {

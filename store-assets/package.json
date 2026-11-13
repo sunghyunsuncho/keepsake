@@ -1,0 +1,16 @@
+{
+  "name": "keepsake-store-assets",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "capture": "tsx capture.ts --locale=all",
+    "capture:ko": "tsx capture.ts --locale=ko",
+    "capture:en": "tsx capture.ts --locale=en",
+    "capture:ja": "tsx capture.ts --locale=ja",
+    "generate": "tsx generate.ts --target=play --locale=all",
+    "generate:ios": "tsx generate.ts --target=ios --locale=all",
+    "generate:all": "tsx generate.ts --target=all --locale=all",
+    "all": "npm run capture && npm run generate:all"
+  },
+  "devDependencies": { "playwright": "^1.49.0", "tsx": "^4.19.2" }
+}

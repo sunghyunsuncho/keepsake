@@ -23,6 +23,7 @@ export async function captureAsset(
   db: SQLiteDatabase,
   asset: MediaLibrary.Asset,
   reviewDate: string,
+  options: { id?: string } = {},
 ) {
   // 고르기와 날짜로 보기에서 같은 사진을 따로 남기는 경우 등, 이미 남긴 사진이면 그 기록을 쓴다.
   const existing = await findMomentByAsset(db, asset.id);
@@ -42,7 +43,8 @@ export async function captureAsset(
     !video && info.localUri?.startsWith('file://') ? readCaptureOffset(info.localUri) : null;
 
   const moment: NewMoment = {
-    id: randomUUID(),
+    // 일반 흐름은 UUID를 쓰고, 개발용 스크린샷 시드만 안정적인 화면 경로를 위해 ID를 정한다.
+    id: options.id ?? randomUUID(),
     source_asset_id: asset.id,
     source_uri: asset.uri,
     original_filename: asset.filename,

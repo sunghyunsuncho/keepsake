@@ -12,6 +12,7 @@ import { NotificationInbox } from '@/components/notification-inbox';
 import { ModalHeader, StackHeader } from '@/components/stack-header';
 import { ReviewReminders } from '@/components/review-reminders';
 import { WelcomeGate } from '@/components/welcome-gate';
+import { StoreDemoSeed } from '@/components/store-demo-seed';
 import { migrateDb } from '@/db/schema';
 import { getLocalDb } from '@/db/spaces';
 import { useActiveDatabaseName } from '@/lib/cloud/space';
@@ -47,6 +48,7 @@ function RootLayout() {
             {/* 공간이 바뀌면 화면을 모두 새로 그려 이전 공간의 기록이 남지 않게 한다. */}
             <SQLiteProvider key={databaseName} databaseName={databaseName} onInit={migrateDb} useSuspense>
               <LocalizationProvider>
+                <StoreDemoSeed />
                 <CloudSync />
                 <WelcomeGate />
                 <LocalImportPrompt />
