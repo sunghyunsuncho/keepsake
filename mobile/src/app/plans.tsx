@@ -124,7 +124,7 @@ const COPY: Record<AppLanguage, (size: string, albums: string) => Copy> = {
         intro: 'Everything in Signed in, plus',
         can: [
           `Store photos and videos in secure albums, up to ${size}`,
-          'Keep originals or save space with efficient quality, per album or per photo',
+          'Choose Original quality or Space saver, per album or per photo',
           'Stored photos stay even if you delete them from your library, so you can free up your phone',
           'Even if you lose your phone or have no library backup, your photos come back when you sign in',
           `Create up to ${albums} shared albums with family and friends, and share your storage with them`,
@@ -175,7 +175,7 @@ const COPY: Record<AppLanguage, (size: string, albums: string) => Copy> = {
         intro: '「ログイン」のすべての機能に加えて',
         can: [
           `セキュアアルバムの写真・動画を${size}まで保管`,
-          'アルバムごと・写真ごとに、オリジナルのまま、または容量を節約する効率保管',
+          'アルバムごと・写真ごとに、オリジナル品質か、容量を節約する省スペース保存を選べます',
           '保管した写真はライブラリから削除しても残ります。スマホを軽くできます。',
           'スマホをなくしても、ライブラリのバックアップがなくても、ログインすれば写真が戻ります',
           `家族や友だちと使う共有アルバムを${albums}個まで作成し、自分の容量を分けられます`,
