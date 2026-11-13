@@ -10,7 +10,11 @@
     "generate": "tsx generate.ts --target=play --locale=all",
     "generate:ios": "tsx generate.ts --target=ios --locale=all",
     "generate:all": "tsx generate.ts --target=all --locale=all",
-    "all": "npm run capture && npm run generate:all"
+    "all": "npm run capture && npm run generate:all",
+    "feature-graphic": "tsx generate.ts --target=play --locale=all --feature-graphic-only"
   },
-  "devDependencies": { "playwright": "^1.49.0", "tsx": "^4.19.2" }
+  "devDependencies": {
+    "playwright": "^1.49.0",
+    "tsx": "^4.19.2"
+  }
 }
