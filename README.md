@@ -53,7 +53,7 @@ cp mobile/.env.example mobile/.env
 
 백엔드 API를 바꾸면 `make api-types`를 실행해서 모바일 타입을 갱신한다. 잊으면 `make test`의 `test_openapi`가 실패한다.
 
-이용약관과 개인정보처리방침의 게시 원본은 `backend/app/legal/{ko,en}/`에 있다. 앱과 스토어는 `keepsake.atelierlabs.co.kr`의 공개 페이지를 사용한다.
+이용약관과 개인정보처리방침의 게시 원본은 atelierlabs 저장소의 `sites/keepsake/legal/`(영어는 `sites/keepsake/en/legal/`)에 있다. 앱과 스토어는 `keepsake.atelierlabs.co.kr`의 공개 페이지를 사용한다.
 
 ## 실기기에서 실행하기
 

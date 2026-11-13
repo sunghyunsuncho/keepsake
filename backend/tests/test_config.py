@@ -27,7 +27,6 @@ EXPLICIT = {
     "apple_client_id": "com.example.app",
     "google_client_id": "web.apps.googleusercontent.com",
     "jwt_secret": "a-production-secret",
-    "public_web_api_token": "public-web-token",
 }
 
 
@@ -46,17 +45,6 @@ def test_non_local_env_accepts_explicit_values():
 def test_production_requires_revenuecat_key():
     with pytest.raises(ValidationError, match="revenuecat_api_key.*revenuecat_webhook_secret"):
         Settings(_env_file=None, env="production", **EXPLICIT)
-
-
-def test_production_requires_public_web_token():
-    with pytest.raises(ValidationError, match="public_web_api_token"):
-        Settings(
-            _env_file=None,
-            env="production",
-            revenuecat_api_key="sk_test",
-            revenuecat_webhook_secret="whsec",
-            **{key: value for key, value in EXPLICIT.items() if key != "public_web_api_token"},
-        )
 
 
 def test_non_local_env_rejects_empty_values():

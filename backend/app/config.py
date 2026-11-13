@@ -55,8 +55,6 @@ class Settings(BaseSettings):
     railway_git_commit_sha: str | None = None
     # 관리자 화면(/admin) 토큰. 비어 있으면 관리자 화면과 API를 열지 않는다.
     admin_token: str | None = None
-    # atelierlabs 홈페이지가 법률 문서를 가져올 때 쓰는 공유 토큰. 로컬에서는 비워 둔다.
-    public_web_api_token: str = ""
 
     @field_validator("database_url")
     @classmethod
@@ -83,10 +81,6 @@ class Settings(BaseSettings):
         # 없으면 만료 webhook을 모두 거절해서 구독이 끝나도 알 수 없다.
         if self.env == "production" and not self.revenuecat_webhook_secret:
             missing.append("revenuecat_webhook_secret")
-        # 공개 홈페이지 프록시에만 원본 문서를 제공한다. 운영에서 비워 두면 누구나
-        # 백엔드 주소로 문서를 우회 조회할 수 있으므로 배포 자체를 막는다.
-        if self.env == "production" and not self.public_web_api_token.strip():
-            missing.append("public_web_api_token")
         if missing:
             raise ValueError(f"ENV={self.env} requires explicit settings: {', '.join(missing)}")
         return self

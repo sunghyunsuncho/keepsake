@@ -1,7 +1,7 @@
 # Keepsake 전체 QA 체크리스트
 
 > 기준: 2026-11-02 코드 (앱 1.0.0, Expo SDK 54) · 기능이 바뀌면 이 문서도 함께 고친다.
-> 제품 규칙과 배경은 `docs/PLAN.md`, 스토어 문구는 `docs/store/`, 약관 웹 게시본은 `backend/app/legal/{ko,en}/`에 있다.
+> 제품 규칙과 배경은 `docs/PLAN.md`, 스토어 문구는 `docs/store/`, 약관 웹 게시본은 atelierlabs 저장소의 `sites/keepsake/legal/`(영어는 `sites/keepsake/en/legal/`)에 있다.
 
 ## 1. 사용법
 
