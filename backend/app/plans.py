@@ -7,7 +7,6 @@ RevenueCat entitlement는 `cloud` 하나이고, 어느 요금제인지는 구독
 from dataclasses import dataclass
 
 from app.cloud import subscription_status
-from app.config import get_settings
 from app.models.cloud import Entitlement
 
 GB = 1024 * 1024 * 1024
@@ -26,20 +25,19 @@ class PlanLimit:
 
 
 def plans() -> dict[str, PlanLimit]:
-    settings = get_settings()
     return {
         "cloud_10gb": PlanLimit(
             plan="cloud_10gb",
             max_bytes=10 * GB,
             allow_original=True,
-            shared_albums=settings.shared_album_limit,
+            shared_albums=2,
             suggested_allocation=2 * GB,
         ),
         "cloud_100gb": PlanLimit(
             plan="cloud_100gb",
             max_bytes=100 * GB,
             allow_original=True,
-            shared_albums=settings.shared_album_limit,
+            shared_albums=50,
             suggested_allocation=10 * GB,
         ),
     }

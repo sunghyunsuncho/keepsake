@@ -17,7 +17,6 @@ from app import jobs
 from app import plans as plans_module
 from app.api import shared_albums
 from app.cloud import purge_photos
-from app.config import get_settings
 from app.models.cloud import CloudObject, Entitlement, SharedAlbum
 from app.shared import funding_changed_for_user
 from tests.test_cloud import moment, sign_in, webhook
@@ -153,7 +152,7 @@ def test_creator_allocates_from_their_plan_and_members_join_for_free(client):
     assert created["storage"]["my_allocation"] == 40
     assert usage(client, owner)["allocated_bytes"] == 40
     listed = client.get("/shared-albums", headers=owner).json()
-    assert (listed["owned"], listed["limit"], listed["free_bytes"]) == (1, 1, 60)
+    assert (listed["owned"], listed["limit"], listed["free_bytes"]) == (1, 2, 60)
 
     # 구독하지 않은 구성원은 할당 없이 참여해 보고, 앨범 공간에 사진을 담는다.
     joined = invite_and_join(client, owner, created["id"], free, "지민")
@@ -210,17 +209,20 @@ def test_shared_album_names_cannot_be_blank_after_trimming(client):
     )
 
 
-def test_each_plan_owns_a_limited_number_of_albums(client, monkeypatch):
-    _, owner = subscriber(client)
+def test_each_plan_owns_a_limited_number_of_albums(client):
+    # 10GB 요금제는 2개, 100GB 요금제는 50개까지 만든다.
+    user_id, owner = subscriber(client)
+    new_album(client, owner, allocated=10)
     new_album(client, owner, allocated=10)
     assert create_album(client, owner, allocated=10).status_code == 409
-    monkeypatch.setattr(get_settings(), "shared_album_limit", 2)
+    webhook(client, user_id, "RENEWAL", product_id="keepsake_cloud_100gb_monthly")
     assert new_album(client, owner, allocated=10)["is_owner"]
     # 다른 사람의 앨범에 참여하는 것은 세지 않는다.
     _, other = subscriber(client)
     theirs = new_album(client, other, allocated=10)
     invite_and_join(client, other, theirs["id"], owner, "나")
-    assert client.get("/shared-albums", headers=owner).json()["owned"] == 2
+    overview = client.get("/shared-albums", headers=owner).json()
+    assert (overview["owned"], overview["limit"]) == (3, 50)
 
 
 def test_album_files_move_between_personal_and_album_usage_without_copies(client):

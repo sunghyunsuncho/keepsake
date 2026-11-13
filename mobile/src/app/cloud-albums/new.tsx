@@ -25,6 +25,7 @@ import {
 import { useDbQuery } from '@/db/changes';
 import { useTheme } from '@/hooks/use-theme';
 import { syncCloud, useCloudState } from '@/lib/cloud/engine';
+import { SHARED_ALBUM_LIMITS } from '@/lib/cloud/purchases';
 import { CloudError } from '@/lib/cloud/session';
 import {
   convertToSharedAlbum,
@@ -73,6 +74,8 @@ export default function NewCloudAlbumScreen() {
   // 바꾸는 앨범의 사진이 쓰던 개인 용량은 앨범으로 옮겨 오므로 그만큼 더 떼어 줄 수 있다 (서버가 정확히 확인한다).
   const available = (overview?.free_bytes ?? 0) + (params.convert ? (account?.usage.bytes_total ?? 0) : 0);
   const limitReached = overview ? overview.owned >= overview.limit : false;
+  // 10GB 요금제에서 한도에 닿았으면 100GB 요금제의 공유 앨범 수를 알려 준다.
+  const canUpgradeAlbums = !!overview && overview.limit < SHARED_ALBUM_LIMITS.cloud_100gb;
   useEffect(() => {
     if (overview && allocation === null) setAllocation(Math.min(overview.suggested_allocation, available));
   }, [overview, allocation, available]);
@@ -189,9 +192,9 @@ export default function NewCloudAlbumScreen() {
             <View style={[styles.rules, { backgroundColor: theme.backgroundElement }]}>
               <ThemedText type="small" style={{ color: theme.danger }}>
                 {{
-                  ko: `지금 요금제로는 공유 앨범을 ${overview?.limit ?? 1}개까지 가질 수 있어요. 다른 사람의 공유 앨범에 참여하는 것은 개수에 들어가지 않아요. 더 많은 공유 앨범을 쓰는 요금제는 준비하고 있어요.`,
-                  en: `Your current plan includes up to ${overview?.limit ?? 1} shared ${(overview?.limit ?? 1) === 1 ? 'album' : 'albums'}. Albums you join from other people don’t count. Plans with more shared albums are coming soon.`,
-                  ja: `現在のプランでは、共有アルバムを${overview?.limit ?? 1}個まで作成できます。ほかの人の共有アルバムへの参加は数に含まれません。より多くの共有アルバムを使えるプランは準備中です。`,
+                  ko: `지금 요금제로는 공유 앨범을 ${overview?.limit ?? 1}개까지 가질 수 있어요. 다른 사람의 공유 앨범에 참여하는 것은 개수에 들어가지 않아요.${canUpgradeAlbums ? ` 100GB 요금제로 바꾸면 ${SHARED_ALBUM_LIMITS.cloud_100gb}개까지 만들 수 있어요.` : ''}`,
+                  en: `Your current plan includes up to ${overview?.limit ?? 1} shared ${(overview?.limit ?? 1) === 1 ? 'album' : 'albums'}. Albums you join from other people don’t count.${canUpgradeAlbums ? ` With the 100GB plan, you can create up to ${SHARED_ALBUM_LIMITS.cloud_100gb}.` : ''}`,
+                  ja: `現在のプランでは、共有アルバムを${overview?.limit ?? 1}個まで作成できます。ほかの人の共有アルバムへの参加は数に含まれません。${canUpgradeAlbums ? `100GBプランなら${SHARED_ALBUM_LIMITS.cloud_100gb}個まで作成できます。` : ''}`,
                 }[language]}
               </ThemedText>
             </View>

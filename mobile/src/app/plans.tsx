@@ -10,6 +10,7 @@ import { Spacing } from '@/constants/theme';
 import type { AppLanguage } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { useCloudState } from '@/lib/cloud/engine';
+import { PLAN_ORDER, SHARED_ALBUM_LIMITS } from '@/lib/cloud/purchases';
 import { useCloudSession } from '@/lib/cloud/session';
 import { useTranslation } from '@/lib/i18n';
 import { formatSize } from '@/lib/storage';
@@ -31,8 +32,8 @@ type Copy = {
   cta: { local: string; free: string; grace: string };
 };
 
-const COPY: Record<AppLanguage, (size: string) => Copy> = {
-  ko: (size) => ({
+const COPY: Record<AppLanguage, (size: string, albums: string) => Copy> = {
+  ko: (size, albums) => ({
     lead: '고르고, 남기고, 다시 보는 핵심 기능은 어느 등급에서나 모두 무료예요. 등급에 따라 기록과 사진을 어디까지 지켜 두는지가 달라요.',
     current: '지금 이용 중',
     canTitle: '할 수 있어요',
@@ -75,7 +76,7 @@ const COPY: Record<AppLanguage, (size: string) => Copy> = {
           '앨범마다, 사진마다 원본 그대로 또는 용량을 아끼는 효율 보관',
           '보관한 사진은 기기 사진첩에서 지워도 남아요. 휴대폰을 가볍게 비울 수 있어요.',
           '휴대폰을 잃어버려도, 사진첩 백업이 없어도 로그인하면 사진이 돌아와요',
-          '가족·친구와 쓰는 공유 앨범 1개를 만들고 내 용량을 나눠 주기',
+          `가족·친구와 쓰는 공유 앨범을 ${albums}개까지 만들고 내 용량을 나눠 주기`,
         ],
         cannot: [],
         note: '구독이 끝나면 30일 동안 보관한 사진을 내려받을 수 있고, 그 뒤 사진은 삭제돼요. 기록 백업은 로그인한 동안 계속돼요.',
@@ -83,7 +84,7 @@ const COPY: Record<AppLanguage, (size: string) => Copy> = {
     },
     cta: { local: '로그인하고 기록 백업하기', free: '안전 보관 시작하기', grace: '다시 구독하기' },
   }),
-  en: (size) => ({
+  en: (size, albums) => ({
     lead: 'Choosing, keeping, and revisiting photos are free on every plan. Plans differ in how much of your memories and photos are kept safe.',
     current: 'Current plan',
     canTitle: 'Included',
@@ -126,7 +127,7 @@ const COPY: Record<AppLanguage, (size: string) => Copy> = {
           'Keep originals or save space with efficient quality, per album or per photo',
           'Stored photos stay even if you delete them from your library, so you can free up your phone',
           'Even if you lose your phone or have no library backup, your photos come back when you sign in',
-          'Create 1 shared album with family and friends, and share your storage with it',
+          `Create up to ${albums} shared albums with family and friends, and share your storage with them`,
         ],
         cannot: [],
         note: 'When a subscription ends, you can download stored photos for 30 days before they are deleted. Memory backup continues while you are signed in.',
@@ -134,7 +135,7 @@ const COPY: Record<AppLanguage, (size: string) => Copy> = {
     },
     cta: { local: 'Sign in and back up memories', free: 'Start Secure Storage', grace: 'Subscribe again' },
   }),
-  ja: (size) => ({
+  ja: (size, albums) => ({
     lead: '写真を選ぶ・残す・見返す基本機能は、どのプランでもすべて無料です。プランによって、思い出と写真をどこまで守れるかが変わります。',
     current: '利用中',
     canTitle: 'できること',
@@ -177,7 +178,7 @@ const COPY: Record<AppLanguage, (size: string) => Copy> = {
           'アルバムごと・写真ごとに、オリジナルのまま、または容量を節約する効率保管',
           '保管した写真はライブラリから削除しても残ります。スマホを軽くできます。',
           'スマホをなくしても、ライブラリのバックアップがなくても、ログインすれば写真が戻ります',
-          '家族や友だちと使う共有アルバムを1つ作成し、自分の容量を分けられます',
+          `家族や友だちと使う共有アルバムを${albums}個まで作成し、自分の容量を分けられます`,
         ],
         cannot: [],
         note: 'サブスクリプションが終わると、30日間は保管した写真をダウンロードでき、その後削除されます。思い出のバックアップはログイン中ずっと続きます。',
@@ -188,8 +189,9 @@ const COPY: Record<AppLanguage, (size: string) => Copy> = {
 };
 
 const ICONS = { local: DeviceMobileIcon, free: UserIcon, paid: ShieldCheckIcon };
-// 구독하기 전에는 두 요금제의 용량을 함께 보여 준다 (docs/PRICING.md §2).
+// 구독하기 전에는 두 요금제의 용량과 공유 앨범 수를 함께 보여 준다 (docs/PRICING.md §2).
 const DEFAULT_SIZE = '10GB / 100GB';
+const DEFAULT_ALBUMS = PLAN_ORDER.map((plan) => SHARED_ALBUM_LIMITS[plan]).join(' / ');
 
 export default function PlansScreen() {
   const theme = useTheme();
@@ -197,7 +199,11 @@ export default function PlansScreen() {
   const { from } = useLocalSearchParams<{ from?: string }>();
   const session = useCloudSession();
   const { account } = useCloudState();
-  const copy = COPY[language](account?.usage.max_bytes ? formatSize(account.usage.max_bytes) : DEFAULT_SIZE);
+  const plan = account?.subscription.plan;
+  const copy = COPY[language](
+    account?.usage.max_bytes ? formatSize(account.usage.max_bytes) : DEFAULT_SIZE,
+    plan ? String(SHARED_ALBUM_LIMITS[plan]) : DEFAULT_ALBUMS,
+  );
   const grace = account?.subscription.status === 'grace';
   const current: Level = !session ? 'local' : account?.subscription.can_upload ? 'paid' : 'free';
   const cta = current === 'local' ? copy.cta.local : current === 'free' ? (grace ? copy.cta.grace : copy.cta.free) : null;

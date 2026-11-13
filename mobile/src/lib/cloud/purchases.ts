@@ -68,6 +68,8 @@ export async function clearPurchasesUser() {
 // Play 상품은 구독 ID에 기본 요금제를 붙인 `keepsake_cloud_10gb:monthly`로 온다.
 export type CloudPlan = 'cloud_10gb' | 'cloud_100gb';
 export const PLAN_ORDER: CloudPlan[] = ['cloud_10gb', 'cloud_100gb'];
+// 요금제마다 만들 수 있는 공유 앨범 수. 서버 app/plans.py의 shared_albums와 같다.
+export const SHARED_ALBUM_LIMITS: Record<CloudPlan, number> = { cloud_10gb: 2, cloud_100gb: 50 };
 const PRODUCT_PLANS: Record<string, CloudPlan> = {
   keepsake_cloud_10gb: 'cloud_10gb',
   keepsake_cloud_100gb: 'cloud_100gb',
