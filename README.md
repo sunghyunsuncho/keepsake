@@ -78,7 +78,8 @@ API 주소(`mobile/.env`의 `EXPO_PUBLIC_API_URL`):
 ## Cloud 백업 (Phase 2)
 
 로그인한 사용자는 무료로 기록(메모·장소·앨범)을 서버에 백업한다. 새 기기 사진첩에 같은 사진이 있으면 기록과 다시 연결해 보여 주며, 사진 파일 자체를 보관하려면 유료 구독으로 안전 앨범에 담아야 한다.
-유료 구독은 안전 앨범에 담은 사진과 동영상을 보관하는 기능에만 필요하다.
+유료 구독은 안전 앨범에 담은 사진과 동영상을 보관하는 기능에만 필요하다. 안전 보관은 10GB와
+100GB 요금제로 제공하며, 가격·체험·요금제 변경 정책은 [요금제 문서](docs/PRICING.md)에 둔다.
 앱은 로그인 상태에서 앱을 열 때·앞으로 돌아올 때·기록이 바뀐 뒤 동기화한다
 (기록 push → 다른 기기 변경 pull → 더는 필요 없는 파일 정리 → 사진·동영상 업로드. 다른 기기에서는 사진은 표시용 이미지를 받고, 동영상은 원본 또는 효율 보관본을 재생한다). 구독 여부는 서버가 RevenueCat webhook과 REST 조회로만 판단한다.
 
@@ -102,8 +103,8 @@ cd backend && uv run python -m app.jobs  # 주기 작업 한 번 실행
 
 ### 외부 설정 (실제 로그인·결제)
 
-1. **App Store Connect / Play Console**: Cloud 구독 상품(같은 구독 그룹), 결제 유예(Billing Grace Period / 유예 기간) 켜기. Play는 앱을 만들고 AAB를 내부 테스트 트랙에 한 번 올려야 RevenueCat이 패키지를 찾는다.
-2. **RevenueCat**: 두 스토어 앱·상품, entitlement `cloud`, current offering. webhook URL `https://<API>/billing/revenuecat`, Authorization 헤더 `Bearer <REVENUECAT_WEBHOOK_SECRET>`.
+1. **App Store Connect / Play Console**: 10GB·100GB의 월간·연간 상품을 만들고, 같은 구독 그룹/상품군으로 묶어 결제 유예를 켠다. Play는 앱을 만들고 AAB를 내부 테스트 트랙에 한 번 올려야 RevenueCat이 패키지를 찾는다.
+2. **RevenueCat**: 두 스토어 앱·네 상품, entitlement `cloud`, current offering을 연결한다. webhook URL은 `https://<API>/billing/revenuecat`, Authorization 헤더는 `Bearer <REVENUECAT_WEBHOOK_SECRET>`이다. 콘솔 작업 순서와 상품 ID는 [결제 연결 안내](docs/store/billing-setup.md)를 기준으로 한다.
 3. **로그인**: Apple 개발자 계정에서 App ID에 Sign in with Apple 켜기. Google Cloud Console에서 OAuth 클라이언트 3개(웹, iOS 번들 ID, Android 패키지+SHA-1 — 로컬·EAS·Play 앱 서명 키 각각).
 4. **환경 변수**: `backend/.env.example`, `mobile/.env.example`의 Cloud 항목. 모바일 값은 EAS 환경 변수로도 넣는다.
 5. **푸시 알림**: `eas init`으로 projectId 연결, `eas credentials`로 APNs 키, Android는 FCM V1 서비스 계정 키 업로드.

@@ -17,7 +17,7 @@ from app.api.deps import DbSession
 from app.cloud import activate, refresh_from_revenuecat, start_grace
 from app.config import get_settings
 from app.models.cloud import BillingEvent, Entitlement
-from app.plans import plan_limit
+from app.plans import plan_for_product, plan_limit
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -65,7 +65,8 @@ def _apply_event(entitlement: Entitlement, event: dict[str, Any]) -> None:
     transferred_to = entitlement.user_id in (event.get("transferred_to") or [])
     transferred_from = entitlement.user_id in (event.get("transferred_from") or [])
     if event_type in ACTIVE_EVENTS or (event_type == "TRANSFER" and transferred_to):
-        activate(entitlement, expires_at)
+        # PRODUCT_CHANGE의 product_id는 바꾸기 전 상품이다. 새 상품은 바뀌는 시점의 RENEWAL로 온다.
+        activate(entitlement, expires_at, plan_for_product(event.get("product_id")))
     elif event_type == "EXPIRATION" or (event_type == "TRANSFER" and transferred_from):
         start_grace(entitlement, expires_at)
     if event_at:

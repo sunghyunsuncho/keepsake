@@ -76,8 +76,13 @@ def can_read(entitlement: Entitlement | None) -> bool:
     return subscription_status(entitlement) in {"active", "grace"}
 
 
-def activate(entitlement: Entitlement, expires_at: datetime | None) -> None:
+def activate(
+    entitlement: Entitlement, expires_at: datetime | None, plan: str | None = None
+) -> None:
     # 유예 중 재구독: 아무것도 다시 올리지 않고 그대로 복구된다 (데이터를 아직 지우지 않았으므로).
+    # plan: 구독한 상품의 요금제. 모르는 상품이면 None이고 저장된 요금제를 그대로 둔다.
+    if plan is not None:
+        entitlement.plan = plan
     entitlement.status = "active"
     entitlement.expires_at = expires_at
     entitlement.grace_until = None
@@ -111,6 +116,8 @@ def refresh_from_revenuecat(db: Session, entitlement: Entitlement) -> bool:
 
     webhook은 순서가 뒤바뀌거나 빠질 수 있어서, 결제 상태 판단은 이 조회 결과를 우선한다.
     """
+    from app.plans import larger_plan, plan_for_product
+
     settings = get_settings()
     if not settings.revenuecat_api_key:
         return False
@@ -121,23 +128,37 @@ def refresh_from_revenuecat(db: Session, entitlement: Entitlement) -> bool:
             timeout=10,
         )
         response.raise_for_status()
-        info = response.json()["subscriber"]["entitlements"].get(settings.revenuecat_entitlement_id)
+        subscriber = response.json()["subscriber"]
+        info = subscriber["entitlements"].get(settings.revenuecat_entitlement_id)
         # 있어야 할 내용이 없는 응답을 '평생 구독'으로 읽지 않는다.
         if info is not None and (not isinstance(info, dict) or not info):
             raise ValueError("unexpected entitlement")
         expires_at = _parse_time(info.get("expires_date")) if info else None
         # 스토어 결제 유예(Apple Billing Grace Period, Google 계정 보류 전 유예)가 끝나는 시각
         store_grace = _parse_time(info.get("grace_period_expires_date")) if info else None
+        now = datetime.now(UTC)
+        # 요금제: entitlement가 가리키는 상품과, 아직 끝나지 않은 다른 구독 중 용량이 큰 쪽
+        plan_candidates = [plan_for_product(info.get("product_identifier")) if info else None]
+        for product_id, sub in (subscriber.get("subscriptions") or {}).items():
+            ends = [
+                t
+                for t in (
+                    _parse_time(sub.get("expires_date")),
+                    _parse_time(sub.get("grace_period_expires_date")),
+                )
+                if t is not None
+            ]
+            if not ends or max(ends) > now:
+                plan_candidates.append(plan_for_product(product_id))
     except (httpx.HTTPError, KeyError, TypeError, ValueError, AttributeError):
         log.warning("RevenueCat lookup failed for %s", entitlement.user_id, exc_info=True)
         return False
-    now = datetime.now(UTC)
     if info is None:
         start_grace(entitlement, None)
         return True
     effective_end = max((t for t in (expires_at, store_grace) if t is not None), default=None)
     if effective_end is None or effective_end > now:
-        activate(entitlement, expires_at)
+        activate(entitlement, expires_at, larger_plan(*plan_candidates))
     else:
         start_grace(entitlement, effective_end)
     db.flush()

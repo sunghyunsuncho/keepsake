@@ -4,6 +4,7 @@
 """
 
 import hashlib
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -13,6 +14,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app import jobs
+from app import plans as plans_module
 from app.api import shared_albums
 from app.cloud import purge_photos
 from app.config import get_settings
@@ -25,7 +27,10 @@ MAX = 100
 
 @pytest.fixture(autouse=True)
 def small_plan(monkeypatch):
-    monkeypatch.setattr(get_settings(), "cloud_max_bytes", MAX)
+    full = plans_module.plans
+    monkeypatch.setattr(
+        plans_module, "plans", lambda: {k: replace(v, max_bytes=MAX) for k, v in full().items()}
+    )
     monkeypatch.setattr(shared_albums, "MIN_OWNER_ALLOCATION", 1)
 
 

@@ -54,7 +54,8 @@ class Entitlement(Base):
     user_id: Mapped[str] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
-    plan: Mapped[str] = mapped_column(String(32), default="cloud")
+    # 요금제 (app/plans.py). 구독한 스토어 상품으로 정한다.
+    plan: Mapped[str] = mapped_column(String(32), default="cloud_10gb")
     # none: 구독한 적 없음 / active / grace: 만료 후 30일 읽기 전용 / expired: 클라우드 삭제됨
     status: Mapped[str] = mapped_column(String(16), default="none")
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

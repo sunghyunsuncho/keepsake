@@ -43,7 +43,7 @@ from app.models.cloud import (
     SharedAlbumItem,
     SharedAlbumMember,
 )
-from app.plans import default_plan
+from app.plans import default_plan, plan_limit
 from app.shared import (
     ITEM_QUALITY,
     album_limit,
@@ -630,7 +630,9 @@ def list_albums(user: CurrentUser, db: DbSession) -> SharedAlbumList:
         owned=owned_count(db, user.id),
         limit=album_limit(db, user.id),
         free_bytes=max(personal_free(db, user.id), 0),
-        suggested_allocation=default_plan().suggested_allocation,
+        suggested_allocation=(
+            plan_limit(db.get(Entitlement, user.id)) or default_plan()
+        ).suggested_allocation,
     )
 
 

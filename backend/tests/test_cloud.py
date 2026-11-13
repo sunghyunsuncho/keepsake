@@ -26,6 +26,7 @@ from app.db import get_db
 from app.main import app
 from app.models import Base
 from app.models.cloud import CloudObject, Entitlement, StorageCleanup, User
+from app.plans import GB, plan_for_product
 from app.storage import UPLOAD_SETTLE_AFTER, delete_prefix, r2_client, user_prefix
 
 WEBHOOK_SECRET = "test-webhook-secret"
@@ -1348,3 +1349,79 @@ def test_sweep_skips_cleanup_postponed_after_selection(db, engine, monkeypatch):
     db.expire_all()
     assert deleted == []
     assert db.get(StorageCleanup, prefix) is not None
+
+
+@pytest.mark.parametrize(
+    ("product_id", "plan"),
+    [
+        ("keepsake_cloud_10gb_monthly", "cloud_10gb"),
+        ("keepsake_cloud_100gb_yearly", "cloud_100gb"),
+        ("keepsake_cloud_100gb:monthly", "cloud_100gb"),
+        ("keepsake_cloud_10gb", "cloud_10gb"),
+        ("something_else", None),
+        (None, None),
+    ],
+)
+def test_plan_for_product(product_id, plan):
+    assert plan_for_product(product_id) == plan
+
+
+def test_webhook_sets_plan_from_product(client):
+    user_id, headers = sign_in(client)
+    webhook(client, user_id, "INITIAL_PURCHASE", product_id="keepsake_cloud_100gb_monthly")
+    body = client.get("/account", headers=headers).json()
+    assert body["subscription"]["plan"] == "cloud_100gb"
+    assert body["usage"]["max_bytes"] == 100 * GB
+
+    # 모르는 상품의 이벤트는 요금제를 바꾸지 않는다.
+    webhook(client, user_id, "RENEWAL", product_id="unknown")
+    assert client.get("/account", headers=headers).json()["subscription"]["plan"] == "cloud_100gb"
+
+
+def test_free_account_has_no_plan(client):
+    _user_id, headers = sign_in(client)
+    body = client.get("/account", headers=headers).json()
+    assert body["subscription"]["plan"] is None
+    assert body["usage"]["max_bytes"] == 0
+
+
+def test_lookup_uses_the_larger_active_subscription(client, db, monkeypatch):
+    user_id, _headers = sign_in(client)
+    webhook(client, user_id, "INITIAL_PURCHASE", product_id="keepsake_cloud_10gb_monthly")
+    monkeypatch.setattr(get_settings(), "revenuecat_api_key", "sk_test")
+    later = (datetime.now(UTC) + timedelta(days=20)).isoformat()
+    past = (datetime.now(UTC) - timedelta(days=20)).isoformat()
+    request = httpx.Request("GET", "https://api.revenuecat.com/v1/subscribers/u")
+    subscriber = {
+        "entitlements": {
+            "cloud": {"expires_date": later, "product_identifier": "keepsake_cloud_10gb"}
+        },
+        "subscriptions": {
+            "keepsake_cloud_10gb": {"expires_date": later},
+            "keepsake_cloud_100gb": {"expires_date": later},
+            # 끝난 구독은 세지 않는다
+            "keepsake_cloud_100gb_yearly": {"expires_date": past},
+        },
+    }
+    monkeypatch.setattr(
+        httpx,
+        "get",
+        lambda *_a, **_k: httpx.Response(200, request=request, json={"subscriber": subscriber}),
+    )
+    entitlement = db.get(Entitlement, user_id)
+    assert refresh_from_revenuecat(db, entitlement) is True
+    assert entitlement.plan == "cloud_100gb"
+
+    del subscriber["subscriptions"]["keepsake_cloud_100gb"]
+    assert refresh_from_revenuecat(db, entitlement) is True
+    assert entitlement.plan == "cloud_10gb"
+
+
+def test_complimentary_access_uses_the_top_plan(client, db):
+    user_id, headers = sign_in(client)
+    entitlement = db.get(Entitlement, user_id)
+    entitlement.access_override = "cloud"
+    db.commit()
+    body = client.get("/account", headers=headers).json()
+    assert body["subscription"]["plan"] == "cloud_100gb"
+    assert body["usage"]["max_bytes"] == 100 * GB

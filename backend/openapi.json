@@ -3222,6 +3222,21 @@
           "can_download": {
             "type": "boolean",
             "title": "Can Download"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "cloud_10gb",
+                  "cloud_100gb"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan"
           }
         },
         "type": "object",
@@ -3230,7 +3245,8 @@
           "expires_at",
           "grace_until",
           "can_upload",
-          "can_download"
+          "can_download",
+          "plan"
         ],
         "title": "SubscriptionState"
       },

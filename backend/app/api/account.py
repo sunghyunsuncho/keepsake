@@ -17,9 +17,9 @@ from app.cloud import (
     refresh_from_revenuecat,
     subscription_status,
 )
-from app.config import get_settings
 from app.models.cloud import Device, Entitlement, Moment, SyncRecord, Usage, User
-from app.shared import allocated_total, personal_used
+from app.plans import plan_limit
+from app.shared import allocated_total, max_bytes, personal_used
 
 log = logging.getLogger(__name__)
 
@@ -33,6 +33,8 @@ class SubscriptionState(BaseModel):
     grace_until: datetime | None
     can_upload: bool
     can_download: bool
+    # 구독(유예 포함) 중인 요금제 (app/plans.py). 구독하지 않았으면 없다.
+    plan: Literal["cloud_10gb", "cloud_100gb"] | None
 
 
 class StorageUsage(BaseModel):
@@ -63,6 +65,7 @@ class DeviceRequest(BaseModel):
 
 def account_response(db: DbSession, user: User) -> AccountResponse:
     entitlement = db.get(Entitlement, user.id)
+    limit = plan_limit(entitlement)
     usage = db.get(Usage, user.id)
     # Local 기록을 자동으로 선택해 올릴지는 이 계정이 완전히 비어 있는지에 달려 있다.
     # moment가 없어도 빈 앨범이나 고르기 이력이 있으면 이미 사용한 계정이므로 SyncRecord도 본다.
@@ -88,12 +91,13 @@ def account_response(db: DbSession, user: User) -> AccountResponse:
             grace_until=entitlement.grace_until if entitlement else None,
             can_upload=can_write(entitlement),
             can_download=can_read(entitlement),
+            plan=limit.plan if limit else None,
         ),
         usage=StorageUsage(
             bytes_total=personal_used(db, user.id),
             object_count=usage.object_count if usage else 0,
             allocated_bytes=allocated_total(db, user.id),
-            max_bytes=get_settings().cloud_max_bytes,
+            max_bytes=max_bytes(db, user.id),
         ),
         has_records=has_records,
     )

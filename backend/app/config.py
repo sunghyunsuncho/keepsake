@@ -40,9 +40,8 @@ class Settings(BaseSettings):
     # RevenueCat 비밀 API 키(sk_...). 있으면 webhook을 받을 때·삭제 직전에 구독 상태를 재조회한다.
     revenuecat_api_key: str | None = None
     revenuecat_entitlement_id: str = "cloud"
-    cloud_max_bytes: int = 50 * 1024 * 1024 * 1024
     cloud_grace_days: int = 30
-    # 기본 안전 보관 요금제의 공유 앨범 규칙 (app/plans.py, docs/PRICING.md)
+    # 안전 보관 요금제의 공유 앨범 규칙. 용량은 요금제마다 app/plans.py에 있다 (docs/PRICING.md).
     shared_album_limit: int = 1
     # 공유 앨범 용량이 0이 된 뒤 사진을 정리하기까지. 구독하지 않은 구성원도 내려받을 시간을 준다.
     shared_album_grace_days: int = 30
