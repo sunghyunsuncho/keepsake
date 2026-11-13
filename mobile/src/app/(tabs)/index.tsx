@@ -4,7 +4,7 @@ import type { Asset } from 'expo-media-library';
 import { router, useNavigation } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { AlbumNameSheet } from '@/components/album-name-sheet';
@@ -27,7 +27,7 @@ import { Spacing } from '@/constants/theme';
 import { createAlbum, getAlbumTitle, listAlbums, updateAlbumMoments } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
 import { listRecentlySavedMoments, momentIdsByAsset } from '@/db/moments';
-import { getSettings, setSetting, type Settings } from '@/db/settings';
+import { getSettings, setSetting, type AppLanguage, type Settings } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { dayKeyOf, usePhotoSelection } from '@/hooks/use-photo-selection';
 import { formatDay, formatTime, toDateKey, todayKey } from '@/lib/dates';
@@ -41,7 +41,7 @@ import {
 import { firstPhotoDate, getPhotosSince, subscribeLibraryChanges, usePhotoAccess } from '@/lib/photos';
 import { checkMissedPhotos, clearMissedPhotos, loadMissedPhotos } from '@/lib/missed-photos';
 import { markReviewed, offerReminders } from '@/lib/reminders';
-import { inboxTitle, photoCount, reviewedUntil, selectionSummary, useTranslation } from '@/lib/i18n';
+import { inboxTitle, localizeText, photoCount, reviewedUntil, selectionSummary, showAlert, useTranslation } from '@/lib/i18n';
 
 export default function PickScreen() {
   const db = useSQLiteContext();
@@ -458,11 +458,11 @@ function Inbox({
   // 날짜 묶음에서 바로 진행을 확정한다. 이 날짜보다 앞선 사진도 함께 본 것으로 처리된다.
   const markSeenThroughDay = (dayAssets: Asset[]) => {
     if (selection.draft.length > 0) {
-      Alert.alert('먼저 고른 사진을 남겨 주세요', '선택을 해제하거나 [남기기]를 누른 뒤 진행할 수 있어요.');
+      showAlert('먼저 고른 사진을 남겨 주세요', '선택을 해제하거나 [남기기]를 누른 뒤 진행할 수 있어요.');
       return;
     }
     const through = Math.min(Math.max(...dayAssets.map((asset) => asset.creationTime)), Date.now());
-    Alert.alert('이 날짜까지 확인할까요?', '이 날짜까지의 사진은 다음 고르기에서 건너뛰어요.', [
+    showAlert('이 날짜까지 확인할까요?', '이 날짜까지의 사진은 다음 고르기에서 건너뛰어요.', [
       { text: '취소', style: 'cancel' },
       {
         text: '확인',
@@ -483,7 +483,11 @@ function Inbox({
       <View style={styles.flex}>
         <ThemedText type="small" themeColor="textSecondary">
           {roll && roll.assets.length > 0
-            ? `${formatDay(dayKeyOf(roll.assets[0]))}부터 ${roll.totalCount}장`
+            ? {
+                ko: `${formatDay(dayKeyOf(roll.assets[0]))}부터 ${roll.totalCount}장`,
+                en: `${photoCount(language, roll.totalCount)} from ${formatDay(dayKeyOf(roll.assets[0]))}`,
+                ja: `${formatDay(dayKeyOf(roll.assets[0]))}から${roll.totalCount}枚`,
+              }[language]
             : ' '}
         </ThemedText>
       </View>
@@ -509,7 +513,7 @@ function Inbox({
     );
   }
 
-  const seenLabel = formatMoment(seenUntil);
+  const seenLabel = formatMoment(seenUntil, language);
   // 정리 후보: 살펴보고 남기지 않은 사진. 지난 사진 다시 보기와 같은 카드로, 정리하거나 넘어갈 수 있다.
   const candidates = settings.cleanup_candidate_ids;
   const cleanupCard = candidates.length > 0 && (
@@ -596,16 +600,20 @@ function Inbox({
         <BottomBar
           title={
             selection.saving
-              ? `남기는 중… ${selection.saving.done}/${selection.saving.total}`
+              ? `${localizeText(language, '남기는 중…')} ${selection.saving.done}/${selection.saving.total}`
               : selectionSummary(language, selection.draft.length)
           }
-          subtitle={`${seenLabel} 사진까지 본 걸로 기억해요`}
+          subtitle={{ ko: `${seenLabel} 사진까지 본 걸로 기억해요`, en: `Photos through ${seenLabel} are marked as reviewed`, ja: `${seenLabel}までの写真を確認済みにします` }[language]}
           secondary={{ label: '선택 해제', onPress: selection.clear }}
           action={{ label: '남기기', onPress: complete, loading: !!selection.saving }}
         />
       ) : seenUntil > cursorMs || missed.length > 0 ? (
         <BottomBar
-          title={seenUntil > cursorMs ? `${seenLabel} 사진까지` : `놓친 사진 ${missed.length}장`}
+          title={
+            seenUntil > cursorMs
+              ? { ko: `${seenLabel} 사진까지`, en: `Through ${seenLabel}`, ja: `${seenLabel}の写真まで` }[language]
+              : { ko: `놓친 사진 ${missed.length}장`, en: `${photoCount(language, missed.length)} missed`, ja: `見逃した写真 ${missed.length}枚` }[language]
+          }
           subtitle={seenUntil > cursorMs ? '다음엔 그 뒤부터 보여드려요' : '다음엔 보여드리지 않아요'}
           action={{
             label: '여기까지 봤어요',
@@ -651,7 +659,7 @@ function DayHeader({
     <View style={styles.dayHeader}>
       <View style={styles.flex}>
         <ThemedText type="smallBold">
-          {dateKey === todayKey() ? `오늘 · ${formatDay(dateKey)}` : formatDay(dateKey)}
+          {dateKey === todayKey() ? `${localizeText(language, '오늘')} · ${formatDay(dateKey)}` : formatDay(dateKey)}
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
           {photoCount(language, count)}{saved > 0 ? (language === 'en' ? ` · ${photoCount(language, saved)} saved` : language === 'ja' ? ` · ${photoCount(language, saved)}を保存` : ` · ${photoCount(language, saved)} 남김`) : picked > 0 ? (language === 'en' ? ` · ${photoCount(language, picked)} selected` : language === 'ja' ? ` · ${photoCount(language, picked)}を選択` : ` · ${photoCount(language, picked)} 고름`) : ''}
@@ -660,7 +668,7 @@ function DayHeader({
       <Pressable
         onPress={onMarkSeen}
         accessibilityRole="button"
-        accessibilityLabel="이 날짜까지 확인하고 다음부터 건너뛰기"
+        accessibilityLabel={localizeText(language, '이 날짜까지 확인하고 다음부터 건너뛰기')}
         hitSlop={8}
         style={styles.dayComplete}>
         <Ionicons name="checkmark-circle-outline" size={17} color={theme.accent} />
@@ -694,7 +702,7 @@ function AllCaughtUp({ cursor, cleanup }: { cursor: number; cleanup: React.React
       <Ionicons name="checkmark-circle-outline" size={40} color={theme.accent} />
       <ThemedText style={styles.center}>새로 찍은 사진을 모두 살펴봤어요</ThemedText>
       <ThemedText type="small" themeColor="textSecondary" style={styles.center}>
-        {reviewedUntil(language, formatMoment(cursor))}
+        {reviewedUntil(language, formatMoment(cursor, language))}
       </ThemedText>
       <Pressable
         onPress={() => router.push('/day')}
@@ -786,10 +794,13 @@ function SavedMomentsLink() {
 }
 
 /** "오늘 15:12", "10월 24일 15:12" */
-function formatMoment(ms: number) {
+function formatMoment(ms: number, language: AppLanguage) {
   const date = new Date(ms);
+  const locale = language === 'en' ? 'en-US' : language === 'ja' ? 'ja-JP' : 'ko-KR';
   const day =
-    toDateKey(date) === todayKey() ? '오늘' : `${date.getMonth() + 1}월 ${date.getDate()}일`;
+    toDateKey(date) === todayKey()
+      ? localizeText(language, '오늘')
+      : new Intl.DateTimeFormat(locale, { month: 'long', day: 'numeric' }).format(date);
   return `${day} ${formatTime(date.toISOString())}`;
 }
 

@@ -18,6 +18,7 @@ import { VideoBadge } from '@/components/video-badge';
 import { Spacing } from '@/constants/theme';
 import { GRID_COLUMN_OPTIONS, type GridColumns } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
+import { localizeText, useTranslation } from '@/lib/i18n';
 import { presentLimitedPicker } from '@/lib/photos';
 
 // 고르기 화면(새 사진)과 날짜로 보기 화면이 함께 쓰는 조각들.
@@ -55,12 +56,19 @@ export function PhotoTile({
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
+  const video = asset.mediaType === 'video';
+  const accessibilityLabel = {
+    ko: `${state === 'saved' ? '남긴 ' : ''}${video ? '동영상' : '사진'}`,
+    en: `${state === 'saved' ? 'Saved ' : ''}${video ? 'video' : 'photo'}`,
+    ja: `${state === 'saved' ? '残した' : ''}${video ? '動画' : '写真'}`,
+  }[language];
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="checkbox"
       accessibilityState={{ checked: state !== 'none' }}
-      accessibilityLabel={`${state === 'saved' ? '남긴 ' : ''}${asset.mediaType === 'video' ? '동영상' : '사진'}`}
+      accessibilityLabel={accessibilityLabel}
       style={{ width, height, margin: GRID_GAP / 2 }}>
       <Image
         source={{ uri: asset.uri }}
@@ -115,6 +123,7 @@ export function ColumnToggle({
   onChange: (value: GridColumns) => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   return (
     <View
       style={[styles.segment, { backgroundColor: theme.backgroundElement }]}
@@ -127,7 +136,7 @@ export function ColumnToggle({
             onPress={() => onChange(option)}
             accessibilityRole="radio"
             accessibilityState={{ selected: active }}
-            accessibilityLabel={`한 줄에 ${option}장`}
+            accessibilityLabel={{ ko: `한 줄에 ${option}장`, en: `${option} per row`, ja: `1列に${option}枚` }[language]}
             hitSlop={4}
             style={[styles.segmentItem, active && { backgroundColor: theme.background }]}>
             <Ionicons
@@ -190,6 +199,7 @@ export function SavedTray({
   onClose?: () => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   return (
     <View style={[styles.tray, { backgroundColor: theme.background, borderTopColor: theme.border }]}>
       <View style={styles.trayHeader}>
@@ -197,7 +207,7 @@ export function SavedTray({
           {title}
         </ThemedText>
         {onClose && (
-          <Pressable onPress={onClose} hitSlop={12} accessibilityLabel="닫기">
+          <Pressable onPress={onClose} hitSlop={12} accessibilityLabel={localizeText(language, '닫기')}>
             <Ionicons name="close" size={18} color={theme.textSecondary} />
           </Pressable>
         )}
@@ -210,7 +220,7 @@ export function SavedTray({
           <Pressable
             key={item.momentId}
             onPress={() => onOpen(item.momentId)}
-            accessibilityLabel="기억 적기">
+            accessibilityLabel={localizeText(language, '기억 적기')}>
             <Image source={{ uri: item.uri }} style={styles.trayThumb} contentFit="cover" />
           </Pressable>
         ))}
@@ -248,11 +258,12 @@ export function IconButton({
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      accessibilityLabel={label}
+      accessibilityLabel={localizeText(language, label)}
       hitSlop={12}
       style={{ opacity: disabled ? 0.25 : 1, padding: Spacing.two }}>
       <Ionicons name={icon} size={24} color={theme.text} />

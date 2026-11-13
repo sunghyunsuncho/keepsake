@@ -5,7 +5,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import type { PhotoQuality } from '@/db/albums';
 import { useTheme } from '@/hooks/use-theme';
-import { useTranslation } from '@/lib/i18n';
+import { localizeText, useTranslation } from '@/lib/i18n';
 
 // 안전 앨범의 보관 화질. 숫자는 docs/PLAN.md §2.2의 추정치다 (사진 기준. 동영상은 길이에 따라 크게 다르다).
 export const PHOTO_QUALITY: Record<
@@ -91,6 +91,7 @@ export function QualityChoice({
   onChange: (value: PhotoQuality | null) => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   const current = value ?? albumQuality;
   return (
     <View style={[styles.choice, { backgroundColor: theme.backgroundElement }]}>
@@ -103,7 +104,7 @@ export function QualityChoice({
             onPress={() => onChange(albumDefault ? null : quality)}
             accessibilityRole="radio"
             accessibilityState={{ selected }}
-            accessibilityLabel={`${PHOTO_QUALITY[quality].label}${albumDefault ? ', 앨범 기본' : ''}`}
+            accessibilityLabel={[PHOTO_QUALITY[quality].label, albumDefault && '앨범 기본'].filter(Boolean).map((part) => localizeText(language, part as string)).join(', ')}
             style={[styles.choiceItem, selected && { backgroundColor: theme.background }]}>
             <Ionicons name={PHOTO_QUALITY[quality].icon} size={14} color={selected ? theme.accent : theme.textSecondary} />
             <ThemedText type={selected ? 'smallBold' : 'small'} themeColor={selected ? 'text' : 'textSecondary'} numberOfLines={1}>
@@ -133,7 +134,7 @@ export function QualityTileBadge({ quality }: { quality: PhotoQuality }) {
     <View
       style={[styles.tileBadge, { backgroundColor: original ? theme.accent : 'rgba(0,0,0,0.5)' }]}
       pointerEvents="none"
-      accessibilityLabel={PHOTO_QUALITY[quality].badge}>
+      accessibilityLabel={localizeText(language, PHOTO_QUALITY[quality].badge)}>
       <Ionicons name={PHOTO_QUALITY[quality].icon} size={10} color={original ? theme.onAccent : '#fff'} />
       <Text style={[styles.tileBadgeText, { color: original ? theme.onAccent : '#fff' }]}>{original ? (language === 'en' ? 'Original' : language === 'ja' ? 'オリジナル' : '원본') : language === 'en' ? 'Optimized' : language === 'ja' ? '省容量' : '효율'}</Text>
     </View>

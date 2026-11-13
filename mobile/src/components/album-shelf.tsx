@@ -84,6 +84,7 @@ export type SectionAction = {
  */
 export function AlbumSectionHeader({ title, actions = [] }: { title: string; actions?: SectionAction[] }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   return (
     <View style={styles.header}>
       <ThemedText type="smallBold" themeColor="textSecondary" numberOfLines={1} style={styles.headerTitle}>
@@ -99,7 +100,7 @@ export function AlbumSectionHeader({ title, actions = [] }: { title: string; act
               onPress={action.onPress}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel={action.label}
+              accessibilityLabel={localizeText(language, action.label)}
               style={({ pressed }) => [
                 styles.action,
                 create && [styles.pill, { backgroundColor: color, shadowColor: color }],

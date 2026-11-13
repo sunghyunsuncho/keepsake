@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { CloudArrowUpIcon } from 'phosphor-react-native';
 import { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SignInButtons } from '@/components/sign-in-buttons';
@@ -11,6 +11,7 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { afterSignIn } from '@/lib/cloud/engine';
 import { describeSignInError, SignInCancelled, signInWithApple, signInWithGoogle } from '@/lib/cloud/sign-in';
+import { showAlert } from '@/lib/i18n';
 
 // 설정의 [로그인하고 기록 백업하기]: 로그인만 한다. 구독 소개와 가격은 안전 보관 화면(/cloud)에 둔다.
 // 로그인하면 계정 공간으로 바뀌고, 이 기기에 남긴 기록이 있으면 LocalImportPrompt가 백업할지 묻는다.
@@ -26,7 +27,7 @@ export default function SignInScreen() {
       // 계정 공간으로 바뀌면 내비게이션이 처음으로 돌아가 이미 닫혀 있을 수 있다.
       if (router.canGoBack()) router.back();
     } catch (e) {
-      if (!(e instanceof SignInCancelled)) Alert.alert('문제가 생겼어요', describeSignInError(e));
+      if (!(e instanceof SignInCancelled)) showAlert('문제가 생겼어요', describeSignInError(e));
     } finally {
       setBusy(false);
     }

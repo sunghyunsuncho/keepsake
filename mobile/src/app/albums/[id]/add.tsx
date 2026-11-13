@@ -2,7 +2,7 @@ import { FlashList } from '@shopify/flash-list';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View, type ImageStyle } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, type ImageStyle } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 
@@ -18,9 +18,10 @@ import { Spacing } from '@/constants/theme';
 import { albumMomentIds, getAlbum, originalElsewhereIds, updateAlbumMoments, type PhotoQuality } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
 import { listMoments, setMomentsCloudQuality, type Moment } from '@/db/moments';
-import { setSetting } from '@/db/settings';
+import { setSetting, type AppLanguage } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { useZoomedGallery } from '@/hooks/use-zoomed-gallery';
+import { localizeText, showAlert, useTranslation } from '@/lib/i18n';
 
 // 앨범에 넣을 기록을 고른다. 남긴 기록 전체에서 고르고, 이미 들어 있는 것은 체크된 채로 시작한다.
 // 체크를 풀면 앨범에서 빠진다 (기록은 그대로). 안전 앨범이면 고른 사진을 그 앨범의 화질로 Cloud에 올린다.
@@ -28,10 +29,27 @@ import { useZoomedGallery } from '@/hooks/use-zoomed-gallery';
 /** 고르면서 보는 단계. 이야기 단계는 한 장씩 크게 보여 고르기에 맞지 않는다. */
 const PICK_ZOOMS = ['year', 'month', 'day'] as const;
 
+/** 안전 앨범에 담을 때의 안내. 고른 화질 이름이 문장 가운데 들어가 언어별로 문장을 쓴다. */
+function cloudGuide(language: AppLanguage, quality: PhotoQuality) {
+  const label = localizeText(language, PHOTO_QUALITY[quality].label);
+  const display = quality === 'display';
+  if (language === 'en') {
+    return `Choose photos to keep safe. New photos will be stored as ${label}` +
+      (display ? ' (photos at 2048px on the long edge, videos at 720p).' : ' (with a viewing copy). Originals can be uploaded only for photos in your device library.');
+  }
+  if (language === 'ja') {
+    return `安全保管する写真を選んでください。新しく追加する写真は「${label}」で保管します` +
+      (display ? '（写真は長辺2048px、動画は720p）。' : '（表示用の写真も一緒に）。オリジナルは、デバイスのライブラリにある写真のみアップロードできます。');
+  }
+  return `안전 보관할 사진을 골라 주세요. 새로 담는 사진을 ${label}로 보관해요` +
+    (display ? ' (사진은 긴 변 2048px, 동영상은 720p).' : ' (보기용 사진도 함께). 원본은 기기 사진첩에 있는 사진만 올릴 수 있어요.');
+}
+
 export default function AlbumAddScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const db = useSQLiteContext();
   const theme = useTheme();
+  const { language } = useTranslation();
   const { data: album } = useDbQuery(() => getAlbum(db, id), [db, id]);
   const title = album?.title;
   const { data: moments } = useDbQuery(() => listMoments(db), [db]);
@@ -70,7 +88,7 @@ export default function AlbumAddScreen() {
       });
       router.back();
     } catch {
-      Alert.alert('앨범을 저장하지 못했어요', '잠시 후 다시 시도해 주세요.');
+      showAlert('앨범을 저장하지 못했어요', '잠시 후 다시 시도해 주세요.');
     } finally {
       setSaving(false);
     }
@@ -135,10 +153,7 @@ export default function AlbumAddScreen() {
         <>
           <ThemedText type="small" themeColor="textSecondary" style={styles.guide}>
             {album?.photoQuality
-              ? `안전 보관할 사진을 골라 주세요. 새로 담는 사진을 ${PHOTO_QUALITY[quality ?? album.photoQuality].label}로 보관해요` +
-                ((quality ?? album.photoQuality) === 'display'
-                  ? ' (사진은 긴 변 2048px, 동영상은 720p).'
-                  : ' (보기용 사진도 함께). 원본은 기기 사진첩에 있는 사진만 올릴 수 있어요.')
+              ? cloudGuide(language, quality ?? album.photoQuality)
               : '이 앨범에 넣을 사진을 골라 주세요. 사진은 복사되지 않고, 앨범에서 빼도 기록은 그대로 남아요.'}
           </ThemedText>
           {album?.photoQuality && (

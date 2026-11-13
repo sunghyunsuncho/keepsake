@@ -13,6 +13,7 @@ import { useDbQuery } from '@/db/changes';
 import { getMoment } from '@/db/moments';
 import { useTheme } from '@/hooks/use-theme';
 import { sharedImageUri, sharedItemUrl, type SharedItem } from '@/lib/cloud/shared';
+import { localizeText, useTranslation } from '@/lib/i18n';
 
 type Props = {
   albumId: string;
@@ -59,6 +60,7 @@ export function SharedItemPhoto(props: Props) {
 
 function SharedImage({ albumId, item, style, contentFit = 'cover', variant }: Props) {
   const theme = useTheme();
+  const { language } = useTranslation();
   const stored = item.stored_variants.includes('display');
   const image = variant === 'thumb' && item.stored_variants.includes('thumb') ? 'thumb' : 'display';
   // undefined: 받는 중, null: 받을 수 없다
@@ -89,7 +91,13 @@ function SharedImage({ albumId, item, style, contentFit = 'cover', variant }: Pr
       <Ionicons name={stored ? 'image-outline' : 'cloud-upload-outline'} size={variant === 'full' ? 32 : 18} color={theme.textSecondary} />
       {variant === 'full' && (
         <ThemedText type="small" themeColor="textSecondary" style={styles.message}>
-          {stored ? '사진을 불러오지 못했어요.' : `${item.author_name}님의 기기에서 아직 올리는 중이에요.`}
+          {stored
+            ? '사진을 불러오지 못했어요.'
+            : {
+                ko: `${item.author_name}님의 기기에서 아직 올리는 중이에요.`,
+                en: `Still uploading from ${item.author_name}’s device.`,
+                ja: `${item.author_name}さんのデバイスからアップロード中です。`,
+              }[language]}
         </ThemedText>
       )}
     </View>
@@ -98,6 +106,7 @@ function SharedImage({ albumId, item, style, contentFit = 'cover', variant }: Pr
 
 function SharedVideo(props: Props) {
   const { albumId, item, style, active = true } = props;
+  const { language } = useTranslation();
   const variant = item.stored_variants.includes('original')
     ? 'original'
     : item.stored_variants.includes('compact')
@@ -124,7 +133,7 @@ function SharedVideo(props: Props) {
         {uri === undefined ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.videoMessage}>재생할 수 있는 동영상이 아직 없어요.</Text>
+          <Text style={styles.videoMessage}>{localizeText(language, '재생할 수 있는 동영상이 아직 없어요.')}</Text>
         )}
       </View>
     </View>

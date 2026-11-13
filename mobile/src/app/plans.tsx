@@ -188,7 +188,8 @@ const COPY: Record<AppLanguage, (size: string) => Copy> = {
 };
 
 const ICONS = { local: DeviceMobileIcon, free: UserIcon, paid: ShieldCheckIcon };
-const DEFAULT_SIZE = '50GB';
+// 구독하기 전에는 두 요금제의 용량을 함께 보여 준다 (docs/PRICING.md §2).
+const DEFAULT_SIZE = '10GB / 100GB';
 
 export default function PlansScreen() {
   const theme = useTheme();
@@ -196,7 +197,7 @@ export default function PlansScreen() {
   const { from } = useLocalSearchParams<{ from?: string }>();
   const session = useCloudSession();
   const { account } = useCloudState();
-  const copy = COPY[language](account?.usage ? formatSize(account.usage.max_bytes) : DEFAULT_SIZE);
+  const copy = COPY[language](account?.usage.max_bytes ? formatSize(account.usage.max_bytes) : DEFAULT_SIZE);
   const grace = account?.subscription.status === 'grace';
   const current: Level = !session ? 'local' : account?.subscription.can_upload ? 'paid' : 'free';
   const cta = current === 'local' ? copy.cta.local : current === 'free' ? (grace ? copy.cta.grace : copy.cta.free) : null;

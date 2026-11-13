@@ -8,6 +8,7 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { SharedItem } from '@/lib/cloud/shared';
 import { formatTime, localDateKey } from '@/lib/dates';
+import { addedBy, localizeText, useTranslation } from '@/lib/i18n';
 
 /**
  * 공유 앨범의 이야기 단계: 내 앨범의 StoryCard처럼 폴라로이드로 한 장씩.
@@ -32,18 +33,19 @@ export function SharedStoryCard({
   onSelect?: () => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   const day = localDateKey(takenAt, item.taken_tz_offset);
   const tilt = item.id.charCodeAt(item.id.length - 1) % 2 ? '0.5deg' : '-0.5deg';
   return (
     <Pressable
       onPress={selecting ? onSelect : onOpen}
-      accessibilityLabel={selecting ? '앨범에서 뺄 사진 선택' : '사진 크게 보기'}
+      accessibilityLabel={localizeText(language, selecting ? '앨범에서 뺄 사진 선택' : '사진 크게 보기')}
       accessibilityState={selecting ? { checked: selected } : undefined}
       style={[styles.print, { transform: [{ rotate: tilt }] }, selecting && selected && { borderWidth: 3, borderColor: theme.accent }]}>
       <SharedItemPhoto albumId={albumId} item={item} style={[styles.image, { backgroundColor: theme.backgroundElement }]} />
       <View style={styles.body}>
         <ThemedText style={{ color: PRINT.ink }} numberOfLines={1}>
-          {item.is_mine ? '내가 담았어요' : `${item.author_name}님이 담았어요`}
+          {item.is_mine ? '내가 담았어요' : addedBy(language, item.author_name)}
         </ThemedText>
         <View style={styles.foot}>
           <ThemedText type="small" style={[styles.flex, { color: PRINT.inkSecondary }]} numberOfLines={1}>

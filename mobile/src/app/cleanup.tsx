@@ -34,11 +34,13 @@ import {
   loadCleanupPhotos,
 } from '@/lib/cleanup';
 import { useCloudSession } from '@/lib/cloud/session';
+import { localizeText, photoCount, useTranslation } from '@/lib/i18n';
 
 /** 고르기를 마친 뒤 남기지 않은 사진을 살펴보고 지운다. 누른 사진은 지우지 않는다. */
 export default function CleanupScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
+  const { language } = useTranslation();
   const session = useCloudSession();
   const { data: settings } = useDbQuery(() => getSettings(db), [db]);
   const [photos, setPhotos] = useState<Asset[] | null>(null);
@@ -101,7 +103,9 @@ export default function CleanupScreen() {
     content = (
       <Centered>
         <Ionicons name="checkmark-circle-outline" size={40} color={theme.accent} />
-        <ThemedText style={styles.center}>사진 {deletedCount}장을 비웠어요</ThemedText>
+        <ThemedText style={styles.center}>
+          {{ ko: `사진 ${deletedCount}장을 비웠어요`, en: `Cleared ${photoCount(language, deletedCount)}`, ja: `写真${deletedCount}枚を削除しました` }[language]}
+        </ThemedText>
         {!session && (
           <ThemedText type="small" themeColor="textSecondary" style={styles.center}>
             남긴 사진의 원본은 기기 사진첩에 그대로 있어요.{'\n'}
@@ -166,7 +170,15 @@ export default function CleanupScreen() {
           )}
         />
         <BottomBar
-          title={targets.length > 0 ? `${photos.length}장 중 ${targets.length}장을 지워요` : '지울 사진이 없어요'}
+          title={
+            targets.length > 0
+              ? {
+                  ko: `${photos.length}장 중 ${targets.length}장을 지워요`,
+                  en: `Delete ${targets.length} of ${photoCount(language, photos.length)}`,
+                  ja: `${photos.length}枚中${targets.length}枚を削除します`,
+                }[language]
+              : '지울 사진이 없어요'
+          }
           subtitle={
             notDeleted ? '지우지 않았어요. 다시 시도할 수 있어요.' : '한 번 더 확인한 뒤에 지워요'
           }
@@ -208,12 +220,13 @@ function CleanupTile({
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="checkbox"
       accessibilityState={{ checked: marked }}
-      accessibilityLabel={marked ? '지울 사진' : '지우지 않을 사진'}
+      accessibilityLabel={localizeText(language, marked ? '지울 사진' : '지우지 않을 사진')}
       style={{ width, height, margin: GRID_GAP / 2 }}>
       <Image source={{ uri: asset.uri }} style={styles.fill} contentFit="cover" recyclingKey={asset.id} />
       {asset.mediaType === 'video' && <VideoBadge duration={asset.duration} />}

@@ -8,6 +8,7 @@ import type { components } from '@/api/schema';
 import { albumMomentIds, deleteAlbum } from '@/db/albums';
 import { notifyChange } from '@/db/changes';
 import { inTransaction } from '@/db/moments';
+import type { AppLanguage } from '@/db/settings';
 import { CloudError, cloudApi, unwrap } from '@/lib/cloud/session';
 import { pushChanges } from '@/lib/cloud/sync';
 import { MEDIA_PERMISSIONS } from '@/lib/photos';
@@ -42,8 +43,15 @@ export const RELATION_ORDER: Relation[] = ['family', 'friends', 'partner', 'othe
 export const DISPLAY_NAME_MAX = 20;
 
 /** 앱 밖에서 받은 초대 링크 (keepsake://shared-albums/join?code=…). 앱이 없으면 코드만 옮겨 적는다. */
-export function inviteMessage(title: string, code: string) {
-  return `Keepsake 공유 앨범 '${title}'에 초대해요.\n앱의 안전 사진첩 → [초대 코드로 참여]에서 코드를 입력해 주세요.\n\n초대 코드: ${code}\nkeepsake://shared-albums/join?code=${code}`;
+export function inviteMessage(language: AppLanguage, title: string, code: string) {
+  const link = `keepsake://shared-albums/join?code=${code}`;
+  if (language === 'en') {
+    return `You’re invited to the Keepsake shared album “${title}”.\nIn the app, go to Secure Library → Join with code and enter the code.\n\nInvite code: ${code}\n${link}`;
+  }
+  if (language === 'ja') {
+    return `Keepsakeの共有アルバム「${title}」に招待します。\nアプリのセキュアライブラリ →［コードで参加］からコードを入力してください。\n\n招待コード：${code}\n${link}`;
+  }
+  return `Keepsake 공유 앨범 '${title}'에 초대해요.\n앱의 안전 사진첩 → [초대 코드로 참여]에서 코드를 입력해 주세요.\n\n초대 코드: ${code}\n${link}`;
 }
 
 /** 서버의 내 항목 목록으로 shared_items를 바꾼다. pull 뒤, 필요 없는 파일을 지우기 전에 부른다. */

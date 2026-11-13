@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { localizeText, useTranslation } from '@/lib/i18n';
 
 // 뒤로 가기가 있는 화면과 아래에서 올라오는 창(모달)의 머리글. iOS 기본 머리글 버튼은 iOS 26부터
 // 동그란 유리 배경이 생기는데, 지금 쓰는 react-native-screens(4.16)에는 이를 끄는 옵션이 없어 머리글을 직접 그린다.
@@ -50,12 +51,13 @@ export function HeaderButton({
   size?: number;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   return (
     <Pressable
       onPress={onPress}
       hitSlop={10}
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={localizeText(language, label)}
       style={({ pressed }) => [styles.button, { opacity: pressed ? 0.4 : 1 }]}>
       <Ionicons name={icon} size={size} color={color ?? theme.text} />
     </Pressable>

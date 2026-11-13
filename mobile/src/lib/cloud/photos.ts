@@ -14,6 +14,7 @@ import { getSettings, setSetting } from '@/db/settings';
 import { CloudError, cloudApi, unwrap } from '@/lib/cloud/session';
 import { assetFileUri, hasLimitedPhotoAccess, MEDIA_PERMISSIONS, MEDIA_TYPES } from '@/lib/photos';
 import { cacheDir } from '@/lib/storage';
+import { getCurrentLanguage, localizeText } from '@/lib/i18n';
 
 // 사진 업로드·다운로드 (docs/PLAN.md §3.1). 사진 바이트는 서버를 거치지 않고 R2와 직접 오간다.
 //
@@ -223,7 +224,7 @@ export async function adoptPhotosWithoutAlbum(db: SQLiteDatabase) {
   );
   if (rows.length > 0) {
     const quality = rows.some((row) => row.original_uploaded === 1) ? 'original' : 'display';
-    const albumId = await createAlbum(db, '이전에 보관한 사진', { quality });
+    const albumId = await createAlbum(db, localizeText(getCurrentLanguage(), '이전에 보관한 사진'), { quality });
     await updateAlbumMoments(db, albumId, { add: rows.map((row) => row.id) });
   }
   await setSetting(db, 'cloud_photos_adopted', true);

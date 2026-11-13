@@ -3,6 +3,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { cloudApi } from '@/lib/cloud/session';
+import { getCurrentLanguage, localizeText } from '@/lib/i18n';
 
 // 구독 만료 후 유예 알림(만료 즉시, 삭제 7일 전·1일 전)을 받을 Expo 푸시 토큰을 서버에 알린다.
 // EAS 프로젝트가 연결되지 않은 개발 빌드에서는 토큰을 받을 수 없으므로 건너뛴다.
@@ -19,7 +20,7 @@ export async function registerPushToken({ ask }: { ask: boolean }) {
     if (!granted) return;
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('cloud', {
-        name: '안전 보관',
+        name: localizeText(getCurrentLanguage(), '안전 보관'),
         importance: Notifications.AndroidImportance.DEFAULT,
       });
     }

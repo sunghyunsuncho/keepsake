@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { Alert, Linking } from 'react-native';
+import { Linking } from 'react-native';
 import { ArrowCircleUpIcon, ArrowsClockwiseIcon, ChartPieSliceIcon, CloudArrowUpIcon, CreditCardIcon, DownloadSimpleIcon, HourglassIcon, SignOutIcon, TrashIcon, WifiHighIcon } from 'phosphor-react-native';
 
 import { SettingsRow, SettingsSwitchRow, shortDateTime } from '@/components/settings-list';
@@ -14,7 +14,7 @@ import { countMissingOriginals, PhotoSaveError, saveOriginalsToLibrary } from '@
 import { MANAGE_SUBSCRIPTION_URL, purchasesAvailable } from '@/lib/cloud/purchases';
 import { useCloudSession } from '@/lib/cloud/session';
 import { formatBytes } from '@/lib/storage';
-import { photoCount, useTranslation } from '@/lib/i18n';
+import { photoCount, showAlert, useTranslation } from '@/lib/i18n';
 
 // 설정 탭의 계정·보관 행들. 상태 판단은 서버가 준 subscription 값을 그대로 보여준다.
 // 등급: 로그인하지 않으면 백업 없음 → 로그인하면 기록 백업(RecordBackupRows) → 구독하면 사진 보관(CloudLibraryRows).
@@ -63,12 +63,18 @@ export function CloudLibraryRows() {
     setDownloading({ done: 0, total: missingOriginals ?? 0 });
     try {
       const result = await saveOriginalsToLibrary(db, (done, total) => setDownloading({ done, total }));
-      Alert.alert(
+      showAlert(
         '기기 사진첩에 저장했어요',
-        result.failed > 0 ? `${result.failed}장은 저장하지 못했어요. 다시 시도해 주세요.` : undefined,
+        result.failed > 0
+          ? {
+              ko: `${result.failed}장은 저장하지 못했어요. 다시 시도해 주세요.`,
+              en: `${photoCount(language, result.failed)} could not be saved. Please try again.`,
+              ja: `${result.failed}枚は保存できませんでした。もう一度お試しください。`,
+            }[language]
+          : undefined,
       );
     } catch (e) {
-      Alert.alert('사진을 저장하지 못했어요', e instanceof PhotoSaveError ? e.message : '잠시 후 다시 시도해 주세요.');
+      showAlert('사진을 저장하지 못했어요', e instanceof PhotoSaveError ? e.message : '잠시 후 다시 시도해 주세요.');
     } finally {
       setDownloading(null);
     }
@@ -116,12 +122,13 @@ export function CloudLibraryRows() {
 
 /** 로그아웃·계정 삭제 행. 로그인했을 때만 보인다. */
 export function AccountRows() {
+  const { language } = useTranslation();
   const session = useCloudSession();
   const [busy, setBusy] = useState(false);
   if (!session) return null;
 
   const confirmSignOut = () =>
-    Alert.alert('로그아웃할까요?', '이 기기에만 보관한 기록으로 돌아가요. 이 계정의 기록은 다시 로그인하면 볼 수 있어요.', [
+    showAlert('로그아웃할까요?', '이 기기에만 보관한 기록으로 돌아가요. 이 계정의 기록은 다시 로그인하면 볼 수 있어요.', [
       { text: '취소', style: 'cancel' },
       {
         text: '로그아웃',
@@ -135,13 +142,29 @@ export function AccountRows() {
   const confirmDelete = async () => {
     // 공유 앨범에 담은 사진(나간 앨범에 남긴 것 포함)도 내 파일이라 함께 지워진다. 구성원이 먼저 챙길 수 있게 알린다.
     const shared = await mySharedItemCount().catch(() => 0);
-    Alert.alert(
+    const message = {
+      ko: [
+        '안전 보관한 사진과 기록이 바로 삭제되고 되돌릴 수 없어요. 이 기기에만 보관한 기록과, 이 기기 사진과 연결된 기록은 기기에 남아요.',
+        shared > 0 &&
+          `공유 앨범에 담은 사진 ${shared}장도 모든 구성원에게서 사라져요. 구성원이 간직하려면 삭제 전에 공유 앨범에서 기기 사진첩에 저장해야 해요. 앨범 관리자에게는 사진이 빠졌다고 알려요.`,
+        purchasesAvailable && '구독은 자동으로 해지되지 않으니 스토어의 구독 관리에서 해지해 주세요.',
+      ],
+      en: [
+        'Your securely stored photos and memories will be deleted right away. This cannot be undone. Memories kept only on this device, and memories linked to photos on this device, will stay on this device.',
+        shared > 0 &&
+          `The ${photoCount(language, shared)} you added to shared albums will also disappear for every member. Members who want to keep them need to save them to their device library before you delete your account. Album admins will be told that the photos were removed.`,
+        purchasesAvailable && 'Your subscription is not canceled automatically. Please cancel it in your store’s subscription settings.',
+      ],
+      ja: [
+        '安全保管した写真と思い出はすぐに削除され、元に戻せません。このデバイスだけに保存している思い出と、このデバイスの写真にひも付いた思い出はデバイスに残ります。',
+        shared > 0 &&
+          `共有アルバムに追加した写真${shared}枚も、すべてのメンバーから見られなくなります。残したいメンバーは、削除前に共有アルバムからデバイスのライブラリに保存する必要があります。アルバムの管理者には、写真が削除されたことをお知らせします。`,
+        purchasesAvailable && 'サブスクリプションは自動では解約されません。ストアのサブスクリプション管理から解約してください。',
+      ],
+    }[language].filter(Boolean).join('\n\n');
+    showAlert(
       '계정을 삭제할까요?',
-      '안전 보관한 사진과 기록이 바로 삭제되고 되돌릴 수 없어요. 이 기기에만 보관한 기록과, 이 기기 사진과 연결된 기록은 기기에 남아요.' +
-        (shared > 0
-          ? `\n\n공유 앨범에 담은 사진 ${shared}장도 모든 구성원에게서 사라져요. 구성원이 간직하려면 삭제 전에 공유 앨범에서 기기 사진첩에 저장해야 해요. 앨범 관리자에게는 사진이 빠졌다고 알려요.`
-          : '') +
-        (purchasesAvailable ? '\n\n구독은 자동으로 해지되지 않으니 스토어의 구독 관리에서 해지해 주세요.' : ''),
+      message,
       [
         { text: '취소', style: 'cancel' },
         {
@@ -152,15 +175,15 @@ export function AccountRows() {
             try {
               await deleteAccount();
               if (purchasesAvailable) {
-                Alert.alert('계정을 삭제했어요', '구독 해지를 잊지 마세요.', [
+                showAlert('계정을 삭제했어요', '구독 해지를 잊지 마세요.', [
                   { text: '나중에' },
                   { text: '구독 관리', onPress: () => MANAGE_SUBSCRIPTION_URL && Linking.openURL(MANAGE_SUBSCRIPTION_URL) },
                 ]);
               } else {
-                Alert.alert('계정을 삭제했어요');
+                showAlert('계정을 삭제했어요');
               }
             } catch {
-              Alert.alert('삭제하지 못했어요', '잠시 후 다시 시도해 주세요.');
+              showAlert('삭제하지 못했어요', '잠시 후 다시 시도해 주세요.');
             } finally {
               setBusy(false);
             }

@@ -14,6 +14,7 @@ import { useDbQuery } from '@/db/changes';
 import type { Moment } from '@/db/moments';
 import { listSharedItems, type SharedItem } from '@/lib/cloud/shared';
 import { formatFullDate } from '@/lib/dates';
+import { photoCount, useTranslation } from '@/lib/i18n';
 
 type Point = { id: string; lat: number; lng: number; takenAt: string; placeName?: string | null };
 type MarkerPoint = Point & { count: number };
@@ -73,6 +74,7 @@ function AlbumMap({
   renderPreview: (point: MarkerPoint) => ReactNode;
   onPressPoint?: (point: MarkerPoint) => void;
 }) {
+  const { language } = useTranslation();
   const region = useMemo(() => mapRegion(points), [points]);
   // 수천 장이 한 앨범에 있어도 Marker를 수천 개 만들지 않는다. 현재 화면 범위에 비례한 격자로
   // 가까운 사진을 묶어 Apple 사진 앱처럼 한 핀으로 보여 준다.
@@ -89,7 +91,7 @@ function AlbumMap({
                   {renderPreview(point)}
                   <View style={styles.calloutText}>
                     <ThemedText type="smallBold" numberOfLines={1}>
-                      {point.count > 1 ? `${point.count}장의 사진` : formatFullDate(point.takenAt)}
+                      {point.count > 1 ? photoCount(language, point.count) : formatFullDate(point.takenAt)}
                     </ThemedText>
                     {point.placeName && (
                       <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>

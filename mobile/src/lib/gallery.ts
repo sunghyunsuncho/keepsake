@@ -1,6 +1,7 @@
 import type { Moment } from '@/db/moments';
-import type { AlbumSortOrder, AlbumZoom } from '@/db/settings';
+import type { AlbumSortOrder, AlbumZoom, AppLanguage } from '@/db/settings';
 import { formatDay, formatMonth, localDateKey } from '@/lib/dates';
+import { photoCount } from '@/lib/i18n';
 
 // 앨범 화면의 줄 목록. 당긴 정도(zoom)에 따라 같은 기록을 다르게 묶는다.
 //   year: 해마다 몇 장만 (많으면 고르게 뽑는다)   month: 달마다 전부, 작게
@@ -81,7 +82,7 @@ export function galleryRows<T extends Dated>(
   moments: T[],
   zoom: AlbumZoom,
   order: AlbumSortOrder = 'newest',
-  { sampleYears = true }: { sampleYears?: boolean } = {},
+  { sampleYears = true, language = 'ko' }: { sampleYears?: boolean; language?: AppLanguage } = {},
 ): GalleryRow<T>[] {
   const keyed = byLocalDay(moments, order);
   const rows: GalleryRow<T>[] = [];
@@ -94,11 +95,15 @@ export function galleryRows<T extends Dated>(
       rows.push({
         type: 'header',
         key: `y-${group.key}`,
-        title: `${group.key}년`,
+        title: language === 'en' ? group.key : `${group.key}${language === 'ja' ? '年' : '년'}`,
         subtitle:
           shown.length < group.items.length
-            ? `${group.items.length}장 중 ${shown.length}장`
-            : `${group.items.length}장`,
+            ? {
+                ko: `${group.items.length}장 중 ${shown.length}장`,
+                en: `${shown.length} of ${photoCount(language, group.items.length)}`,
+                ja: `${group.items.length}枚中${shown.length}枚`,
+              }[language]
+            : photoCount(language, group.items.length),
         sticky: true,
         firstDay: group.items[0].day,
       });
@@ -113,7 +118,7 @@ export function galleryRows<T extends Dated>(
         type: 'header',
         key: `m-${group.key}`,
         title: formatMonth(group.items[0].day),
-        subtitle: `${group.items.length}장`,
+        subtitle: photoCount(language, group.items.length),
         sticky: true,
         firstDay: group.items[0].day,
       });

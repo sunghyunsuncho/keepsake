@@ -7,6 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { ALBUM_ZOOMS, type AlbumSortOrder, type AlbumZoom } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
+import { localizeText, useTranslation } from '@/lib/i18n';
 
 // 앨범 화면(내 앨범·공유 앨범)이 함께 쓰는 단계 버튼, 정렬, 추가·빼기 버튼.
 
@@ -67,9 +68,12 @@ export function ZoomBar({
 
 export function SortOrderButton({ value, onChange }: { value: AlbumSortOrder; onChange: (value: AlbumSortOrder) => void }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   const next = value === 'newest' ? 'oldest' : 'newest';
+  const current = localizeText(language, value === 'newest' ? '최신순' : '오래된순');
+  const accessibilityLabel = { ko: `정렬: ${current}. 눌러서 바꾸기`, en: `Sort: ${current}. Tap to change`, ja: `並び順：${current}。タップで切り替え` }[language];
   return (
-    <Pressable onPress={() => onChange(next)} style={styles.sortOrder} accessibilityRole="button" accessibilityLabel={`정렬: ${value === 'newest' ? '최신순' : '오래된순'}. 눌러서 바꾸기`}>
+    <Pressable onPress={() => onChange(next)} style={styles.sortOrder} accessibilityRole="button" accessibilityLabel={accessibilityLabel}>
       <Ionicons name="swap-vertical" size={16} color={theme.accent} />
       <ThemedText type="smallBold" style={{ color: theme.accent }}>{value === 'newest' ? '최신순' : '오래된순'}</ThemedText>
     </Pressable>

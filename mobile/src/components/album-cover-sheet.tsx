@@ -5,6 +5,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import type { AlbumSummary } from '@/db/albums';
 import { useTheme } from '@/hooks/use-theme';
+import { localizeText, useTranslation } from '@/lib/i18n';
 
 const EMOJIS = ['🌿', '☕️', '✈️', '🎞️', '🎂', '🐚', '🏡', '✨'];
 
@@ -29,9 +30,10 @@ export function AlbumCoverSheet<T extends { id: string }>({
   onCancel: () => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
-      <Pressable style={styles.backdrop} onPress={onCancel} accessibilityLabel="닫기" />
+      <Pressable style={styles.backdrop} onPress={onCancel} accessibilityLabel={localizeText(language, '닫기')} />
       <View style={[styles.sheet, { backgroundColor: theme.background }]}>
         <ThemedText type="smallBold">앨범 표지</ThemedText>
         <Pressable onPress={() => onChoose({ mode: 'latest' })} style={[styles.option, { backgroundColor: theme.backgroundElement }]}>

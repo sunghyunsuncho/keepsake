@@ -3,6 +3,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import { Platform } from 'react-native';
 
 import { CloudError, cloudApi, saveSession, unwrap } from '@/lib/cloud/session';
+import { getCurrentLanguage } from '@/lib/i18n';
 
 // Apple·Google ID 토큰을 서버에 보내 Keepsake 세션을 받는다. 토큰 검증은 서버가 한다.
 // Google을 넣으면 iOS는 Apple 로그인을 함께 제공해야 한다 (App Store 심사 지침 4.8).
@@ -29,7 +30,7 @@ export function describeSignInError(e: unknown) {
   if (isErrorWithCode(e)) {
     if (e.code === statusCodes.IN_PROGRESS) return '이미 로그인하는 중이에요.';
     if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) return 'Google Play 서비스를 사용할 수 없어요.';
-    return `Google 로그인에 실패했어요 (${e.code}).`;
+    return { ko: `Google 로그인에 실패했어요 (${e.code}).`, en: `Google sign-in failed (${e.code}).`, ja: `Googleでのログインに失敗しました（${e.code}）。` }[getCurrentLanguage()];
   }
   // fetch가 서버에 닿지 못하면 TypeError('Network request failed')를 던진다.
   if (e instanceof TypeError) return '서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.';

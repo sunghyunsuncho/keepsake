@@ -6,6 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { ALBUM_TITLE_MAX } from '@/db/albums';
 import { useTheme } from '@/hooks/use-theme';
+import { localizeText, useTranslation } from '@/lib/i18n';
 
 /** 앨범 이름을 짓거나 바꾸는 창 (Alert.prompt는 iOS에만 있다). */
 export function AlbumNameSheet({
@@ -31,6 +32,7 @@ export function AlbumNameSheet({
   onCancel: () => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   const [title, setTitle] = useState(initial);
   useEffect(() => {
     if (visible) setTitle(initial);
@@ -44,13 +46,13 @@ export function AlbumNameSheet({
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={[styles.flex, { paddingBottom: keyboard }]}>
-        <Pressable style={styles.backdrop} onPress={onCancel} accessibilityLabel="닫기" />
+        <Pressable style={styles.backdrop} onPress={onCancel} accessibilityLabel={localizeText(language, '닫기')} />
         <View style={[styles.sheet, { backgroundColor: theme.background }]}>
           <ThemedText type="smallBold">{heading}</ThemedText>
           <TextInput
             value={title}
             onChangeText={setTitle}
-            placeholder={placeholder}
+            placeholder={localizeText(language, placeholder)}
             placeholderTextColor={theme.textSecondary}
             style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement }]}
             maxLength={maxLength}

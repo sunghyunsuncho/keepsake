@@ -1153,6 +1153,8 @@ export interface components {
             can_upload: boolean;
             /** Can Download */
             can_download: boolean;
+            /** Plan */
+            plan: ("cloud_10gb" | "cloud_100gb") | null;
         };
         /** SyncMoment */
         SyncMoment: {

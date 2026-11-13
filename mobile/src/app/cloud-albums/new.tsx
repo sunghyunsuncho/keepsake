@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { MomentPhoto } from '@/components/moment-photo';
@@ -34,6 +34,7 @@ import {
   sharedAlbumOverview,
   type Relation,
 } from '@/lib/cloud/shared';
+import { localizeText, photoCount, showAlert, useTranslation } from '@/lib/i18n';
 import { formatSize } from '@/lib/storage';
 
 type Audience = 'personal' | 'shared';
@@ -49,6 +50,7 @@ export default function NewCloudAlbumScreen() {
   const params = useLocalSearchParams<{ source?: string; audience?: string; convert?: string }>();
   const db = useSQLiteContext();
   const theme = useTheme();
+  const { language } = useTranslation();
   const navigation = useNavigation();
   const { data: albums } = useDbQuery(() => listAlbums(db), [db]);
   const { data: linked } = useDbQuery(() => linkedDeviceAlbumIds(db), [db]);
@@ -84,8 +86,8 @@ export default function NewCloudAlbumScreen() {
     if (converting.photoQuality) setQuality(converting.photoQuality);
   }, [converting]);
   useLayoutEffect(() => {
-    if (convert) navigation.setOptions({ title: '공유 앨범으로 바꾸기' });
-  }, [convert, navigation]);
+    if (convert) navigation.setOptions({ title: localizeText(language, '공유 앨범으로 바꾸기') });
+  }, [convert, navigation, language]);
 
   const shared = audience === 'shared';
   const deviceAlbums = albums?.slice(1) ?? [];
@@ -136,7 +138,7 @@ export default function NewCloudAlbumScreen() {
           : e instanceof CloudError && e.status === 409
             ? '지금 요금제로 가질 수 있는 공유 앨범을 모두 만들었어요.'
             : null;
-      Alert.alert(
+      showAlert(
         convert ? '공유 앨범으로 바꾸지 못했어요' : '앨범을 만들지 못했어요',
         reason ??
           (shared ? '원래 앨범은 그대로예요. 구독 상태와 인터넷 연결을 확인해 주세요.' : '잠시 후 다시 시도해 주세요.'),
@@ -153,7 +155,11 @@ export default function NewCloudAlbumScreen() {
           {convert ? (
             <View style={[styles.rules, { backgroundColor: theme.backgroundElement }]}>
               <ThemedText type="small" themeColor="textSecondary">
-                {`'${converting?.title ?? ''}'의 사진을 모두 담은 공유 앨범을 만들고, 나만 보던 안전 앨범은 정리해요. 이미 올린 파일은 다시 올리지 않고, 기록과 사진은 그대로예요.`}
+                {{
+                  ko: `'${converting?.title ?? ''}'의 사진을 모두 담은 공유 앨범을 만들고, 나만 보던 안전 앨범은 정리해요. 이미 올린 파일은 다시 올리지 않고, 기록과 사진은 그대로예요.`,
+                  en: `We’ll create a shared album with every photo in “${converting?.title ?? ''}” and retire your private secure album. Files you’ve already uploaded won’t be uploaded again, and your memories and photos stay as they are.`,
+                  ja: `「${converting?.title ?? ''}」の写真をすべて入れた共有アルバムを作り、自分だけのセキュアアルバムは整理します。アップロード済みのファイルは再アップロードせず、思い出と写真はそのままです。`,
+                }[language]}
                 {converting?.sourceAlbumTitle ? ' 기기 앨범 연결은 공유 앨범에서 이어지지 않아요. 이후 사진은 공유 앨범에서 직접 담아 주세요.' : ''}
               </ThemedText>
             </View>
@@ -182,8 +188,11 @@ export default function NewCloudAlbumScreen() {
           {shared && limitReached && (
             <View style={[styles.rules, { backgroundColor: theme.backgroundElement }]}>
               <ThemedText type="small" style={{ color: theme.danger }}>
-                지금 요금제로는 공유 앨범을 {overview?.limit ?? 1}개까지 가질 수 있어요. 다른 사람의 공유 앨범에 참여하는
-                것은 개수에 들어가지 않아요. 더 많은 공유 앨범을 쓰는 요금제는 준비하고 있어요.
+                {{
+                  ko: `지금 요금제로는 공유 앨범을 ${overview?.limit ?? 1}개까지 가질 수 있어요. 다른 사람의 공유 앨범에 참여하는 것은 개수에 들어가지 않아요. 더 많은 공유 앨범을 쓰는 요금제는 준비하고 있어요.`,
+                  en: `Your current plan includes up to ${overview?.limit ?? 1} shared ${(overview?.limit ?? 1) === 1 ? 'album' : 'albums'}. Albums you join from other people don’t count. Plans with more shared albums are coming soon.`,
+                  ja: `現在のプランでは、共有アルバムを${overview?.limit ?? 1}個まで作成できます。ほかの人の共有アルバムへの参加は数に含まれません。より多くの共有アルバムを使えるプランは準備中です。`,
+                }[language]}
               </ThemedText>
             </View>
           )}
@@ -201,10 +210,12 @@ export default function NewCloudAlbumScreen() {
                   onChangeText={setTitle}
                   placeholder={
                     relation === 'partner'
-                      ? '예) 우리 둘의 여행'
+                      ? localizeText(language, '예) 우리 둘의 여행')
                       : relation === 'friends'
-                        ? '예) 대학 동기 모임'
-                        : `예) 우리 ${RELATIONS[relation].label}`
+                        ? localizeText(language, '예) 대학 동기 모임')
+                        : relation === 'family'
+                          ? { ko: `예) 우리 ${RELATIONS.family.label}`, en: 'e.g. Our Family', ja: '例）わが家' }[language]
+                          : { ko: `예) 우리 ${RELATIONS.other.label}`, en: 'e.g. Our Crew', ja: '例）みんなのアルバム' }[language]
                   }
                   placeholderTextColor={theme.textSecondary}
                   style={inputStyle}
@@ -216,7 +227,7 @@ export default function NewCloudAlbumScreen() {
                 <TextInput
                   value={name}
                   onChangeText={setName}
-                  placeholder={relation === 'family' ? '예) 엄마, 큰딸' : relation === 'partner' ? '예) 자기, 지민' : '예) 지민'}
+                  placeholder={localizeText(language, relation === 'family' ? '예) 엄마, 큰딸' : relation === 'partner' ? '예) 자기, 지민' : '예) 지민')}
                   placeholderTextColor={theme.textSecondary}
                   style={inputStyle}
                   maxLength={DISPLAY_NAME_MAX}
@@ -235,7 +246,13 @@ export default function NewCloudAlbumScreen() {
                   앨범 용량은 구성원이 각자 나눠 준 용량을 합한 만큼이에요. 나눠 준 용량은 내 안전 보관에서 미리 빠지고,
                   앨범에 담긴 사진은 내 개인 용량이 아니라 앨범 용량에서 세요.
                   {convert ? ` 이 앨범의 사진이 쓰던 용량도 앨범으로 옮겨 가므로, 그보다 크게 골라 주세요.` : ''}
-                  {allocation ? ` 지금은 ${formatSize(allocation)}로 시작해요.` : ''}
+                  {allocation
+                    ? {
+                        ko: ` 지금은 ${formatSize(allocation)}로 시작해요.`,
+                        en: ` You’ll start with ${formatSize(allocation)}.`,
+                        ja: `まずは${formatSize(allocation)}で始めます。`,
+                      }[language]
+                    : ''}
                 </ThemedText>
               </View>
             </>
@@ -267,7 +284,7 @@ export default function NewCloudAlbumScreen() {
                   <TextInput
                     value={title}
                     onChangeText={setTitle}
-                    placeholder="예) 아이의 첫 해, 부모님 사진"
+                    placeholder={localizeText(language, '예) 아이의 첫 해, 부모님 사진')}
                     placeholderTextColor={theme.textSecondary}
                     style={inputStyle}
                     maxLength={ALBUM_TITLE_MAX}
@@ -394,6 +411,7 @@ function DeviceAlbumOption({
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   return (
     <Pressable
       onPress={onPress}
@@ -420,7 +438,7 @@ function DeviceAlbumOption({
           {album.title}
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
-          {connected ? '이미 연결했어요' : `사진 ${album.count}장`}
+          {connected ? '이미 연결했어요' : photoCount(language, album.count)}
         </ThemedText>
       </View>
       {!connected && (

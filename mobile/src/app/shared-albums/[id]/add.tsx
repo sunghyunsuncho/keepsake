@@ -2,7 +2,7 @@ import { FlashList } from '@shopify/flash-list';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View, type ImageStyle } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, type ImageStyle } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 
@@ -23,6 +23,7 @@ import { syncCloud } from '@/lib/cloud/engine';
 import { CloudError } from '@/lib/cloud/session';
 import { addToSharedAlbum, getSharedAlbum, mySharedQualities } from '@/lib/cloud/shared';
 import { formatBytes, formatSize } from '@/lib/storage';
+import { localizeText, showAlert, useTranslation } from '@/lib/i18n';
 
 // 공유 앨범에 내 기록을 담는다. 이미 담은 사진은 체크된 채로 보이고, 빼기는 앨범 화면에서 한다.
 // 이미 안전 보관한 파일은 다시 올리지 않고, 없는 파일은 다음 동기화에서 고른 화질(기본은 앨범 화질)로 올린다.
@@ -34,6 +35,7 @@ export default function SharedAlbumAddScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const db = useSQLiteContext();
   const theme = useTheme();
+  const { language } = useTranslation();
   const { data: album } = useDbQuery(() => getSharedAlbum(id), [id]);
   const { data: moments } = useDbQuery(() => listMoments(db), [db]);
   // 이미 담은 사진과 그 화질
@@ -76,7 +78,7 @@ export default function SharedAlbumAddScreen() {
       router.back();
     } catch (e) {
       const full = e instanceof CloudError && e.status === 413;
-      Alert.alert(
+      showAlert(
         '사진을 담지 못했어요',
         full
           ? '앨범 용량이 모자라요. 앨범 관리에서 용량을 더 나눠 주거나, 사진을 조금만 골라 주세요.'
@@ -120,7 +122,15 @@ export default function SharedAlbumAddScreen() {
           <ThemedText type="small" themeColor="textSecondary" style={styles.guide}>
             구성원과 함께 볼 사진을 골라 주세요.
             {album
-              ? ` ${PHOTO_QUALITY[quality ?? album.photo_quality].label}로 보관하고, 앨범 용량(${formatBytes(album.storage.bytes_total)} / ${formatSize(album.storage.capacity_bytes)})에서 세요. 이미 안전 보관한 사진은 다시 올리지 않아요.`
+              ? (() => {
+                  const label = localizeText(language, PHOTO_QUALITY[quality ?? album.photo_quality].label);
+                  const usage = `${formatBytes(album.storage.bytes_total)} / ${formatSize(album.storage.capacity_bytes)}`;
+                  return {
+                    ko: ` ${label}로 보관하고, 앨범 용량(${usage})에서 세요. 이미 안전 보관한 사진은 다시 올리지 않아요.`,
+                    en: ` Photos are stored as ${label} and count against the album’s storage (${usage}). Photos already in secure storage won’t be uploaded again.`,
+                    ja: `「${label}」で保管し、アルバムの容量（${usage}）で数えます。安全保管済みの写真は再アップロードしません。`,
+                  }[language];
+                })()
               : ''}{' '}
             메모와 장소는 함께 보내지 않아요.
           </ThemedText>

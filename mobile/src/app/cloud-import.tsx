@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/button';
@@ -17,7 +17,7 @@ import type { Moment } from '@/db/moments';
 import { useTheme } from '@/hooks/use-theme';
 import { syncCloud, useCloudState } from '@/lib/cloud/engine';
 import { importMoments, listImportable } from '@/lib/cloud/imports';
-import { useTranslation } from '@/lib/i18n';
+import { showAlert, useTranslation } from '@/lib/i18n';
 
 const COLUMNS = 3;
 const PREVIEW_COUNT = 4;
@@ -67,7 +67,7 @@ function BackupPrompt() {
       syncCloud(db);
       setDone(true);
     } catch {
-      Alert.alert('백업하지 못했어요', '잠시 후 다시 시도해 주세요.');
+      showAlert('백업하지 못했어요', '잠시 후 다시 시도해 주세요.');
     } finally {
       setSaving(false);
     }
@@ -280,6 +280,7 @@ function recordCount(language: string, count: number) {
 function ChooseRecords() {
   const db = useSQLiteContext();
   const theme = useTheme();
+  const { language } = useTranslation();
   const { account } = useCloudState();
   // 사진 사용량은 무료 기록 백업 계정에서 항상 0일 수 있다. 서버가 알려 준 기록 존재 여부로만
   // 빈 계정을 판단해, 이미 내용이 있는 다른 계정에 Local 기록을 자동으로 섞지 않는다.
@@ -322,7 +323,7 @@ function ChooseRecords() {
       if (chosen.length > 0) syncCloud(db);
       close();
     } catch {
-      Alert.alert('백업하지 못했어요', '잠시 후 다시 시도해 주세요.');
+      showAlert('백업하지 못했어요', '잠시 후 다시 시도해 주세요.');
       setSaving(false);
     }
   };
@@ -381,7 +382,11 @@ function ChooseRecords() {
         }}
       />
       <BottomBar
-        title={`${moments.length}개 중 ${selected.length}개를 백업해요`}
+        title={{
+          ko: `${moments.length}개 중 ${selected.length}개를 백업해요`,
+          en: `Back up ${selected.length} of ${recordCount(language, moments.length)}`,
+          ja: `${moments.length}件中${selected.length}件をバックアップします`,
+        }[language]}
         secondary={{ label: '나중에', onPress: () => finish([]) }}
         action={{
           label: selected.length > 0 ? '백업하기' : '닫기',

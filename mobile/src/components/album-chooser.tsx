@@ -11,11 +11,13 @@ import { ALL_ALBUM_TITLE, createAlbum, listCustomAlbums, momentAlbumIds, updateA
 import { useDbQuery } from '@/db/changes';
 import { useCloudState } from '@/lib/cloud/engine';
 import { useTheme } from '@/hooks/use-theme';
+import { localizeText, useTranslation } from '@/lib/i18n';
 
 /** 기록 화면의 '앨범' 줄. 누르면 이 기록을 넣을 앨범을 고른다 (누르는 즉시 넣고 뺀다). */
 export function AlbumChooserRow({ momentId }: { momentId: string }) {
   const db = useSQLiteContext();
   const theme = useTheme();
+  const { language } = useTranslation();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const [naming, setNaming] = useState(false);
@@ -42,7 +44,7 @@ export function AlbumChooserRow({ momentId }: { momentId: string }) {
       </Pressable>
 
       <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)} accessibilityLabel="닫기" />
+        <Pressable style={styles.backdrop} onPress={() => setOpen(false)} accessibilityLabel={localizeText(language, '닫기')} />
         <View style={[styles.sheet, { backgroundColor: theme.background, paddingBottom: insets.bottom + Spacing.three }]}>
           <View style={styles.sheetHeader}>
             <ThemedText type="smallBold">앨범에 넣기</ThemedText>
@@ -51,7 +53,11 @@ export function AlbumChooserRow({ momentId }: { momentId: string }) {
             </Pressable>
           </View>
           <ThemedText type="small" themeColor="textSecondary">
-            한 기록을 여러 앨범에 넣어도 사진은 하나예요. 이 기록은 언제나 {ALL_ALBUM_TITLE}에도 있어요.
+            {{
+              ko: `한 기록을 여러 앨범에 넣어도 사진은 하나예요. 이 기록은 언제나 ${ALL_ALBUM_TITLE}에도 있어요.`,
+              en: `Adding a memory to several albums still keeps just one photo. It’s always in ${localizeText(language, ALL_ALBUM_TITLE)} too.`,
+              ja: `1つの思い出を複数のアルバムに入れても、写真は1枚のままです。この思い出はいつでも「${localizeText(language, ALL_ALBUM_TITLE)}」にもあります。`,
+            }[language]}
           </ThemedText>
           <ScrollView style={styles.list}>
             {canUpload && !!cloudAlbums?.length && (

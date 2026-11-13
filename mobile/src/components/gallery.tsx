@@ -11,6 +11,7 @@ import type { Moment } from '@/db/moments';
 import { useTheme } from '@/hooks/use-theme';
 import { formatFullDate, formatTime, localDateKey } from '@/lib/dates';
 import type { Dated } from '@/lib/gallery';
+import { localizeText, useTranslation } from '@/lib/i18n';
 
 // 앨범 화면과 앨범에 사진 넣기 화면이 함께 쓰는 조각들 (줄 목록은 lib/gallery.ts).
 
@@ -164,12 +165,13 @@ export function StoryCard({
   onSelect?: () => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   const day = localDateKey(moment.taken_at, moment.taken_tz_offset);
   // 카드마다 아주 살짝 다르게 기울인다. id로 정해서 다시 그려도 같다.
   const tilt = moment.id.charCodeAt(moment.id.length - 1) % 2 ? '0.5deg' : '-0.5deg';
   return (
     <View style={[styles.print, { transform: [{ rotate: tilt }] }, selecting && selected && { borderWidth: 3, borderColor: theme.accent }]}>
-      <Pressable onPress={selecting ? onSelect : onOpenPhoto} onLongPress={selecting ? undefined : onLongPress} accessibilityLabel={selecting ? '앨범에서 뺄 사진 선택' : '사진 크게 보기'}>
+      <Pressable onPress={selecting ? onSelect : onOpenPhoto} onLongPress={selecting ? undefined : onLongPress} accessibilityLabel={localizeText(language, selecting ? '앨범에서 뺄 사진 선택' : '사진 크게 보기')}>
         <MomentPhoto
           moment={moment}
           style={[styles.printImage, { backgroundColor: theme.backgroundElement }]}

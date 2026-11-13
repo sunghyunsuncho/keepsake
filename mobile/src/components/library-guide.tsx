@@ -7,6 +7,7 @@ import { PHOTO_QUALITY } from '@/components/photo-quality';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { localizeText, useTranslation } from '@/lib/i18n';
 
 type GuideLine = { icon: keyof typeof Ionicons.glyphMap; title: string; text: string };
 
@@ -69,10 +70,11 @@ function GuideSheet({
   onClose: () => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="닫기" />
+      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={localizeText(language, '닫기')} />
       <View style={[styles.sheet, { backgroundColor: theme.background, paddingBottom: insets.bottom + Spacing.three }]}>
         <ThemedText type="subtitle">{title}</ThemedText>
         {lines.map((line) => (

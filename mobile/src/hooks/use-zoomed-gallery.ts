@@ -5,6 +5,7 @@ import { STICKY_HEADER_HEIGHT } from '@/components/gallery';
 import { ALBUM_ZOOMS, type AlbumSortOrder, type AlbumZoom } from '@/db/settings';
 import { localDateKey } from '@/lib/dates';
 import { anchorIndex, firstMomentOf, galleryRows, type Dated, type GalleryRow } from '@/lib/gallery';
+import { useTranslation } from '@/lib/i18n';
 
 // 위로 거의 지나간 줄을 '보던 사진'으로 잡지 않도록 반 이상 보이는 줄만 센다.
 const VIEWABILITY = { itemVisiblePercentThreshold: 50 };
@@ -35,9 +36,11 @@ export function useZoomedGallery<T extends Dated>(
   // 단계를 바꾼 뒤 처음 보여줄 위치. 바꾸기 직전에 보던 사진이다.
   const [view, setView] = useState<{ zoom: AlbumZoom; anchor: Anchor | null } | null>(null);
   const zoom = view?.zoom ?? initialZoom;
+  // 머리글(해·달·사진 수)은 언어에 따라 달라 언어를 바꾸면 다시 만든다.
+  const { language } = useTranslation();
   const rows = useMemo(
-    () => (items ? galleryRows(items, zoom, order, { sampleYears }) : []),
-    [items, zoom, order, sampleYears],
+    () => (items ? galleryRows(items, zoom, order, { sampleYears, language }) : []),
+    [items, zoom, order, sampleYears, language],
   );
   const stickyHeaderIndices = useMemo(
     () => rows.flatMap((row, index) => (row.type === 'header' && row.sticky ? [index] : [])),

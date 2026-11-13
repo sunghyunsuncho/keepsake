@@ -4,7 +4,6 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -27,11 +26,13 @@ import { Spacing } from '@/constants/theme';
 import { momentQualityInfo, type PhotoQuality } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
 import { getMoment, updateMoment, type Moment, type MomentEdit } from '@/db/moments';
+import type { AppLanguage } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { fillPlaceFromPhoto, removeMoment } from '@/lib/capture';
 import { useCloudState } from '@/lib/cloud/engine';
 import { removeFromSharedAlbums, sharedAlbumCount } from '@/lib/cloud/shared';
 import { formatFullDate, formatTime, localDateKey } from '@/lib/dates';
+import { localizeText, showAlert, useTranslation } from '@/lib/i18n';
 
 export default function MomentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -61,6 +62,7 @@ const SAVE_DELAY_MS = 600;
 function MomentEditor({ moment }: { moment: Moment }) {
   const db = useSQLiteContext();
   const theme = useTheme();
+  const { language } = useTranslation();
   const { width } = useWindowDimensions();
   const [memo, setMemo] = useState(moment.memo);
   const [place, setPlace] = useState(moment.place_name ?? '');
@@ -103,7 +105,7 @@ function MomentEditor({ moment }: { moment: Moment }) {
     const found = await fillPlaceFromPhoto(db, moment).catch(() => false);
     setLocating(false);
     if (!found) {
-      Alert.alert('장소를 찾지 못했어요', '인터넷 연결을 확인하거나 직접 입력해 주세요.');
+      showAlert('장소를 찾지 못했어요', '인터넷 연결을 확인하거나 직접 입력해 주세요.');
     }
   };
 
@@ -112,7 +114,7 @@ function MomentEditor({ moment }: { moment: Moment }) {
     // 먼저 닫는다. 지운 뒤 닫으면 잠깐 '이 기록을 찾을 수 없어요'가 보인다.
     router.back();
     removeMoment(db, moment.id, localDateKey(moment.taken_at)).catch(() => {
-      Alert.alert('기록에서 빼지 못했어요', '잠시 후 다시 시도해 주세요.');
+      showAlert('기록에서 빼지 못했어요', '잠시 후 다시 시도해 주세요.');
     });
   };
 
@@ -121,15 +123,19 @@ function MomentEditor({ moment }: { moment: Moment }) {
     // 공유 앨범에 담은 사진은 구성원과 함께 보는 사진이라 기본으로 앨범에 남긴다. 함께 뺄지 묻는다.
     const shared = await sharedAlbumCount(db, moment.id).catch(() => 0);
     if (shared === 0) {
-      Alert.alert('기록에서 뺄까요?', message, [
+      showAlert('기록에서 뺄까요?', message, [
         { text: '취소', style: 'cancel' },
         { text: '빼기', style: 'destructive', onPress: remove },
       ]);
       return;
     }
-    Alert.alert(
+    showAlert(
       '기록에서 뺄까요?',
-      `${message}\n\n이 사진은 공유 앨범 ${shared}개에 담겨 있어요. 공유 앨범에서도 뺄까요? 남기면 구성원은 계속 볼 수 있어요.`,
+      `${localizeText(language, message)}\n\n${{
+        ko: `이 사진은 공유 앨범 ${shared}개에 담겨 있어요. 공유 앨범에서도 뺄까요? 남기면 구성원은 계속 볼 수 있어요.`,
+        en: `This photo is in ${shared} shared ${shared === 1 ? 'album' : 'albums'}. Remove it from ${shared === 1 ? 'that album' : 'those albums'} too? If you keep it there, members can still see it.`,
+        ja: `この写真は${shared}個の共有アルバムに入っています。共有アルバムからも外しますか？残すと、メンバーは引き続き見られます。`,
+      }[language]}`,
       [
         { text: '공유 앨범에는 남기기', onPress: remove },
         {
@@ -137,7 +143,7 @@ function MomentEditor({ moment }: { moment: Moment }) {
           style: 'destructive',
           onPress: () =>
             removeFromSharedAlbums(db, [moment.id]).then(remove, () =>
-              Alert.alert('공유 앨범에서 빼지 못했어요', '인터넷 연결을 확인해 주세요. 기록은 그대로예요.'),
+              showAlert('공유 앨범에서 빼지 못했어요', '인터넷 연결을 확인해 주세요. 기록은 그대로예요.'),
             ),
         },
         { text: '취소', style: 'cancel' },
@@ -152,7 +158,7 @@ function MomentEditor({ moment }: { moment: Moment }) {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets>
-        <Pressable onPress={() => setViewing(true)} accessibilityLabel="사진 크게 보기">
+        <Pressable onPress={() => setViewing(true)} accessibilityLabel={localizeText(language, '사진 크게 보기')}>
           <MomentPhoto
             moment={moment}
             style={{ width, height: Math.min(width / aspectRatio, width * 1.25) }}
@@ -181,7 +187,7 @@ function MomentEditor({ moment }: { moment: Moment }) {
                 setPlace(text);
                 queue({ place_name: text.trim() || null });
               }}
-              placeholder="사진을 찍은 곳"
+              placeholder={localizeText(language, '사진을 찍은 곳')}
               placeholderTextColor={theme.textSecondary}
               style={[styles.input, { color: theme.text }]}
               returnKeyType="done"
@@ -209,7 +215,7 @@ function MomentEditor({ moment }: { moment: Moment }) {
               setMemo(text);
               queue({ memo: text });
             }}
-            placeholder="이 순간을 남기고 싶은 이유, 그때의 생각이나 기억을 적어 보세요."
+            placeholder={localizeText(language, '이 순간을 남기고 싶은 이유, 그때의 생각이나 기억을 적어 보세요.')}
             placeholderTextColor={theme.textSecondary}
             style={[styles.memo, { color: theme.text, backgroundColor: theme.backgroundElement }]}
             multiline
@@ -256,6 +262,7 @@ function MomentEditor({ moment }: { moment: Moment }) {
 function CloudQualityRow({ moment }: { moment: Moment }) {
   const db = useSQLiteContext();
   const theme = useTheme();
+  const { language } = useTranslation();
   const canUpload = useCloudState().account?.subscription.can_upload ?? false;
   const { data: info } = useDbQuery(() => momentQualityInfo(db, moment.id), [db, moment.id]);
   if (!canUpload || !info || info.albums === 0) return null;
@@ -270,19 +277,21 @@ function CloudQualityRow({ moment }: { moment: Moment }) {
     if (next === moment.cloud_quality) return;
     const effective = next ?? info.albumDefault;
     if (effective === 'original' && !moment.original_uploaded && !onDevice) {
-      Alert.alert('원본을 보관할 수 없어요', '기기 사진첩에 원본이 없어요. 원본은 기기 사진첩에 있을 때만 올릴 수 있어요.');
+      showAlert('원본을 보관할 수 없어요', '기기 사진첩에 원본이 없어요. 원본은 기기 사진첩에 있을 때만 올릴 수 있어요.');
       return;
     }
     // 원본 보관 공유 앨범이 쓰는 원본은 지우지 않으므로 묻지 않는다.
     if (effective === 'display' && moment.original_uploaded && !info.sharedOriginal) {
-      Alert.alert(
+      showAlert(
         '안전 보관한 원본을 지울까요?',
-        (video ? '720p로 줄인 영상과 대표 장면만 남아요. 720p 영상을 올린 뒤에 원본을 지워요. ' : '긴 변 2048px 보기용 사진만 남아요. ') +
-          (onDevice
+        [
+          video ? '720p로 줄인 영상과 대표 장면만 남아요. 720p 영상을 올린 뒤에 원본을 지워요.' : '긴 변 2048px 보기용 사진만 남아요.',
+          onDevice
             ? '기기 사진첩에 원본이 있는 동안에는 다시 원본으로 바꿀 수 있어요.'
             : video
               ? '기기 사진첩에 원본이 없어 720p 영상을 만들 수 없으니, 원본은 그대로 남겨 둬요.'
-              : '기기 사진첩에도 원본이 없어서 지우면 되돌릴 수 없어요.'),
+              : '기기 사진첩에도 원본이 없어서 지우면 되돌릴 수 없어요.',
+        ].map((part) => localizeText(language, part)).join(' '),
         [
           { text: '취소', style: 'cancel' },
           { text: '효율 보관으로', style: 'destructive', onPress: () => save(next) },
@@ -295,14 +304,14 @@ function CloudQualityRow({ moment }: { moment: Moment }) {
 
   // 앨범 화질과 같은 쪽을 고르면 앨범 화질을 따르게 한다 (나중에 앨범 화질을 바꾸면 이 사진도 따라간다).
   const option = (quality: PhotoQuality) => ({
-    text: `${PHOTO_QUALITY[quality].label}${quality === info.albumDefault ? ' · 앨범 기본' : ''}${quality === current ? ' (지금)' : ''}`,
+    text: `${localizeText(language, PHOTO_QUALITY[quality].label)}${quality === info.albumDefault ? ` · ${localizeText(language, '앨범 기본')}` : ''}${quality === current ? ` ${localizeText(language, '(지금)')}` : ''}`,
     onPress: () => choose(quality === info.albumDefault ? null : quality),
   });
   const open = () =>
     showActionSheet(
       '이 사진의 보관 화질',
-      `${PHOTO_QUALITY.original.label}: 원본과 보기용을 함께 보관해요.\n${PHOTO_QUALITY.display.label}: 보기용(${video ? '720p 영상' : '긴 변 2048px'})만 보관해 용량을 아껴요.` +
-        (info.sharedOriginal ? '\n\n원본 보관 공유 앨범에 담겨 있어서 원본은 늘 함께 남아요.' : ''),
+      qualityGuide(language, video) +
+        (info.sharedOriginal ? `\n\n${localizeText(language, '원본 보관 공유 앨범에 담겨 있어서 원본은 늘 함께 남아요.')}` : ''),
       [option('original'), option('display'), { text: '취소', style: 'cancel' }],
     );
 
@@ -310,7 +319,11 @@ function CloudQualityRow({ moment }: { moment: Moment }) {
     <Pressable
       onPress={open}
       accessibilityRole="button"
-      accessibilityLabel={`보관 화질: ${PHOTO_QUALITY[current].label}. 눌러서 바꾸기`}
+      accessibilityLabel={{
+        ko: `보관 화질: ${PHOTO_QUALITY[current].label}. 눌러서 바꾸기`,
+        en: `Storage quality: ${localizeText(language, PHOTO_QUALITY[current].label)}. Tap to change`,
+        ja: `保存画質：${localizeText(language, PHOTO_QUALITY[current].label)}。タップで変更`,
+      }[language]}
       style={[styles.row, { borderColor: theme.border }]}>
       <Ionicons name={PHOTO_QUALITY[current].icon} size={20} color={theme.textSecondary} />
       <ThemedText style={styles.flex}>
@@ -328,6 +341,19 @@ function CloudQualityRow({ moment }: { moment: Moment }) {
   );
 }
 
+/** 사진별 화질 시트의 설명. 화질 이름이 문장 앞에 오므로 언어마다 문장을 쓴다. */
+function qualityGuide(language: AppLanguage, video: boolean) {
+  const original = localizeText(language, PHOTO_QUALITY.original.label);
+  const display = localizeText(language, PHOTO_QUALITY.display.label);
+  if (language === 'en') {
+    return `${original}: Keeps the original and a viewing copy.\n${display}: Keeps only a viewing copy (${video ? '720p video' : '2048px on the long edge'}) to save space.`;
+  }
+  if (language === 'ja') {
+    return `${original}：オリジナルと表示用を一緒に保管します。\n${display}：表示用（${video ? '720pの動画' : '長辺2048px'}）だけを保管して容量を節約します。`;
+  }
+  return `${original}: 원본과 보기용을 함께 보관해요.\n${display}: 보기용(${video ? '720p 영상' : '긴 변 2048px'})만 보관해 용량을 아껴요.`;
+}
+
 function PhotoViewer({
   visible,
   moment,
@@ -340,6 +366,7 @@ function PhotoViewer({
   // Modal 안에서는 SafeAreaView가 상단 여백을 받지 못해 닫기 버튼이 상태 표시줄에 겹친다.
   // 바깥(화면)에서 읽은 여백으로 위치를 잡는다.
   const insets = useSafeAreaInsets();
+  const { language } = useTranslation();
   return (
     <Modal visible={visible} animationType="fade" onRequestClose={onClose} supportedOrientations={['portrait']}>
       <View style={styles.viewer}>
@@ -349,7 +376,7 @@ function PhotoViewer({
         <Pressable
           onPress={onClose}
           hitSlop={16}
-          accessibilityLabel="닫기"
+          accessibilityLabel={localizeText(language, '닫기')}
           style={[styles.viewerClose, { top: insets.top + Spacing.two }]}>
           <Ionicons name="close" size={28} color="#fff" />
         </Pressable>

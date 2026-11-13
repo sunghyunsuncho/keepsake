@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import type { PurchasesPackage } from 'react-native-purchases';
 
 import { Button } from '@/components/button';
@@ -14,13 +14,16 @@ import type { AppLanguage } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { afterSignIn, refreshSubscription, useCloudState } from '@/lib/cloud/engine';
 import {
+  type CloudPackage,
+  type CloudPlan,
   getCloudPackages,
+  PLAN_ORDER,
   purchase,
   purchasesAvailable,
   restorePurchases,
 } from '@/lib/cloud/purchases';
 import { useCloudSession } from '@/lib/cloud/session';
-import { useTranslation } from '@/lib/i18n';
+import { showAlert, useTranslation } from '@/lib/i18n';
 import { openLegalDocument } from '@/lib/legal';
 import { describeSignInError, SignInCancelled, signInWithApple, signInWithGoogle } from '@/lib/cloud/sign-in';
 import { formatSize } from '@/lib/storage';
@@ -82,14 +85,15 @@ const COMPARE: Record<AppLanguage, (size: string) => { free: string; paid: strin
     ],
   }),
 };
-const DEFAULT_SIZE = '50GB';
+// 구독하기 전에는 두 요금제의 용량을 함께 보여 준다 (docs/PRICING.md §2).
+const DEFAULT_SIZE = '10GB / 100GB';
 
 export default function CloudScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
   const session = useCloudSession();
   const { account } = useCloudState();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [busy, setBusy] = useState(false);
   // 로그인 전에 고른 상품. 있으면 로그인 버튼을 보여준다.
   const [intent, setIntent] = useState<Intent | null>(purchasesAvailable ? null : { kind: 'signIn' });
@@ -101,7 +105,7 @@ export default function CloudScreen() {
       await task();
     } catch (e) {
       if (!(e instanceof SignInCancelled)) {
-        Alert.alert('문제가 생겼어요', describeSignInError(e));
+        showAlert('문제가 생겼어요', describeSignInError(e));
       }
     } finally {
       setBusy(false);
@@ -111,16 +115,23 @@ export default function CloudScreen() {
   const grace = account?.subscription.status === 'grace';
 
   const afterPurchase = async () => {
+    const upgrading = account?.subscription.can_upload ?? false;
     const refreshed = await refreshSubscription(db);
-    if (refreshed.subscription.can_upload) {
-      Alert.alert(
+    if (upgrading && refreshed.subscription.plan !== account?.subscription.plan) {
+      const size = formatSize(refreshed.usage.max_bytes);
+      showAlert('요금제를 바꿨어요', { ko: `이제 ${size}까지 보관해요.`, en: `You can now store up to ${size}.`, ja: `これからは${size}まで保管できます。` }[language]);
+      closeScreen();
+    } else if (upgrading) {
+      showAlert('구매를 확인하는 중이에요', '잠시 후 설정 화면에서 용량이 바뀌어요.');
+    } else if (refreshed.subscription.can_upload) {
+      showAlert(
         grace ? '다시 구독해 주셔서 고마워요' : '안전 보관을 시작했어요',
         grace ? '백업한 기록이 그대로 이어져요.' : '안전 앨범에 담은 사진을 보관해요.',
       );
       closeScreen();
     } else {
       // webhook이 늦게 오면 서버가 아직 모를 수 있다. 다음 동기화 때 다시 확인한다.
-      Alert.alert('구매를 확인하는 중이에요', '잠시 후 설정 화면에서 상태가 바뀌어요.');
+      showAlert('구매를 확인하는 중이에요', '잠시 후 설정 화면에서 상태가 바뀌어요.');
     }
   };
 
@@ -137,7 +148,7 @@ export default function CloudScreen() {
       setIntent(null);
       if (signedIn.subscription.can_upload) {
         // 이미 구독 중인 계정(또는 관리자가 무상 제공한 계정): 구매하지 않고 바로 백업·복원을 시작한다.
-        Alert.alert('안전 보관에 연결했어요', '이 계정의 기록을 받아올게요. 이 기기의 기록은 백업하기로 고른 것만 들어가요.');
+        showAlert('안전 보관에 연결했어요', '이 계정의 기록을 받아올게요. 이 기기의 기록은 백업하기로 고른 것만 들어가요.');
         closeScreen();
         return;
       }
@@ -145,7 +156,7 @@ export default function CloudScreen() {
         if (await purchase(next.pkg)) await afterPurchase();
         return;
       }
-      Alert.alert('로그인했어요', '이제 메모·장소·앨범을 이 계정에 백업해요. 사진까지 안전 보관하려면 구독해 주세요.');
+      showAlert('로그인했어요', '이제 메모·장소·앨범을 이 계정에 백업해요. 사진까지 안전 보관하려면 구독해 주세요.');
     });
 
   const subscribed = Boolean(session) && (account?.subscription.can_upload ?? false);
@@ -182,7 +193,29 @@ export default function CloudScreen() {
 
         {subscribed ? (
           <View style={styles.section}>
-            <Notice icon="checkmark-circle" title="안전 보관을 사용하고 있어요." />
+            <Notice
+              icon="checkmark-circle"
+              title={
+                account?.usage.max_bytes
+                  ? {
+                      ko: `안전 보관 ${formatSize(account.usage.max_bytes)}을 사용하고 있어요.`,
+                      en: `You’re on the ${formatSize(account.usage.max_bytes)} Secure Storage plan.`,
+                      ja: `安全保管 ${formatSize(account.usage.max_bytes)}を利用しています。`,
+                    }[language]
+                  : '안전 보관을 사용하고 있어요.'
+              }
+            />
+            {account?.subscription.plan === 'cloud_10gb' && (
+              <Paywall
+                busy={busy}
+                grace={false}
+                signedIn
+                currentPlan="cloud_10gb"
+                onBuy={buy}
+                onSignIn={() => {}}
+                onRestore={() => {}}
+              />
+            )}
             <Button label="닫기" variant="secondary" onPress={closeScreen} />
           </View>
         ) : !session && intent ? (
@@ -224,7 +257,7 @@ function Compare({ subscribed }: { subscribed: boolean }) {
   const theme = useTheme();
   const { language } = useTranslation();
   const { account } = useCloudState();
-  const copy = COMPARE[language](account?.usage ? formatSize(account.usage.max_bytes) : DEFAULT_SIZE);
+  const copy = COMPARE[language](account?.usage.max_bytes ? formatSize(account.usage.max_bytes) : DEFAULT_SIZE);
   const mark = (on: boolean, paid: boolean) => (
     <View style={styles.cell}>
       {on ? (
@@ -279,10 +312,16 @@ function Notice({ icon, title, text }: { icon: keyof typeof Ionicons.glyphMap; t
   );
 }
 
+const PLAN_COPY: Record<CloudPlan, { title: string; text: string }> = {
+  cloud_10gb: { title: '10GB', text: '고른 사진을 원본으로 몇 년 동안 남기기에 충분해요.' },
+  cloud_100gb: { title: '100GB', text: '동영상과 가족 공유 앨범까지 넉넉하게 담아요.' },
+};
+
 function Paywall({
   busy,
   grace,
   signedIn,
+  currentPlan,
   onBuy,
   onSignIn,
   onRestore,
@@ -290,11 +329,15 @@ function Paywall({
   busy: boolean;
   grace: boolean;
   signedIn: boolean;
+  /** 이미 구독 중인 요금제. 있으면 더 큰 요금제만 보여 준다 (요금제 올리기). */
+  currentPlan?: CloudPlan | null;
   onBuy: (pkg: PurchasesPackage) => void;
   onSignIn: () => void;
   onRestore: () => void;
 }) {
-  const [packages, setPackages] = useState<PurchasesPackage[] | null>(null);
+  const theme = useTheme();
+  const { language } = useTranslation();
+  const [packages, setPackages] = useState<CloudPackage[] | null>(null);
 
   useEffect(() => {
     getCloudPackages()
@@ -306,6 +349,7 @@ function Paywall({
 
   // 결제를 아직 연결하지 않은 빌드: 살 수도, 복원할 수도 없으니 준비 중이라고만 알린다.
   if (!purchasesAvailable) {
+    if (currentPlan) return null;
     return (
       <Notice
         icon="time-outline"
@@ -315,34 +359,70 @@ function Paywall({
     );
   }
 
+  const shown = PLAN_ORDER.filter((plan) => !currentPlan || PLAN_ORDER.indexOf(plan) > PLAN_ORDER.indexOf(currentPlan));
+  const groups = shown
+    .map((plan) => ({
+      plan,
+      // 월간을 먼저, 연간을 다음에 둔다.
+      options: packages
+        .filter((option) => option.plan === plan)
+        .sort((a, b) => periodOrder(a.pkg.product.subscriptionPeriod) - periodOrder(b.pkg.product.subscriptionPeriod)),
+    }))
+    .filter((group) => group.options.length > 0);
+  const anyTrial = !currentPlan && packages.some((option) => option.freeTrial);
+
   return (
     <View style={styles.section}>
+      {currentPlan && <ThemedText type="smallBold">더 넉넉하게 쓰고 싶다면</ThemedText>}
       {grace && (
         <ThemedText type="small">
           지금 다시 구독하면 아무것도 다시 올리지 않고 바로 이어서 쓸 수 있어요.
         </ThemedText>
       )}
-      {packages.length === 0 && (
+      {groups.length === 0 && (
         <ThemedText type="small" themeColor="textSecondary">
           구독 상품을 불러오지 못했어요. 잠시 후 다시 열어 주세요.
         </ThemedText>
       )}
-      {packages.map((pkg) => (
-        <Button
-          key={pkg.identifier}
-          label={`${pkg.product.title} · ${pkg.product.priceString}${periodLabel(pkg.product.subscriptionPeriod)}`}
-          loading={busy}
-          onPress={() => onBuy(pkg)}
-        />
+      {groups.map(({ plan, options }) => (
+        <View key={plan} style={[styles.planCard, { backgroundColor: theme.backgroundElement }]}>
+          <View style={styles.planHead}>
+            <ThemedText style={styles.planTitle}>{PLAN_COPY[plan].title}</ThemedText>
+            {!currentPlan && options.some((option) => option.freeTrial) && (
+              <ThemedText type="smallBold" style={{ color: theme.accent }}>
+                30일 무료
+              </ThemedText>
+            )}
+          </View>
+          <ThemedText type="small" themeColor="textSecondary">
+            {PLAN_COPY[plan].text}
+          </ThemedText>
+          {options.map(({ pkg }, index) => (
+            <Button
+              key={pkg.identifier}
+              label={`${pkg.product.priceString}${periodLabel(pkg.product.subscriptionPeriod, language)}`}
+              variant={index === 0 ? 'primary' : 'secondary'}
+              loading={busy}
+              onPress={() => onBuy(pkg)}
+            />
+          ))}
+        </View>
       ))}
-      {signedIn ? (
-        <Button label="구매 복원" variant="secondary" disabled={busy} onPress={onRestore} />
-      ) : (
-        <Button label="로그인만 하기 · 이미 구독 중이에요" variant="secondary" disabled={busy} onPress={onSignIn} />
+      {anyTrial && (
+        <ThemedText type="small" themeColor="textSecondary">
+          처음 구독하면 30일 동안 무료예요. 체험이 끝나기 24시간 전까지 해지하지 않으면 고른 요금으로 결제돼요.
+        </ThemedText>
       )}
+      {!currentPlan &&
+        (signedIn ? (
+          <Button label="구매 복원" variant="secondary" disabled={busy} onPress={onRestore} />
+        ) : (
+          <Button label="로그인만 하기 · 이미 구독 중이에요" variant="secondary" disabled={busy} onPress={onSignIn} />
+        ))}
       <ThemedText type="small" themeColor="textSecondary">
-        구독은 기간이 끝나기 24시간 전까지 해지하지 않으면 자동으로 갱신돼요. 해지는 스토어의 구독 관리에서 할
-        수 있어요. 구독이 끝나면 30일 동안 보관한 사진을 내려받을 수 있고, 그 뒤 사진은 삭제돼요. 기록 백업은 로그인한 동안 계속돼요.
+        {currentPlan
+          ? '바꾸면 남은 기간을 새 요금제에 맞춰 계산해요. 해지나 작은 요금제로 바꾸기는 스토어의 구독 관리에서 할 수 있어요.'
+          : '구독은 기간이 끝나기 24시간 전까지 해지하지 않으면 자동으로 갱신돼요. 해지는 스토어의 구독 관리에서 할 수 있어요. 구독이 끝나면 30일 동안 보관한 사진을 내려받을 수 있고, 그 뒤 사진은 삭제돼요. 기록 백업은 로그인한 동안 계속돼요.'}
       </ThemedText>
       <View style={styles.legal}>
         <Pressable onPress={() => openLegalDocument('terms')} hitSlop={8}>
@@ -360,10 +440,14 @@ function Paywall({
   );
 }
 
-function periodLabel(period: string | null) {
+function periodOrder(period: string | null) {
+  return period === 'P1M' ? 0 : period === 'P1Y' ? 1 : 2;
+}
+
+function periodLabel(period: string | null, language: AppLanguage) {
   // ISO 8601 기간 (P1M, P1Y)
-  if (period === 'P1M') return ' / 월';
-  if (period === 'P1Y') return ' / 년';
+  if (period === 'P1M') return { ko: ' / 월', en: ' / month', ja: ' / 月' }[language];
+  if (period === 'P1Y') return { ko: ' / 년', en: ' / year', ja: ' / 年' }[language];
   return '';
 }
 
@@ -390,5 +474,8 @@ const styles = StyleSheet.create({
   },
   noticeText: { gap: Spacing.one },
   legal: { flexDirection: 'row', gap: Spacing.three },
+  planCard: { borderRadius: 16, padding: Spacing.three, gap: Spacing.two },
+  planHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  planTitle: { fontSize: 20, lineHeight: 28, fontWeight: 700 },
   link: { textDecorationLine: 'underline' },
 });

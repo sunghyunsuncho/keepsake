@@ -1,10 +1,10 @@
 import type { Asset } from 'expo-media-library';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { useRef, useState } from 'react';
-import { Alert } from 'react-native';
 
 import { captureAsset, CaptureError, removeMoment } from '@/lib/capture';
 import { toDateKey } from '@/lib/dates';
+import { getCurrentLanguage, photoCount, showAlert } from '@/lib/i18n';
 
 export type SavedItem = { assetId: string; momentId: string; uri: string };
 
@@ -24,7 +24,7 @@ export function usePhotoSelection(db: SQLiteDatabase, saved: Map<string, string>
     if (inFlight.current) return;
     const momentId = saved.get(asset.id);
     if (momentId) {
-      Alert.alert(
+      showAlert(
         '기록에서 뺄까요?',
         '모든 앨범에서 사라지고, 남긴 메모와 장소도 지워져요. 기기 사진첩의 사진은 그대로예요.',
         [
@@ -78,8 +78,13 @@ export function usePhotoSelection(db: SQLiteDatabase, saved: Map<string, string>
     setDraft(failed);
 
     if (failed.length > 0) {
-      Alert.alert(
-        `${failed.length}장을 남기지 못했어요`,
+      const language = getCurrentLanguage();
+      showAlert(
+        {
+          ko: `${failed.length}장을 남기지 못했어요`,
+          en: `Could not keep ${photoCount(language, failed.length)}`,
+          ja: `${failed.length}枚を残せませんでした`,
+        }[language],
         lastError instanceof CaptureError ? lastError.message : '잠시 후 다시 시도해 주세요.',
       );
     }

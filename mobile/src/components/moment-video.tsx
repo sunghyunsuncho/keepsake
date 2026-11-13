@@ -8,6 +8,7 @@ import { Spacing } from '@/constants/theme';
 import { cloudOriginalUrl } from '@/lib/cloud/photos';
 import { useCloudSession } from '@/lib/cloud/session';
 import { assetFileUri } from '@/lib/photos';
+import { localizeText, useTranslation } from '@/lib/i18n';
 
 type Props = {
   moment: PhotoMoment;
@@ -26,6 +27,7 @@ type Props = {
  */
 export function MomentVideo({ moment, style, contentFit = 'contain', active = true, poster }: Props) {
   const session = useCloudSession();
+  const { language } = useTranslation();
   // undefined: 찾는 중, null: 재생할 영상이 없다
   const [uri, setUri] = useState<string | null | undefined>(undefined);
 
@@ -49,7 +51,7 @@ export function MomentVideo({ moment, style, contentFit = 'contain', active = tr
         {uri === undefined ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.message}>재생할 수 있는 동영상을 찾지 못했어요.</Text>
+          <Text style={styles.message}>{localizeText(language, '재생할 수 있는 동영상을 찾지 못했어요.')}</Text>
         )}
       </View>
     </View>

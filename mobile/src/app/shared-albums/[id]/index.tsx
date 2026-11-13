@@ -5,7 +5,6 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -58,6 +57,7 @@ import {
 import { formatFullDate } from '@/lib/dates';
 import { sortForGallery } from '@/lib/gallery';
 import { formatBytes, formatSize } from '@/lib/storage';
+import { addedBy, localizeText, memberCount, photoCount, selectionSummary, showAlert, useTranslation } from '@/lib/i18n';
 
 /** 촬영 시각이 없는 항목은 담은 시각으로 묶는다. */
 type DatedItem = SharedItem & { taken_at: string };
@@ -69,6 +69,7 @@ export default function SharedAlbumScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const db = useSQLiteContext();
   const theme = useTheme();
+  const { language } = useTranslation();
   const { account } = useCloudState();
   const { data: album, error } = useDbQuery(() => getSharedAlbum(id), [id]);
   const { data: items } = useDbQuery(() => listSharedItems(id), [id]);
@@ -130,7 +131,7 @@ export default function SharedAlbumScreen() {
   const openAdd = () => {
     // 앨범 용량은 구성원이 나눠 준 용량의 합이라, 내가 구독하지 않아도 앨범에 공간이 있으면 담는다.
     if (!album.writable) {
-      Alert.alert(
+      showAlert(
         album.storage.capacity_bytes === 0 ? '앨범에 나눠 준 용량이 없어요' : '앨범 용량이 가득 찼어요',
         canUpload
           ? '앨범 관리에서 내 용량을 더 나눠 주거나, 담긴 사진을 정리하면 다시 담을 수 있어요.'
@@ -154,7 +155,11 @@ export default function SharedAlbumScreen() {
   // 남이 담은 사진은 관리자만 뺄 수 있어 고르지 못하게 한다.
   const toggleSelected = (item: SharedItem) => {
     if (!item.can_delete) {
-      Alert.alert('뺄 수 없는 사진이에요', `${item.author_name}님이 담은 사진은 올린 사람이나 관리자만 앨범에서 뺄 수 있어요.`);
+      showAlert('뺄 수 없는 사진이에요', {
+        ko: `${item.author_name}님이 담은 사진은 올린 사람이나 관리자만 앨범에서 뺄 수 있어요.`,
+        en: `Only the person who added it or an admin can remove ${item.author_name}’s photo from the album.`,
+        ja: `${item.author_name}さんが追加した写真は、追加した本人か管理者だけがアルバムから外せます。`,
+      }[language]);
       return;
     }
     setSelectedIds((current) => {
@@ -166,10 +171,20 @@ export default function SharedAlbumScreen() {
   const removeSelected = () => {
     if (selectedIds.size === 0) return;
     const othersCount = items.filter((item) => selectedIds.has(item.id) && !item.is_mine).length;
-    Alert.alert(
-      `${selectedIds.size}장을 공유 앨범에서 뺄까요?`,
-      '구성원 모두에게서 사라져요. 올린 사람의 기록과 기기 사진첩의 사진은 그대로예요.' +
-        (othersCount > 0 ? `\n\n다른 구성원이 담은 사진 ${othersCount}장도 관리자로서 함께 빠져요.` : ''),
+    showAlert(
+      {
+        ko: `${selectedIds.size}장을 공유 앨범에서 뺄까요?`,
+        en: `Remove ${photoCount(language, selectedIds.size)} from the shared album?`,
+        ja: `${selectedIds.size}枚を共有アルバムから外しますか？`,
+      }[language],
+      localizeText(language, '구성원 모두에게서 사라져요. 올린 사람의 기록과 기기 사진첩의 사진은 그대로예요.') +
+        (othersCount > 0
+          ? {
+              ko: `\n\n다른 구성원이 담은 사진 ${othersCount}장도 관리자로서 함께 빠져요.`,
+              en: `\n\nAs an admin, you’ll also remove ${photoCount(language, othersCount)} added by other members.`,
+              ja: `\n\nほかのメンバーが追加した写真${othersCount}枚も、管理者として一緒に外します。`,
+            }[language]
+          : ''),
       [
         { text: '취소', style: 'cancel' },
         {
@@ -182,7 +197,7 @@ export default function SharedAlbumScreen() {
               setSelectedIds(new Set());
               setEditing(false);
             } catch {
-              Alert.alert('사진을 빼지 못했어요', '잠시 후 다시 시도해 주세요.');
+              showAlert('사진을 빼지 못했어요', '잠시 후 다시 시도해 주세요.');
             } finally {
               setRemoving(false);
             }
@@ -193,8 +208,8 @@ export default function SharedAlbumScreen() {
   };
 
   // 앨범 이름·표지는 구성원 모두에게 보이므로 관리자만 바꾼다 (서버가 다시 확인한다).
-  const update = (body: Parameters<typeof updateSharedAlbum>[1], what: string) =>
-    updateSharedAlbum(id, body).catch(() => Alert.alert(`${what}을 바꾸지 못했어요`, '잠시 후 다시 시도해 주세요.'));
+  const update = (body: Parameters<typeof updateSharedAlbum>[1], failedTitle: string) =>
+    updateSharedAlbum(id, body).catch(() => showAlert(failedTitle, '잠시 후 다시 시도해 주세요.'));
   const chooseCover = (choice: AlbumCoverChoice) => {
     setChoosingCover(false);
     update(
@@ -203,18 +218,22 @@ export default function SharedAlbumScreen() {
         : choice.mode === 'design'
           ? { cover_mode: 'design', cover_emoji: choice.emoji }
           : { cover_mode: 'latest' },
-      '표지',
+      '표지를 바꾸지 못했어요',
     );
   };
   const downloadToLibrary = async () => {
     if (downloading) return;
     const downloadable = await unsavedSharedItems(db, items);
     if (downloadable.length === 0) {
-      Alert.alert('다운로드할 사진이 없어요', '다른 구성원의 사진은 이미 모두 기기 사진첩에 저장했어요.');
+      showAlert('다운로드할 사진이 없어요', '다른 구성원의 사진은 이미 모두 기기 사진첩에 저장했어요.');
       return;
     }
-    Alert.alert(
-      `사진 ${downloadable.length}장을 기기 사진첩으로 다운로드할까요?`,
+    showAlert(
+      {
+        ko: `사진 ${downloadable.length}장을 기기 사진첩으로 다운로드할까요?`,
+        en: `Download ${photoCount(language, downloadable.length)} to your device library?`,
+        ja: `写真${downloadable.length}枚をデバイスのライブラリにダウンロードしますか？`,
+      }[language],
       '원본이 있으면 원본을, 효율 보관 사진은 저장된 효율 파일을 내려받아요.',
       [
         { text: '취소', style: 'cancel' },
@@ -224,12 +243,18 @@ export default function SharedAlbumScreen() {
             setDownloading(true);
             try {
               const result = await saveSharedItemsToLibrary(db, id, downloadable, () => {});
-              Alert.alert(
+              showAlert(
                 result.failed > 0 ? '일부 사진을 다운로드하지 못했어요' : '기기 사진첩으로 다운로드했어요',
-                result.failed > 0 ? `${result.failed}장은 잠시 후 다시 시도해 주세요.` : undefined,
+                result.failed > 0
+                  ? {
+                      ko: `${result.failed}장은 잠시 후 다시 시도해 주세요.`,
+                      en: `Please try the other ${photoCount(language, result.failed)} again in a moment.`,
+                      ja: `${result.failed}枚は、しばらくしてからもう一度お試しください。`,
+                    }[language]
+                  : undefined,
               );
             } catch (e) {
-              Alert.alert('사진을 다운로드하지 못했어요', e instanceof SharedSaveError ? e.message : '잠시 후 다시 시도해 주세요.');
+              showAlert('사진을 다운로드하지 못했어요', e instanceof SharedSaveError ? e.message : '잠시 후 다시 시도해 주세요.');
             } finally {
               setDownloading(false);
             }
@@ -259,8 +284,8 @@ export default function SharedAlbumScreen() {
       <SharedItemPhoto albumId={id} item={item} variant="thumb" style={style} />
       {zoom !== 'year' && (
         <View style={styles.authorTag} pointerEvents="none">
-          <ThemedText style={styles.authorTagText} numberOfLines={1}>
-            {item.is_mine ? '나' : item.author_name}
+          <ThemedText style={styles.authorTagText} numberOfLines={1} localize={false}>
+            {item.is_mine ? localizeText(language, '나') : item.author_name}
           </ThemedText>
         </View>
       )}
@@ -303,7 +328,7 @@ export default function SharedAlbumScreen() {
       {editing && (
         <View style={[styles.editBar, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
           <View style={styles.flex}>
-            <ThemedText type="smallBold">{selectedIds.size}장 선택됨</ThemedText>
+            <ThemedText type="smallBold">{selectionSummary(language, selectedIds.size)}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               {admin ? '구성원 모두에게서 빠져요. 올린 사람의 기록은 남아요.' : '내가 담은 사진만 뺄 수 있어요.'}
             </ThemedText>
@@ -390,7 +415,7 @@ export default function SharedAlbumScreen() {
             confirmLabel="바꾸기"
             onSubmit={(next) => {
               setRenaming(false);
-              if (next !== album.title) update({ title: next }, '이름');
+              if (next !== album.title) update({ title: next }, '이름을 바꾸지 못했어요');
             }}
             onCancel={() => setRenaming(false)}
           />
@@ -421,6 +446,7 @@ function AlbumHeader({
   onAdd: () => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   const [renaming, setRenaming] = useState(false);
   const me = album.members.find((member) => member.is_me);
   const relation = RELATIONS[album.relation];
@@ -435,7 +461,7 @@ function AlbumHeader({
       <View style={styles.summary}>
         <Ionicons name={relation.icon} size={16} color={theme.textSecondary} />
         <ThemedText type="small" themeColor="textSecondary">
-          {relation.label} · {album.member_count}명 · 사진 {items.length}장
+          {`${localizeText(language, relation.label)} · ${memberCount(language, album.member_count)} · ${photoCount(language, items.length)}`}
         </ThemedText>
         <PhotoQualityBadge quality={album.photo_quality} />
       </View>
@@ -448,10 +474,16 @@ function AlbumHeader({
         <Pressable
           onPress={() => setRenaming(true)}
           accessibilityRole="button"
-          accessibilityLabel="이 앨범에서 보일 내 이름 바꾸기"
+          accessibilityLabel={localizeText(language, '이 앨범에서 보일 내 이름 바꾸기')}
           style={({ pressed }) => [styles.myName, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 }]}>
           <ThemedText type="small" themeColor="textSecondary" style={styles.flex} numberOfLines={1}>
-            이 앨범에서 나는 <ThemedText type="smallBold" localize={false}>{me.display_name}</ThemedText>(으)로 보여요
+            {language === 'en' ? (
+              <>In this album you appear as <ThemedText type="smallBold" localize={false}>{me.display_name}</ThemedText></>
+            ) : language === 'ja' ? (
+              <>このアルバムでの表示名：<ThemedText type="smallBold" localize={false}>{me.display_name}</ThemedText></>
+            ) : (
+              <>이 앨범에서 나는 <ThemedText type="smallBold" localize={false}>{me.display_name}</ThemedText>(으)로 보여요</>
+            )}
           </ThemedText>
           <ThemedText type="small" style={{ color: theme.accent, fontWeight: 700 }}>
             바꾸기
@@ -470,7 +502,7 @@ function AlbumHeader({
           onSubmit={(next) => {
             setRenaming(false);
             updateMember(album.id, me.user_id, { display_name: next }).catch(() =>
-              Alert.alert('이름을 바꾸지 못했어요', '잠시 후 다시 시도해 주세요.'),
+              showAlert('이름을 바꾸지 못했어요', '잠시 후 다시 시도해 주세요.'),
             );
           }}
           onCancel={() => setRenaming(false)}
@@ -495,11 +527,11 @@ function AlbumHeader({
 
       {album.members.length + departed.length > 1 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          <Chip label={`모두 ${items.length}`} selected={author === null} onPress={() => onAuthor(null)} />
+          <Chip label={`${localizeText(language, '모두')} ${items.length}`} selected={author === null} onPress={() => onAuthor(null)} />
           {album.members.map((member) => (
             <Chip
               key={member.user_id}
-              label={`${member.is_me ? '나' : member.display_name} ${counts.get(member.user_id) ?? 0}`}
+              label={`${member.is_me ? localizeText(language, '나') : member.display_name} ${counts.get(member.user_id) ?? 0}`}
               selected={author === member.user_id}
               onPress={() => onAuthor(member.user_id)}
             />
@@ -508,7 +540,7 @@ function AlbumHeader({
           {departed.map((authorId, index) => (
             <Chip
               key={authorId}
-              label={`나간 구성원${departed.length > 1 ? ` ${index + 1}` : ''} ${counts.get(authorId) ?? 0}`}
+              label={`${localizeText(language, '나간 구성원')}${departed.length > 1 ? ` ${index + 1}` : ''} ${counts.get(authorId) ?? 0}`}
               selected={author === authorId}
               onPress={() => onAuthor(authorId)}
             />
@@ -526,6 +558,7 @@ function AlbumHeader({
 function SaveToLibrary({ album, items }: { album: SharedAlbumDetail; items: SharedItem[] }) {
   const db = useSQLiteContext();
   const theme = useTheme();
+  const { language } = useTranslation();
   const { data: unsaved } = useDbQuery(() => unsavedSharedItems(db, items), [db, items]);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const cleanup = album.storage.cleanup_after;
@@ -535,12 +568,21 @@ function SaveToLibrary({ album, items }: { album: SharedAlbumDetail; items: Shar
     if (!unsaved?.length) return;
     try {
       const result = await saveSharedItemsToLibrary(db, album.id, unsaved, (done, total) => setProgress({ done, total }));
-      Alert.alert(
-        result.failed > 0 ? `${result.total - result.failed}장을 저장했어요` : '기기 사진첩에 저장했어요',
-        result.failed > 0 ? `${result.failed}장은 저장하지 못했어요. 잠시 후 다시 눌러 주세요.` : undefined,
+      const saved = result.total - result.failed;
+      showAlert(
+        result.failed > 0
+          ? { ko: `${saved}장을 저장했어요`, en: `Saved ${photoCount(language, saved)}`, ja: `${saved}枚を保存しました` }[language]
+          : '기기 사진첩에 저장했어요',
+        result.failed > 0
+          ? {
+              ko: `${result.failed}장은 저장하지 못했어요. 잠시 후 다시 눌러 주세요.`,
+              en: `${photoCount(language, result.failed)} could not be saved. Please tap again in a moment.`,
+              ja: `${result.failed}枚は保存できませんでした。しばらくしてからもう一度タップしてください。`,
+            }[language]
+          : undefined,
       );
     } catch (e) {
-      Alert.alert('저장하지 못했어요', e instanceof SharedSaveError ? e.message : '잠시 후 다시 시도해 주세요.');
+      showAlert('저장하지 못했어요', e instanceof SharedSaveError ? e.message : '잠시 후 다시 시도해 주세요.');
     } finally {
       setProgress(null);
     }
@@ -552,7 +594,13 @@ function SaveToLibrary({ album, items }: { album: SharedAlbumDetail; items: Shar
       {unfunded && (
         <>
           <ThemedText type="smallBold" style={{ color: theme.danger }}>
-            {cleanup ? `${formatFullDate(cleanup)}에 이 앨범의 사진이 지워져요` : '이 앨범에 나눠 준 용량이 없어요'}
+            {cleanup
+              ? {
+                  ko: `${formatFullDate(cleanup)}에 이 앨범의 사진이 지워져요`,
+                  en: `Photos in this album will be deleted on ${formatFullDate(cleanup)}`,
+                  ja: `${formatFullDate(cleanup)}にこのアルバムの写真が削除されます`,
+                }[language]
+              : '이 앨범에 나눠 준 용량이 없어요'}
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             용량을 나눠 준 구성원이 모두 나갔거나 구독이 끝나 새 사진도 담을 수 없어요. 그 전에 누군가 용량을 나눠 주면 그대로
@@ -569,8 +617,12 @@ function SaveToLibrary({ album, items }: { album: SharedAlbumDetail; items: Shar
         <Button
           label={
             progress
-              ? `저장하는 중… ${progress.done}/${progress.total}`
-              : `다른 구성원의 사진 ${unsaved.length}장을 기기 사진첩에 저장`
+              ? `${localizeText(language, '저장하는 중…')} ${progress.done}/${progress.total}`
+              : {
+                  ko: `다른 구성원의 사진 ${unsaved.length}장을 기기 사진첩에 저장`,
+                  en: `Save ${photoCount(language, unsaved.length)} from other members to your device library`,
+                  ja: `ほかのメンバーの写真${unsaved.length}枚をデバイスのライブラリに保存`,
+                }[language]
           }
           variant={unfunded ? 'primary' : 'secondary'}
           disabled={!!progress}
@@ -584,6 +636,7 @@ function SaveToLibrary({ album, items }: { album: SharedAlbumDetail; items: Shar
 /** 앨범 용량(구성원이 나눠 준 용량의 합)과 사용량. 넘쳤으면 푸는 방법을 함께 보여 준다. */
 function StorageBar({ album }: { album: SharedAlbumDetail }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   const { bytes_total: used, capacity_bytes: capacity, over_capacity: over } = album.storage;
   const ratio = capacity > 0 ? Math.min(used / capacity, 1) : 1;
   const admin = album.role === 'admin';
@@ -591,15 +644,27 @@ function StorageBar({ album }: { album: SharedAlbumDetail }) {
   const mine = album.contributors.find((c) => c.is_me);
   const manage = () => router.push({ pathname: '/shared-albums/[id]/members', params: { id: album.id } });
 
-  const clean = (authorId: string, label: string, bytes: number) =>
-    Alert.alert(`${label} 사진을 앨범에서 뺄까요?`, `${formatBytes(bytes)}가 비워져요. 올린 사람의 기록은 그대로 남아요.`, [
-      { text: '취소', style: 'cancel' },
+  const clean = (authorId: string, whose: 'departed' | 'mine', bytes: number) =>
+    showAlert(
       {
-        text: '빼기',
-        style: 'destructive',
-        onPress: () => removeAuthorItems(album.id, authorId).catch(() => Alert.alert('사진을 빼지 못했어요', '잠시 후 다시 시도해 주세요.')),
-      },
-    ]);
+        ko: `${whose === 'mine' ? '내가 담은' : '나간 구성원의'} 사진을 앨범에서 뺄까요?`,
+        en: `Remove ${whose === 'mine' ? 'your photos' : 'photos from members who left'} from the album?`,
+        ja: `${whose === 'mine' ? '自分が追加した' : '退出したメンバーの'}写真をアルバムから外しますか？`,
+      }[language],
+      {
+        ko: `${formatBytes(bytes)}가 비워져요. 올린 사람의 기록은 그대로 남아요.`,
+        en: `This frees up ${formatBytes(bytes)}. The memories of the person who added them stay as they are.`,
+        ja: `${formatBytes(bytes)}が空きます。追加した人の思い出はそのまま残ります。`,
+      }[language],
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '빼기',
+          style: 'destructive',
+          onPress: () => removeAuthorItems(album.id, authorId).catch(() => showAlert('사진을 빼지 못했어요', '잠시 후 다시 시도해 주세요.')),
+        },
+      ],
+    );
 
   return (
     <View style={styles.storage}>
@@ -623,7 +688,11 @@ function StorageBar({ album }: { album: SharedAlbumDetail }) {
       {over && capacity > 0 && (
         <View style={[styles.overCard, { borderColor: theme.danger }]}>
           <ThemedText type="smallBold" style={{ color: theme.danger }}>
-            앨범 용량을 {formatBytes(used - capacity)} 넘었어요
+            {{
+              ko: `앨범 용량을 ${formatBytes(used - capacity)} 넘었어요`,
+              en: `${formatBytes(used - capacity)} over the album’s storage`,
+              ja: `アルバムの容量を${formatBytes(used - capacity)}超えています`,
+            }[language]}
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             구성원이 나가거나 구독이 끝나 앨범 용량이 줄었어요. 사진은 그대로 볼 수 있지만, 정리하기 전까지 새 사진은 담을 수
@@ -633,17 +702,25 @@ function StorageBar({ album }: { album: SharedAlbumDetail }) {
             departed.map((c) => (
               <Button
                 key={c.author_id}
-                label={`나간 구성원의 사진 정리 (${c.item_count}장, ${formatBytes(c.bytes)})`}
+                label={{
+                  ko: `나간 구성원의 사진 정리 (${c.item_count}장, ${formatBytes(c.bytes)})`,
+                  en: `Clear photos from members who left (${photoCount(language, c.item_count)}, ${formatBytes(c.bytes)})`,
+                  ja: `退出したメンバーの写真を整理（${c.item_count}枚、${formatBytes(c.bytes)}）`,
+                }[language]}
                 variant="secondary"
-                onPress={() => clean(c.author_id, '나간 구성원의', c.bytes)}
+                onPress={() => clean(c.author_id, 'departed', c.bytes)}
               />
             ))}
           <Button label="내 용량을 더 나눠 주기" variant="secondary" onPress={manage} />
           {mine && mine.bytes > 0 && (
             <Button
-              label={`내가 담은 사진 빼기 (${mine.item_count}장)`}
+              label={{
+                ko: `내가 담은 사진 빼기 (${mine.item_count}장)`,
+                en: `Remove your photos (${photoCount(language, mine.item_count)})`,
+                ja: `自分が追加した写真を外す（${mine.item_count}枚）`,
+              }[language]}
               variant="secondary"
-              onPress={() => clean(mine.author_id, '내가 담은', mine.bytes)}
+              onPress={() => clean(mine.author_id, 'mine', mine.bytes)}
             />
           )}
           {admin && <Button label="구성원 초대하기" variant="secondary" onPress={manage} />}
@@ -690,6 +767,7 @@ function SharedViewer({
   onClose: () => void;
 }) {
   const db = useSQLiteContext();
+  const { language } = useTranslation();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [current, setCurrent] = useState(0);
@@ -697,11 +775,15 @@ function SharedViewer({
   const item = index === null ? undefined : items[current];
 
   const confirmRemove = (target: SharedItem) => {
-    Alert.alert(
+    showAlert(
       '공유 앨범에서 뺄까요?',
       target.is_mine
         ? '구성원 모두에게서 사라져요. 내 기록과 기기 사진첩의 사진은 그대로예요.'
-        : `${target.author_name}님이 담은 사진이에요. 관리자로서 구성원 모두에게서 뺄까요? ${target.author_name}님의 기록은 그대로 남아요.`,
+        : {
+            ko: `${target.author_name}님이 담은 사진이에요. 관리자로서 구성원 모두에게서 뺄까요? ${target.author_name}님의 기록은 그대로 남아요.`,
+            en: `${target.author_name} added this photo. As an admin, remove it for every member? ${target.author_name}’s memory stays as it is.`,
+            ja: `${target.author_name}さんが追加した写真です。管理者として、すべてのメンバーから外しますか？${target.author_name}さんの思い出はそのまま残ります。`,
+          }[language],
       [
         { text: '취소', style: 'cancel' },
         {
@@ -713,7 +795,7 @@ function SharedViewer({
               await removeSharedItem(albumId, target.id);
               onClose();
             } catch {
-              Alert.alert('사진을 빼지 못했어요', '잠시 후 다시 시도해 주세요.');
+              showAlert('사진을 빼지 못했어요', '잠시 후 다시 시도해 주세요.');
             } finally {
               setRemoving(false);
             }
@@ -727,7 +809,7 @@ function SharedViewer({
   const chooseQuality = (target: SharedItem) => {
     // 앨범 화질과 같은 쪽을 고르면 앨범 화질을 따르게 한다 (나중에 앨범 화질을 바꾸면 이 사진도 따라간다).
     const option = (quality: SharedItem['photo_quality']) => ({
-      text: `${PHOTO_QUALITY[quality].label}${quality === albumQuality ? ' · 앨범 기본' : ''}${quality === target.photo_quality ? ' (지금)' : ''}`,
+      text: `${localizeText(language, PHOTO_QUALITY[quality].label)}${quality === albumQuality ? ` · ${localizeText(language, '앨범 기본')}` : ''}${quality === target.photo_quality ? ` ${localizeText(language, '(지금)')}` : ''}`,
       onPress: () => {
         const next = quality === albumQuality ? null : quality;
         // 지금과 같은 화질·같은 방식(앨범 기본 따르기/따로 고름)이면 바꿀 것이 없다.
@@ -735,7 +817,7 @@ function SharedViewer({
         if (unchanged) return;
         // 앨범 화질 바꾸기(members.tsx)처럼, 이미 올라간 원본이 지워질 수 있으면 먼저 묻는다.
         if (quality === 'display' && target.stored_variants.includes('original')) {
-          Alert.alert(
+          showAlert(
             '효율 보관으로 바꿀까요?',
             '원본은 앨범 용량에서 빠지고, 다른 앨범에 필요 없는 원본은 담은 사람의 기기가 지워요. 지운 원본은 되돌릴 수 없어요.',
             [
@@ -752,12 +834,20 @@ function SharedViewer({
       setSharedItemsQuality(albumId, [target.id], quality)
         // 올린 사람이 나면 바로 원본을 올리거나 정리하도록 내 항목 목록을 다시 받는다.
         .then(() => syncCloud(db))
-        .catch(() => Alert.alert('화질을 바꾸지 못했어요', '잠시 후 다시 시도해 주세요.'));
+        .catch(() => showAlert('화질을 바꾸지 못했어요', '잠시 후 다시 시도해 주세요.'));
     showActionSheet(
       '이 사진의 보관 화질',
-      `구성원 모두에게 같은 화질로 보여요. 원본 그대로는 앨범 용량을 더 써요.${
-        target.is_mine ? '' : `\n원본은 ${target.author_name}님의 기기에 원본이 있을 때 올라가요.`
-      }`,
+      {
+        ko: `구성원 모두에게 같은 화질로 보여요. 원본 그대로는 앨범 용량을 더 써요.${
+          target.is_mine ? '' : `\n원본은 ${target.author_name}님의 기기에 원본이 있을 때 올라가요.`
+        }`,
+        en: `Every member sees the same quality. Original quality uses more of the album’s storage.${
+          target.is_mine ? '' : `\nThe original is uploaded when it’s available on ${target.author_name}’s device.`
+        }`,
+        ja: `すべてのメンバーに同じ画質で表示されます。オリジナル品質はアルバムの容量を多く使います。${
+          target.is_mine ? '' : `\nオリジナルは、${target.author_name}さんのデバイスにオリジナルがあるときにアップロードされます。`
+        }`,
+      }[language],
       [option('original'), option('display'), { text: '취소', style: 'cancel' }],
     );
   };
@@ -791,7 +881,7 @@ function SharedViewer({
           onPress={onClose}
           hitSlop={12}
           accessibilityRole="button"
-          accessibilityLabel="닫기"
+          accessibilityLabel={localizeText(language, '닫기')}
           style={[styles.viewerClose, { top: insets.top + Spacing.two }]}>
           <Ionicons name="close" size={28} color="#fff" />
         </Pressable>
@@ -805,7 +895,7 @@ function SharedViewer({
                 : { bottom: 0, paddingBottom: insets.bottom + Spacing.three },
             ]}>
             <View style={styles.flex}>
-              <ThemedText style={styles.viewerAuthor}>{item.is_mine ? '내가 담았어요' : `${item.author_name}님이 담았어요`}</ThemedText>
+              <ThemedText style={styles.viewerAuthor} localize={false}>{item.is_mine ? localizeText(language, '내가 담았어요') : addedBy(language, item.author_name)}</ThemedText>
               {item.taken_at && (
                 <ThemedText type="small" style={styles.viewerDate}>
                   {formatFullDate(item.taken_at, item.taken_tz_offset)}
@@ -816,7 +906,11 @@ function SharedViewer({
                 disabled={!item.can_delete}
                 hitSlop={8}
                 accessibilityRole={item.can_delete ? 'button' : 'text'}
-                accessibilityLabel={`보관 화질: ${PHOTO_QUALITY[item.photo_quality].label}${item.can_delete ? '. 눌러서 바꾸기' : ''}`}
+                accessibilityLabel={{
+                  ko: `보관 화질: ${PHOTO_QUALITY[item.photo_quality].label}${item.can_delete ? '. 눌러서 바꾸기' : ''}`,
+                  en: `Storage quality: ${localizeText(language, PHOTO_QUALITY[item.photo_quality].label)}${item.can_delete ? '. Tap to change' : ''}`,
+                  ja: `保存画質：${localizeText(language, PHOTO_QUALITY[item.photo_quality].label)}${item.can_delete ? '。タップで変更' : ''}`,
+                }[language]}
                 style={styles.viewerQuality}>
                 <Ionicons name={PHOTO_QUALITY[item.photo_quality].icon} size={13} color="rgba(255,255,255,0.8)" />
                 <ThemedText type="small" style={styles.viewerDate}>
@@ -833,7 +927,7 @@ function SharedViewer({
                   onPress={() => confirmRemove(item)}
                   hitSlop={10}
                   accessibilityRole="button"
-                  accessibilityLabel="공유 앨범에서 빼기"
+                  accessibilityLabel={localizeText(language, '공유 앨범에서 빼기')}
                   style={styles.viewerAction}>
                   <Ionicons name="trash-outline" size={22} color="#fff" />
                 </Pressable>

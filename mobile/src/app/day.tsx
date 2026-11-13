@@ -16,6 +16,7 @@ import { DEFAULT_SETTINGS, getSettings, setSetting } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { dayKeyOf, usePhotoSelection } from '@/hooks/use-photo-selection';
 import { formatDay, formatMonth } from '@/lib/dates';
+import { localizeText, photoCount, selectionSummary, useTranslation } from '@/lib/i18n';
 import { getPhotosBefore, subscribeLibraryChanges, usePhotoAccess } from '@/lib/photos';
 
 type Row =
@@ -32,6 +33,7 @@ const PAST_ZOOM_LABELS: Record<PastZoom, string> = { year: '연도', month: '월
 /** 지난 사진을 가장 오래된 것부터 월·일 머리글 아래 세로로 계속 보여 준다. */
 export default function DayScreen() {
   const db = useSQLiteContext();
+  const { language } = useTranslation();
   const { access } = usePhotoAccess();
   const [before] = useState(() => new Date(Date.now() + 24 * 60 * 60 * 1000));
   const [zoom, setZoom] = useState<PastZoom>('month');
@@ -136,16 +138,16 @@ export default function DayScreen() {
           extraData={{ saved, draft: selection.draft }} contentContainerStyle={{ padding: GRID_GAP / 2, paddingBottom: Spacing.four }}
           onEndReached={loadMore} onEndReachedThreshold={1}
           renderItem={({ item }) => {
-            if (item.type === 'year') return <ThemedText style={styles.yearHeader}>{item.dateKey.slice(0, 4)}년</ThemedText>;
+            if (item.type === 'year') return <ThemedText style={styles.yearHeader}>{language === 'en' ? item.dateKey.slice(0, 4) : `${item.dateKey.slice(0, 4)}${language === 'ja' ? '年' : '년'}`}</ThemedText>;
             if (item.type === 'month') return <ThemedText style={styles.monthHeader}>{formatMonth(item.dateKey)}</ThemedText>;
-            if (item.type === 'day') return <ThemedText type="smallBold" themeColor="textSecondary" style={styles.dayHeader}>{formatDay(item.dateKey)} · 사진 {item.count}장</ThemedText>;
+            if (item.type === 'day') return <ThemedText type="smallBold" themeColor="textSecondary" style={styles.dayHeader}>{`${formatDay(item.dateKey)} · ${photoCount(language, item.count)}`}</ThemedText>;
             return <PhotoTile asset={item.asset} width={tileWidth} height={tileHeightFor(item.asset, tileWidth, columns)} state={saved.has(item.asset.id) ? 'saved' : selection.draft.includes(item.asset.id) ? 'picked' : 'none'} order={selection.draft.indexOf(item.asset.id) + 1} onPress={() => selection.toggle(item.asset)} />;
           }}
           ListFooterComponent={roll.hasNextPage ? <ActivityIndicator style={styles.more} /> : null}
         />
       )}
       {selection.draft.length > 0 || selection.saving ? (
-        <BottomBar title={selection.saving ? `남기는 중… ${selection.saving.done}/${selection.saving.total}` : `${selection.draft.length}장 골랐어요`} subtitle="남기면 사진첩에서 다시 볼 수 있어요" secondary={{ label: '선택 해제', onPress: selection.clear }} action={{ label: '남기기', onPress: complete, loading: !!selection.saving }} />
+        <BottomBar title={selection.saving ? `${localizeText(language, '남기는 중…')} ${selection.saving.done}/${selection.saving.total}` : selectionSummary(language, selection.draft.length)} subtitle="남기면 사진첩에서 다시 볼 수 있어요" secondary={{ label: '선택 해제', onPress: selection.clear }} action={{ label: '남기기', onPress: complete, loading: !!selection.saving }} />
       ) : null}
     </ThemedView>
   );

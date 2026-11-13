@@ -15,6 +15,7 @@ import type { Moment } from '@/db/moments';
 import { DEFAULT_SETTINGS, getSettings } from '@/db/settings';
 import { formatFullDate } from '@/lib/dates';
 import { sortForGallery } from '@/lib/gallery';
+import { localizeText, useTranslation } from '@/lib/i18n';
 
 // 전체 화면으로 보기: 앨범(또는 '몇 년 전 오늘')의 사진을 옆으로 넘겨 본다. 동영상은 보이는 페이지만 재생한다.
 // 사진을 누르면 위아래 정보가 숨고, [기록 보기]로 메모를 열 수 있다.
@@ -22,6 +23,7 @@ export default function ViewerScreen() {
   const params = useLocalSearchParams<{ album?: string; onThisDay?: string; moment: string }>();
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
+  const { language } = useTranslation();
   const [chrome, setChrome] = useState(true);
   // 기록 화면을 위에 띄웠을 때는 그 화면의 상태 표시줄을 쓴다.
   const focused = useIsFocused();
@@ -51,7 +53,7 @@ export default function ViewerScreen() {
         </View>
       ) : moments.length === 0 ? (
         <View style={styles.centered}>
-          <Text style={styles.caption}>보여줄 사진이 없어요.</Text>
+          <Text style={styles.caption}>{localizeText(language, '보여줄 사진이 없어요.')}</Text>
         </View>
       ) : (
         <Pager
@@ -65,7 +67,7 @@ export default function ViewerScreen() {
 
       {chrome && (
         <View style={[styles.top, { paddingTop: insets.top + Spacing.two }]} pointerEvents="box-none">
-          <Pressable onPress={() => router.back()} hitSlop={16} accessibilityLabel="닫기">
+          <Pressable onPress={() => router.back()} hitSlop={16} accessibilityLabel={localizeText(language, '닫기')}>
             <Ionicons name="close" size={28} color="#fff" />
           </Pressable>
           {moments && moments.length > 1 && (
@@ -94,7 +96,7 @@ export default function ViewerScreen() {
             onPress={() => router.push({ pathname: '/moment/[id]', params: { id: current.id } })}
             style={({ pressed }) => [styles.open, { opacity: pressed ? 0.7 : 1 }]}>
             <Ionicons name="document-text-outline" size={18} color="#fff" />
-            <Text style={styles.openText}>기록 보기</Text>
+            <Text style={styles.openText}>{localizeText(language, '기록 보기')}</Text>
           </Pressable>
         </View>
       )}

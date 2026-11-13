@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { AllocationPicker } from '@/components/allocation-picker';
 import { Button } from '@/components/button';
@@ -12,6 +12,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { CloudError, useCloudSession } from '@/lib/cloud/session';
 import { useDbQuery } from '@/db/changes';
 import { useCloudState } from '@/lib/cloud/engine';
+import { localizeText, showAlert, useTranslation } from '@/lib/i18n';
 import {
   DISPLAY_NAME_MAX,
   joinSharedAlbum,
@@ -28,6 +29,7 @@ type Preview = Awaited<ReturnType<typeof previewInvite>>;
 export default function JoinSharedAlbumScreen() {
   const params = useLocalSearchParams<{ code?: string }>();
   const theme = useTheme();
+  const { language } = useTranslation();
   const session = useCloudSession();
   const [code, setCode] = useState(params.code ? normalizeCode(params.code) : '');
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -55,7 +57,7 @@ export default function JoinSharedAlbumScreen() {
       }
       setPreview(found);
     } catch (e) {
-      Alert.alert(
+      showAlert(
         '초대를 찾지 못했어요',
         e instanceof CloudError && e.status === 404
           ? '코드가 틀렸거나 기한(7일)이 지났어요. 초대한 사람에게 새 코드를 받아 주세요.'
@@ -79,7 +81,7 @@ export default function JoinSharedAlbumScreen() {
       const album = await joinSharedAlbum(code, name.trim(), allocation ?? 0);
       router.replace({ pathname: '/shared-albums/[id]', params: { id: album.id } });
     } catch (e) {
-      Alert.alert(
+      showAlert(
         '참여하지 못했어요',
         e instanceof CloudError && e.status === 409
           ? '이 앨범은 구성원이 가득 찼어요.'
@@ -114,7 +116,7 @@ export default function JoinSharedAlbumScreen() {
               <TextInput
                 value={code}
                 onChangeText={(text) => setCode(normalizeCode(text))}
-                placeholder="8자리 코드"
+                placeholder={localizeText(language, '8자리 코드')}
                 placeholderTextColor={theme.textSecondary}
                 autoCapitalize="characters"
                 autoCorrect={false}
@@ -132,12 +134,17 @@ export default function JoinSharedAlbumScreen() {
             <>
               <View style={[styles.previewCard, { backgroundColor: theme.backgroundElement }]}>
                 <Ionicons name={RELATIONS[preview.relation].icon} size={28} color={theme.accent} />
-                <ThemedText type="subtitle" style={styles.center}>
+                <ThemedText type="subtitle" style={styles.center} localize={false}>
                   {preview.title}
                 </ThemedText>
-                <ThemedText type="small" themeColor="textSecondary" style={styles.center}>
-                  {preview.invited_by ? `${preview.invited_by}님이 초대했어요 · ` : ''}
-                  {preview.member_count}명이 함께하고 있어요
+                <ThemedText type="small" themeColor="textSecondary" style={styles.center} localize={false}>
+                  {
+                    {
+                      ko: `${preview.invited_by ? `${preview.invited_by}님이 초대했어요 · ` : ''}${preview.member_count}명이 함께하고 있어요`,
+                      en: `${preview.invited_by ? `Invited by ${preview.invited_by} · ` : ''}${preview.member_count} ${preview.member_count === 1 ? 'member' : 'members'}`,
+                      ja: `${preview.invited_by ? `${preview.invited_by}さんからの招待 · ` : ''}${preview.member_count}人が参加中`,
+                    }[language]
+                  }
                 </ThemedText>
               </View>
               <View style={styles.section}>
@@ -145,7 +152,7 @@ export default function JoinSharedAlbumScreen() {
                 <TextInput
                   value={name}
                   onChangeText={setName}
-                  placeholder="예) 아빠, 서준"
+                  placeholder={localizeText(language, '예) 아빠, 서준')}
                   placeholderTextColor={theme.textSecondary}
                   style={inputStyle}
                   maxLength={DISPLAY_NAME_MAX}

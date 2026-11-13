@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { localizeText, useTranslation } from '@/lib/i18n';
 
 type Props = {
   visible: boolean;
@@ -85,6 +86,7 @@ function IosDateSheet({
   onCancel,
 }: Props) {
   const theme = useTheme();
+  const { language } = useTranslation();
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState(value);
 
@@ -96,7 +98,7 @@ function IosDateSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
-      <Pressable style={styles.backdrop} onPress={onCancel} accessibilityLabel="닫기" />
+      <Pressable style={styles.backdrop} onPress={onCancel} accessibilityLabel={localizeText(language, '닫기')} />
       <View
         style={[
           styles.sheet,

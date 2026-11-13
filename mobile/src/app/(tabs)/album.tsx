@@ -21,7 +21,7 @@ import { listRecentlySavedMoments } from '@/db/moments';
 import { getSettings, setSetting } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { todayKey } from '@/lib/dates';
-import { useTranslation } from '@/lib/i18n';
+import { localizeText, photoCount, useTranslation } from '@/lib/i18n';
 
 // 기기 사진첩 탭: 이 기기에 보관한 '나의 순간들'과 사용자가 만든 앨범을 고른다.
 export default function AlbumsScreen() {
@@ -117,6 +117,7 @@ export default function AlbumsScreen() {
 /** 몇 년 전 오늘 남긴 기록. 있는 날에만 조용히 보여주고, 닫으면 그날은 다시 보여주지 않는다. */
 function OnThisDayCards({ groups, onHide }: { groups: OnThisDay[]; onHide: () => void }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   const { width } = useWindowDimensions();
   const single = groups.length === 1;
   const cardWidth = single ? width - Spacing.three * 2 : width * 0.78;
@@ -128,7 +129,7 @@ function OnThisDayCards({ groups, onHide }: { groups: OnThisDay[]; onHide: () =>
         <ThemedText type="smallBold" themeColor="textSecondary">
           그날의 기억
         </ThemedText>
-        <Pressable onPress={onHide} hitSlop={12} accessibilityLabel="오늘은 그만 보기">
+        <Pressable onPress={onHide} hitSlop={12} accessibilityLabel={localizeText(language, '오늘은 그만 보기')}>
           <Ionicons name="close" size={20} color={theme.textSecondary} />
         </Pressable>
       </View>
@@ -155,9 +156,9 @@ function OnThisDayCards({ groups, onHide }: { groups: OnThisDay[]; onHide: () =>
               <MomentPhoto moment={first} variant="thumb" style={{ width: cardWidth, height: cardWidth * 0.62 }} transition={150} />
               <View style={styles.memoryBody}>
                 <ThemedText style={styles.memoryTitle}>
-                  {yearsAgo}년 전 오늘
+                  {{ ko: `${yearsAgo}년 전 오늘`, en: `${yearsAgo} ${yearsAgo === 1 ? 'year' : 'years'} ago today`, ja: `${yearsAgo}年前の今日` }[language]}
                   <ThemedText type="small" themeColor="textSecondary">
-                    {moments.length > 1 ? `  ${moments.length}장` : ''}
+                    {moments.length > 1 ? `  ${photoCount(language, moments.length)}` : ''}
                   </ThemedText>
                 </ThemedText>
                 {memo && (
