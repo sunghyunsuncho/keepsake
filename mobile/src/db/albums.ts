@@ -352,12 +352,18 @@ export async function setAlbumQuality(db: SQLiteDatabase, id: string, quality: P
   notifyChange();
 }
 
+/** 이름을 바꾼다. 기기 앨범과 그 앨범을 연결한 안전 앨범은 어느 쪽에서 바꿔도 함께 바뀐다. */
 export async function renameAlbum(db: SQLiteDatabase, id: string, title: string) {
+  // 이 앨범, 이 앨범이 연결한 기기 앨범, 그 기기 앨범(또는 이 앨범)을 연결한 안전 앨범
   await db.runAsync(
-    `UPDATE albums SET title = ?, updated_at = ${laterThanBefore('?')}, ${SYNC_PENDING}
-     WHERE id = ? AND deleted_at IS NULL`,
+    `WITH source AS (SELECT IFNULL(source_album_id, id) AS id FROM albums WHERE id = ?)
+     UPDATE albums SET title = ?, updated_at = ${laterThanBefore('?')}, ${SYNC_PENDING}
+     WHERE deleted_at IS NULL AND title != ? AND (id = ? OR id IN (SELECT id FROM source)
+       OR (kind = 'cloud' AND source_album_id IN (SELECT id FROM source)))`,
+    id,
     title,
     new Date().toISOString(),
+    title,
     id,
   );
   notifyChange();
