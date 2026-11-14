@@ -266,12 +266,16 @@ export default function SharedAlbumScreen() {
   };
   const showAlbumMenu = () =>
     showActionSheet(album.title, undefined, [
-      { text: downloading ? '기기 사진첩으로 다운로드 중…' : '기기 사진첩으로 다운로드', onPress: downloadToLibrary },
+      { text: '구성원과 앨범 관리', icon: 'people-outline', onPress: openManage },
+      {
+        text: downloading ? '기기 사진첩으로 다운로드 중…' : '기기 사진첩으로 다운로드',
+        icon: 'download-outline',
+        onPress: downloadToLibrary,
+      },
       ...(admin
         ? [
-            { text: '표지 바꾸기', onPress: () => setChoosingCover(true) },
-            { text: '이름 바꾸기', onPress: () => setRenaming(true) },
-            { text: '구성원과 앨범 관리', onPress: openManage },
+            { text: '표지 바꾸기', icon: 'image-outline' as const, onPress: () => setChoosingCover(true) },
+            { text: '이름 바꾸기', icon: 'pencil-outline' as const, onPress: () => setRenaming(true) },
           ]
         : []),
       { text: '취소', style: 'cancel' },
@@ -305,7 +309,6 @@ export default function SharedAlbumScreen() {
                 label="앨범 지도"
                 onPress={() => router.push({ pathname: '/album-map', params: { id, kind: 'shared' } })}
               />
-              <HeaderButton icon="people-outline" label="구성원과 앨범 관리" size={22} onPress={openManage} />
               <HeaderButton icon="ellipsis-horizontal" label="앨범 메뉴" onPress={showAlbumMenu} />
             </View>
           ),

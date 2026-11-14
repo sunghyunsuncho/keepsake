@@ -155,10 +155,11 @@ export default function AlbumScreen() {
       ? [
           {
             text: '연결된 안전 앨범 보기',
+            icon: 'shield-checkmark-outline' as const,
             onPress: () => router.push({ pathname: '/albums/[id]', params: { id: linkedId, source: 'cloud' } }),
           },
         ]
-      : [{ text: '안전 보관에 연결', onPress: () => router.push({ pathname: '/cloud-albums/new', params: { source: id } }) }];
+      : [{ text: '안전 보관에 연결', icon: 'cloud-upload-outline' as const, onPress: () => router.push({ pathname: '/cloud-albums/new', params: { source: id } }) }];
   };
 
   // 원본이 있으면 원본을, 효율 보관만 했으면 그 JPEG·720p 영상을 기기 사진첩에 내려받는다.
@@ -218,25 +219,33 @@ export default function AlbumScreen() {
   // 선택지가 많아 Alert 대신 시트로 연다 (안드로이드 Alert는 버튼을 3개까지만 보여 준다).
   const showAlbumMenu = () => {
     showActionSheet(title ?? '', undefined, [
-      { text: '새 사진에서 고르기', onPress: pickForAlbum },
-      ...(isCloud ? [{ text: '보관 화질 바꾸기', onPress: chooseQuality }] : cloudLink()),
+      { text: '새 사진에서 고르기', icon: 'add-circle-outline', onPress: pickForAlbum },
+      ...(isCloud ? [{ text: '보관 화질 바꾸기', icon: 'options-outline' as const, onPress: chooseQuality }] : cloudLink()),
       ...(isCloud && canDownload
-        ? [{ text: restoring ? '기기 사진첩으로 다운로드 중…' : '기기 사진첩으로 다운로드', onPress: restoreOriginals }]
+        ? [
+            {
+              text: restoring ? '기기 사진첩으로 다운로드 중…' : '기기 사진첩으로 다운로드',
+              icon: 'download-outline' as const,
+              onPress: restoreOriginals,
+            },
+          ]
         : []),
       // 나만 보던 안전 앨범을 가족·친구와 함께 쓰는 공유 앨범으로 바꾼다 (같은 파일을 그대로 쓴다).
       ...(isCloud && canUpload
         ? [
             {
               text: '공유 앨범으로 바꾸기',
+              icon: 'people-outline' as const,
               onPress: () => router.push({ pathname: '/cloud-albums/new', params: { convert: id } }),
             },
           ]
         : []),
-      { text: '표지 바꾸기', onPress: () => setChoosingCover(true) },
-      { text: '이름 바꾸기', onPress: () => setRenaming(true) },
+      { text: '표지 바꾸기', icon: 'image-outline', onPress: () => setChoosingCover(true) },
+      { text: '이름 바꾸기', icon: 'pencil-outline', onPress: () => setRenaming(true) },
       {
         text: '앨범 지우기',
         style: 'destructive',
+        icon: 'trash-outline',
         onPress: () =>
           showAlert(
             '앨범을 지울까요?',
