@@ -6,11 +6,9 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { AdBanner } from '@/components/ad-banner';
+import { AdBanner, TAB_AD_MAX_HEIGHT } from '@/components/ad-banner';
 import { Button } from '@/components/button';
-import { AlbumNameSheet } from '@/components/album-name-sheet';
 import { DateSheet } from '@/components/date-sheet';
-import { AlbumSectionHeader, MomentsRowCard } from '@/components/album-shelf';
 import {
   BottomBar,
   Centered,
@@ -25,9 +23,9 @@ import {
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { createAlbum, getAlbumTitle, listAlbums, updateAlbumMoments } from '@/db/albums';
+import { getAlbumTitle, updateAlbumMoments } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
-import { listRecentlySavedMoments, momentIdsByAsset } from '@/db/moments';
+import { momentIdsByAsset } from '@/db/moments';
 import { getSettings, setSetting, type AppLanguage, type Settings } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { dayKeyOf, usePhotoSelection } from '@/hooks/use-photo-selection';
@@ -592,10 +590,11 @@ function Inbox({
         </>
       )}
 
+      {/* 광고는 다 살펴본 화면에서만, 탭 바 바로 위에 둔다. 가운데 카드와 함께 두면 정리 후보 카드가 있을 때 위가 밀려 잘린다. */}
       {assets.length === 0 &&
         missed.length === 0 &&
         selection.draft.length === 0 &&
-        !selection.saving && <SavedMomentsLink />}
+        !selection.saving && <AdBanner maxHeight={TAB_AD_MAX_HEIGHT} style={styles.ad} />}
 
       {selection.draft.length > 0 || selection.saving ? (
         <BottomBar
@@ -721,7 +720,6 @@ function AllCaughtUp({ cursor, cleanup }: { cursor: number; cleanup: React.React
         <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
       </Pressable>
       {cleanup}
-      <AdBanner maxHeight={120} />
     </Centered>
   );
 }
@@ -759,39 +757,6 @@ function CleanupCard({ count, onCleanup, onKeep }: { count: number; onCleanup: (
         </Pressable>
       </View>
     </View>
-  );
-}
-
-/** 고르기에서 남긴 사진은 사진첩의 기본 보관함으로 이어진다. 기기 사진첩 탭 맨 위와 같은 한 줄 카드와 새 앨범 버튼이다. */
-function SavedMomentsLink() {
-  const db = useSQLiteContext();
-  const [naming, setNaming] = useState(false);
-  const { data: albums } = useDbQuery(() => listAlbums(db), [db]);
-  const { data: recentMoments } = useDbQuery(() => listRecentlySavedMoments(db, 3), [db]);
-  const momentsAlbum = albums?.[0];
-
-  const create = async (title: string) => {
-    setNaming(false);
-    const id = await createAlbum(db, title);
-    router.push({ pathname: '/albums/[id]/add', params: { id } });
-  };
-
-  if (!momentsAlbum) return null;
-  return (
-    <>
-      <View style={styles.momentsShortcut}>
-        <AlbumSectionHeader title="기기 사진첩" actions={[{ icon: 'add', label: '새 앨범', onPress: () => setNaming(true) }]} />
-        <MomentsRowCard album={momentsAlbum} moments={recentMoments} />
-      </View>
-
-      <AlbumNameSheet
-        visible={naming}
-        heading="새 앨범"
-        confirmLabel="만들기"
-        onSubmit={create}
-        onCancel={() => setNaming(false)}
-      />
-    </>
   );
 }
 
@@ -850,7 +815,9 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     borderRadius: Spacing.three,
   },
-  momentsShortcut: { gap: Spacing.two, marginVertical: Spacing.three },
+  // 광고가 오기 전에는 높이 0으로 숨으므로, 자리를 차지하지 않게 패딩 대신 바깥 여백으로 띄운다.
+  // 탭 바와 붙어 있으면 탭을 누르려다 광고를 누르기 쉬워 아래를 띄운다.
+  ad: { marginHorizontal: Spacing.three, marginBottom: Spacing.five },
   pastPhotosIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   inlineCleanup: { paddingHorizontal: Spacing.three, paddingBottom: Spacing.two },
   cleanupCard: { flexDirection: 'column', alignItems: 'stretch', gap: Spacing.three },

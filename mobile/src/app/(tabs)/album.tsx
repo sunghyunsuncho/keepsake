@@ -4,6 +4,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useLayoutEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 
+import { AdBanner, TAB_AD_MAX_HEIGHT } from '@/components/ad-banner';
 import { AlbumNameSheet } from '@/components/album-name-sheet';
 import { MomentPhoto } from '@/components/moment-photo';
 import { ThemedText } from '@/components/themed-text';
@@ -102,6 +103,9 @@ export default function AlbumsScreen() {
         {showOnThisDay && <OnThisDayCards groups={onThisDay} onHide={() => setSetting(db, 'on_this_day_hidden', today)} />}
       </ScrollView>
 
+      {/* 광고는 목록 밖 탭 바 위에 고정한다 (고르기 탭과 같다). 앨범이 많아져도 아래로 밀리지 않는다. */}
+      <AdBanner maxHeight={TAB_AD_MAX_HEIGHT} style={styles.ad} />
+
       <AlbumNameSheet
         visible={naming}
         heading="새 앨범"
@@ -185,6 +189,8 @@ const styles = StyleSheet.create({
   sectionHint: { paddingHorizontal: Spacing.three },
   albumStack: { gap: Spacing.two, paddingHorizontal: Spacing.three },
   onThisDay: { gap: Spacing.two },
+  // 고르기 탭과 같은 자리: 탭 바와 붙어 있으면 탭을 누르려다 광고를 누르기 쉬워 아래를 띄운다.
+  ad: { marginHorizontal: Spacing.three, marginBottom: Spacing.five },
   onThisDayHeader: {
     flexDirection: 'row',
     alignItems: 'center',

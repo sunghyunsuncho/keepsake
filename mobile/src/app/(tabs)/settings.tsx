@@ -75,6 +75,8 @@ export default function SettingsScreen() {
       <ScrollView ref={scroll} contentContainerStyle={styles.content}>
         <ProfileCard signedIn={Boolean(session)} account={account} />
 
+        <AdBanner maxHeight={100} style={styles.ad} />
+
         <View onLayout={(e) => remember('device')(e.nativeEvent.layout.y)}>
           <SettingsSection title={t('deviceLibrary')}>
             <SettingsRow
@@ -127,8 +129,6 @@ export default function SettingsScreen() {
             onPress={() => openLegalDocument('privacy')}
           />
         </SettingsSection>
-
-        <AdBanner maxHeight={100} style={styles.ad} />
 
         <AppFooter />
       </ScrollView>

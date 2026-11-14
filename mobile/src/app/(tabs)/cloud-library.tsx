@@ -5,6 +5,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useLayoutEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { AdBanner, TAB_AD_MAX_HEIGHT } from '@/components/ad-banner';
 import { AlbumSectionHeader, MomentsRowCard } from '@/components/album-shelf';
 import { Button } from '@/components/button';
 import { CreatedAlbumCard } from '@/components/created-album-card';
@@ -72,8 +73,11 @@ export default function CloudLibraryScreen() {
             {session && <SharedAlbumSection canCreate={false} />}
           </>
         )}
-
       </ScrollView>
+
+      {/* 광고는 목록 밖 탭 바 위에 고정한다 (고르기 탭과 같다). 공유 앨범이 많아져도 아래로 밀리지 않는다.
+          오프라인이면 광고를 받을 수 없으니 두지 않는다. */}
+      {!offline && <AdBanner maxHeight={TAB_AD_MAX_HEIGHT} style={styles.ad} />}
       <CloudAlbumGuide visible={guide} onClose={() => setGuide(false)} />
     </ThemedView>
   );
@@ -309,6 +313,8 @@ const styles = StyleSheet.create({
   benefit: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   link: { textDecorationLine: 'underline' },
   offlineContent: { flexGrow: 1, justifyContent: 'center' },
+  // 고르기 탭과 같은 자리: 탭 바와 붙어 있으면 탭을 누르려다 광고를 누르기 쉬워 아래를 띄운다.
+  ad: { marginHorizontal: Spacing.three, marginBottom: Spacing.five },
   empty: { alignItems: 'center', gap: Spacing.two, paddingVertical: Spacing.five, paddingHorizontal: Spacing.three },
   center: { textAlign: 'center' },
   meter: { gap: Spacing.half, paddingHorizontal: Spacing.half },
