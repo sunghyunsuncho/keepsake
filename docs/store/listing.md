@@ -4,7 +4,7 @@
 > [`mobile/store.config.json`](../../mobile/store.config.json)이다. 이 문서는 개인정보 라벨·심사
 > 메모처럼 콘솔에 수동 입력하는 출시 체크리스트를 보관한다.
 
-> 작성: 2026-10-30 · 수정: 2026-11-13 (문구 톤, 공유 앨범·효율 보관·앨범 지도 추가) · 상태: 초안
+> 작성: 2026-10-30 · 수정: 2026-11-14 (스크린샷 8장, 공유 앨범 사진 글·댓글) · 상태: 초안
 >
 > 글자 수 제한은 스토어 기준이다 (App Store 이름·부제 30자, 프로모션 텍스트 170자, 키워드 100바이트, 설명 4,000자 / Play 앱 이름 30자, 간단한 설명 80자, 자세한 설명 4,000자).
 > 남은 `{{ }}`를 채운다. 가격·용량·체험 기간은 [PRICING.md](../PRICING.md) §2를 따른다 (2026-11-13 확정).
@@ -75,7 +75,8 @@
 
 👨‍👩‍👧 가족과 함께 보는 공유 앨범
 사진은 함께 볼 때 더 즐거워요. 부모님, 가족, 친구와 앨범 하나를 만들어 언제든 같이 열어 보세요.
-• 초대 코드 하나로 참여하고, 각자 남긴 사진을 함께 담아요
+• 초대 링크 하나로 참여하고, 각자 남긴 사진을 함께 담아요
+• 사진마다 그날의 이야기를 적고, 댓글로 함께 추억을 나눠요
 • 구독하지 않은 가족도 로그인만 하면 함께 보고 사진을 담을 수 있어요
 • 앨범 용량은 참여한 사람들이 조금씩 나눠 준 만큼 함께 써요
 
@@ -112,11 +113,13 @@
 | 1 | 고르기 | 오늘 찍은 사진 중, 몇 장만 / 십 년 뒤에도 보고 싶은 사진을 골라요 | 지난번에 본 다음 사진부터 차례로 살펴봐요 |
 | 2 | 기록 화면 (사진 + 메모) | 사진에 그날의 기억을 / 메모와 장소를 함께 남겨요 | 사진 한 장이 그날의 이야기가 돼요 |
 | 3 | 기기 사진첩 | 다시 보고 싶어지는 / 나만의 작은 사진첩 | 여행·가족·계절의 이야기로 묶어 보세요 |
-| 4 | 안전 사진첩 | 남긴 사진은 지키고 / 휴대폰은 가볍게 | 새 휴대폰에서도 그대로 다시 볼 수 있어요 |
-| 5 | 정리 | 남기지 않은 사진은 / 한 번 더 보고 가볍게 | 정리할 사진을 한눈에 보고 천천히 골라요 |
-| 6 | 설정 | 로그인 없이 시작해도 / 기억은 계속 쌓여요 | 원하면 로그인해 기록을 무료로 이어 볼 수 있어요 |
+| 4 | 앨범 이야기 보기 | 앨범을 펼치면 / 한 권의 이야기가 돼요 | 메모와 장소가 사진과 함께 날짜순으로 이어져요 |
+| 5 | 앨범 지도 | 어디서 찍었는지 / 지도로 다시 떠나요 | 앨범 사진을 찍은 곳을 지도에 모아 보여줘요 |
+| 6 | 공유 앨범 (이야기 보기) | 가족과 함께 채우는 / 우리 가족 공유 앨범 | 각자 찍은 사진에 이야기와 댓글을 나눠요 |
+| 7 | 안전 사진첩 | 남긴 사진은 지키고 / 휴대폰은 가볍게 | 휴대폰을 바꾸거나 잃어버려도 원본이 그대로 남아요 |
+| 8 | 정리 | 남기지 않은 사진은 / 한 번 더 보고 가볍게 | 정리할 사진을 한눈에 보고 천천히 골라요 |
 
-다음에 다시 캡처할 때: 공유 앨범(구성원 이름표가 보이는 앨범 화면)과 앨범 지도 화면을 넣는다. 공유 앨범이 핵심 기능인데 지금 스크린샷에는 없다. 데모 공유 앨범은 서버 데이터라 `storeCapture` 자동 구성에 없어서, 캡처 전에 시험 계정 두 개로 미리 만들어 둔다.
+데모 기록·앨범과 공유 앨범의 가족 구성원·글·댓글을 만드는 방법은 `store-assets/README.md`에 있다.
 
 스크린샷용 데이터는 실제 개인 사진이 아닌, 직접 찍은 풍경·음식 사진이나 사용권이 있는 사진으로 만든다.
 
@@ -129,7 +132,7 @@
 | 유형 | 항목 | 메모 |
 |---|---|---|
 | 연락처 정보 | 이메일 주소 | 로그인 시 Apple·Google이 준 경우 |
-| 사용자 콘텐츠 | 사진 또는 비디오, 기타 사용자 콘텐츠(메모) | Cloud 백업 |
+| 사용자 콘텐츠 | 사진 또는 비디오, 기타 사용자 콘텐츠(메모, 공유 앨범의 사진 글·댓글) | Cloud 백업, 공유 앨범 |
 | 위치 | 정확한 위치 | 사진 EXIF 좌표를 기록과 함께 백업. 기기 현재 위치는 읽지 않지만 라벨 정의상 해당한다 |
 | 식별자 | 사용자 ID | 서버 계정 ID, RevenueCat app_user_id |
 | 식별자 | 기기 ID | 재설치 후 사진 연결 복구용 기기 구분값(해시) |
@@ -160,7 +163,7 @@ Local만 쓰면 Keepsake 서버로 가는 데이터가 없지만(광고 데이�
 | 개인 정보 - 이메일 주소, 사용자 ID | 수집, 선택, 앱 기능·계정 관리 |
 | 기기 또는 기타 ID | 수집, 선택(Cloud 사용 시), 앱 기능 |
 | 사진 및 동영상 - 사진 | 수집, 선택, 앱 기능 |
-| 앱 활동 - 기타 사용자 생성 콘텐츠(메모) | 수집, 선택, 앱 기능 |
+| 앱 활동 - 기타 사용자 생성 콘텐츠(메모, 공유 앨범의 사진 글·댓글) | 수집, 선택, 앱 기능 |
 | 금융 정보 - 구매 내역 | 수집, 선택, 앱 기능 |
 | 앱 정보 및 성능 - 비정상 종료 로그, 기타 진단 데이터 | 수집, 필수(앱 안에서 끌 수 없음), 분석 |
 | 위치 - 대략적인 위치 | 수집·공유(AdMob, IP 기반), 필수, 광고·분석·사기 방지 |
@@ -184,11 +187,12 @@ and lets people join shared albums by invite code.
 Keepsake Secure Storage is an optional auto-renewing subscription that keeps
 the photos and videos in secure albums and lets the subscriber create a
 shared album. Invited members can view and add photos without subscribing.
-Shared albums are invite-only. Members can report a photo (flag button in the
-full-screen viewer) or a member (Manage album > Members), and block people,
-which hides their photos for the blocker in every shared album.
+Shared albums are invite-only. Members can comment on photos. They can report
+a photo (flag button in the full-screen viewer), a comment (the … button next
+to it), or a member (Manage album > Members), and block people, which hides
+their photos and comments for the blocker in every shared album.
 Blocked people can be managed in Settings > Account > Blocked people.
-Reports are reviewed by our team, who can remove the photo or the member.
+Reports are reviewed by our team, who can remove the photo, the comment, or the member.
 Account deletion: Settings > Cloud > Delete account.
 
 Demo account for Cloud: {{심사용 Apple 샌드박스 계정 또는 데모 로그인 방법}}
