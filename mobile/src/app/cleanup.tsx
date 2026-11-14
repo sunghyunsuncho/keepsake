@@ -142,17 +142,21 @@ export default function CleanupScreen() {
   } else {
     content = (
       <>
+        {/* 안내가 두세 줄이라 보기 버튼은 아래 줄에 따로 둔다. 옆에 두면 문구 높이에 밀려 위치가 어색하다. */}
         <View style={styles.header}>
-          <View style={styles.flex}>
+          <View style={styles.guide}>
             <ThemedText type="small">{CLEANUP_GUIDE}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               {DELETE_NOTICE}
             </ThemedText>
           </View>
-          <ColumnToggle
-            value={columns}
-            onChange={(next) => setSetting(db, 'pick_grid_columns', next)}
-          />
+          <View style={styles.toolbar}>
+            <ThemedText type="smallBold">{photoCount(language, photos.length)}</ThemedText>
+            <ColumnToggle
+              value={columns}
+              onChange={(next) => setSetting(db, 'pick_grid_columns', next)}
+            />
+          </View>
         </View>
         <FlashList
           key={columns}
@@ -248,10 +252,15 @@ const styles = StyleSheet.create({
   center: { textAlign: 'center' },
   fill: { ...StyleSheet.absoluteFillObject },
   header: {
+    gap: Spacing.three,
+    padding: Spacing.three,
+  },
+  guide: { gap: Spacing.one },
+  toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: Spacing.two,
-    padding: Spacing.three,
   },
   doneButtons: { alignSelf: 'stretch', gap: Spacing.two },
   markedOverlay: {
