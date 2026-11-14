@@ -103,6 +103,11 @@ export function formatOffset(offset: number) {
   return `GMT${sign}${Math.floor(abs / 60)}${minutes ? `:${pad(minutes)}` : ''}`;
 }
 
+/** 숫자만 쓴 짧은 날짜. "2026. 5. 2." / "5/2/2026" / "2026/5/2" */
+export function formatShortDate(iso: string) {
+  return new Intl.DateTimeFormat(DATE_LOCALES[dateLanguage], { year: 'numeric', month: 'numeric', day: 'numeric' }).format(new Date(iso));
+}
+
 export function formatMonth(key: string) {
   const date = parseDateKey(key);
   return new Intl.DateTimeFormat(DATE_LOCALES[dateLanguage], { year: 'numeric', month: 'long' }).format(date);

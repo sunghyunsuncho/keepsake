@@ -117,7 +117,7 @@ function IosDateSheet({
           mode={mode}
           // 시각만 고를 때 inline은 시계 버튼만 보여서 돌림판을 쓴다.
           display={mode === 'time' ? 'spinner' : 'inline'}
-          locale="ko-KR"
+          locale={{ ko: 'ko-KR', en: 'en-US', ja: 'ja-JP' }[language]}
           maximumDate={maximumDate}
           timeZoneOffsetInMinutes={timeZoneOffsetInMinutes}
           accentColor={theme.accent}

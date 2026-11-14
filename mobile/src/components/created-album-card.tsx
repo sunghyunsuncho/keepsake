@@ -8,6 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import type { AlbumSummary } from '@/db/albums';
 import { useTheme } from '@/hooks/use-theme';
+import { formatShortDate } from '@/lib/dates';
 import { photoCount, useTranslation } from '@/lib/i18n';
 
 /** 만든 앨범은 표지와 책등이 느껴지는 세로 목록으로 쌓는다. */
@@ -98,12 +99,8 @@ export function EmptyCover({ icon, color }: { icon: keyof typeof Ionicons.glyphM
 }
 
 function formatAlbumPeriod(startAt: string, endAt: string) {
-  const format = (value: string) => {
-    const date = new Date(value);
-    return `${date.getFullYear()}. ${date.getMonth() + 1}. ${date.getDate()}.`;
-  };
-  const start = format(startAt);
-  const end = format(endAt);
+  const start = formatShortDate(startAt);
+  const end = formatShortDate(endAt);
   return start === end ? start : `${start} – ${end}`;
 }
 

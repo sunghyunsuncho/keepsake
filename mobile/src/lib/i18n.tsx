@@ -1,4 +1,4 @@
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, type AlertButton, type AlertOptions } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import * as Linking from 'expo-linking';
@@ -69,7 +69,7 @@ const copy = {
     welcomeLightText: 'Photos you did not keep become cleanup candidates you can delete all at once. Turn on reminders and we will nudge you before photos pile up.',
   },
   ja: {
-    language: '言語', chooseLanguage: '言語を選択', cancel: 'キャンセル', deviceLibrary: 'デバイスのライブラリ', secureLibrary: 'セキュアライブラリ', choosePhotos: '写真を選ぶ', settings: '設定', account: 'アカウント', helpAndInfo: 'ヘルプと情報', terms: '利用規約', privacy: 'プライバシーポリシー', startPoint: '見直し位置をリセット', notSet: '未設定', savedRecords: '残した思い出', resetStartTitle: '開始位置をリセットしますか？', resetStartMessage: '残した写真はそのままです。次に「写真を選ぶ」を開いたときに、あらためて決められます。', reset: 'リセット', signedInAccount: 'ログイン中のアカウント', notSignedIn: 'ログインしていません', localOnly: '思い出はこのデバイスにのみ保存されています', signInAndBackup: 'ログインして思い出をバックアップ', subscribeAgain: '再登録する', startSecureStorage: '写真の安全保管を始める', loadingAccount: 'アカウント情報を読み込んでいます', secureStorageActive: '安全保管 · 写真も保管されています', subscriptionEnded: 'サブスクリプション終了 · 30日間写真をダウンロードできます', freeBackup: '無料 · 思い出をバックアップしています', version: 'バージョン', contact: 'お問い合わせ', openSource: 'オープンソースライセンス', ad: '広告', adPrivacy: '広告のプライバシー設定', blockedUsers: 'ブロックした人', close: '閉じる', reminder: '写真を選ぶリマインダー', reminderFrequency: 'リマインダーの頻度', reminderTime: '通知時刻', allowNotifications: '通知を許可する',
+    language: '言語', chooseLanguage: '言語を選択', cancel: 'キャンセル', deviceLibrary: 'デバイスライブラリ', secureLibrary: 'セキュアライブラリ', choosePhotos: '写真を選ぶ', settings: '設定', account: 'アカウント', helpAndInfo: 'ヘルプと情報', terms: '利用規約', privacy: 'プライバシーポリシー', startPoint: '見直し位置をリセット', notSet: '未設定', savedRecords: '残した思い出', resetStartTitle: '開始位置をリセットしますか？', resetStartMessage: '残した写真はそのままです。次に「写真を選ぶ」を開いたときに、あらためて決められます。', reset: 'リセット', signedInAccount: 'ログイン中のアカウント', notSignedIn: 'ログインしていません', localOnly: '思い出はこのデバイスにのみ保存されています', signInAndBackup: 'ログインして思い出をバックアップ', subscribeAgain: '再登録する', startSecureStorage: '写真の安全保管を始める', loadingAccount: 'アカウント情報を読み込んでいます', secureStorageActive: '安全保管 · 写真も保管されています', subscriptionEnded: 'サブスクリプション終了 · 30日間写真をダウンロードできます', freeBackup: '無料 · 思い出をバックアップしています', version: 'バージョン', contact: 'お問い合わせ', openSource: 'オープンソースライセンス', ad: '広告', adPrivacy: '広告のプライバシー設定', blockedUsers: 'ブロックした人', close: '閉じる', reminder: '写真を選ぶリマインダー', reminderFrequency: 'リマインダーの頻度', reminderTime: '通知時刻', allowNotifications: '通知を許可する',
     howToUse: '使い方', plansGuide: 'プランのご案内', comparePlans: 'プランを比較', skip: 'スキップ', next: '次へ', getStarted: 'はじめる',
     welcomePickTitle: '残したい写真だけを選ぶ',
     welcomePickText: '「写真を選ぶ」では、前回見た写真の次から順番に表示します。十年後も見返したい数枚だけを選んで残し、そのときの思い出をメモしておきましょう。',
@@ -112,7 +112,7 @@ const legacyText: Record<string, { en: string; ja: string }> = {
   '돌아가기': { en: 'Go back', ja: '戻る' }, '구매 복원': { en: 'Restore purchases', ja: '購入を復元' }, '로그인만 하기 · 이미 구독 중이에요': { en: 'Sign in only · I already subscribe', ja: 'ログインのみ · すでに購読しています' }, '새 사진에서 고르기': { en: 'Choose from new photos', ja: '新しい写真から選ぶ' }, '기록에서 빼기': { en: 'Remove from memories', ja: '思い出から削除' }, '사진 고르러 가기': { en: 'Choose photos', ja: '写真を選ぶ' }, '앨범에서 빼기': { en: 'Remove from album', ja: 'アルバムから削除' }, '새 코드': { en: 'New code', ja: '新しいコード' }, '초대 멈추기': { en: 'Stop invitations', ja: '招待を停止' }, '초대 코드 만들기': { en: 'Create invite code', ja: '招待コードを作成' }, '저장': { en: 'Save', ja: '保存' }, '앨범 지우기': { en: 'Delete album', ja: 'アルバムを削除' }, '사진 담기': { en: 'Add photos', ja: '写真を追加' }, '내 용량을 더 나눠 주기': { en: 'Share more storage', ja: '容量をさらに共有' }, '구성원 초대하기': { en: 'Invite members', ja: 'メンバーを招待' }, '로그인하러 가기': { en: 'Go to sign in', ja: 'ログインへ' }, '참여하기': { en: 'Join', ja: '参加する' }, '기기 사진첩으로 가기': { en: 'Go to device library', ja: 'デバイスのライブラリへ' }, '사진을 찾는 중…': { en: 'Finding photos…', ja: '写真を探しています…' }, '처음부터 조금씩 고르기': { en: 'From the very beginning', ja: '最初から少しずつ選ぶ' }, '오늘 찍은 사진부터': { en: 'From today', ja: '今日撮った写真から' }, '최근 1주': { en: 'Past week', ja: '過去1週間' }, '최근 한 달': { en: 'Past month', ja: '過去1か月' }, '날짜 고르기': { en: 'Choose a date', ja: '日付を選ぶ' },
   '어디서부터 고를까요?': { en: 'Where to start?', ja: 'どこから選びますか？' }, '필름 한 롤을 다 찍고 고르듯, 살펴본 사진 다음부터 차례로 보여 드려요.': { en: 'Like sorting a finished roll of film, you go through your photos in order.', ja: 'フィルムを撮り終えてから選ぶように、見た写真の次から順番に表示します。' }, '중간에 멈춰도 다음에 이어서 볼 수 있어요.': { en: 'Stop anytime and pick up where you left off.', ja: '途中で止めても、次回は続きから見られます。' }, '지금부터 찍는 사진을 가볍게 골라요': { en: 'An easy start with new photos', ja: 'これから撮る写真を気軽に選びます' }, '원하는 날부터 시작해요': { en: 'Start from any day', ja: '好きな日から始めます' }, '가장 오래된 사진부터 차례로 봐요': { en: 'Start with your oldest photos', ja: 'いちばん古い写真から順番に見ます' }, '추천': { en: 'Suggested', ja: 'おすすめ' }, '나중에': { en: 'Later', ja: 'あとで' },
   '예전에 찍었지만 나중에 보관함에 들어온 사진이에요': { en: 'These were taken earlier but added to your library later.', ja: '以前撮影し、あとからライブラリに追加された写真です。' }, '예전 사진도 다시 골라 남겨요': { en: 'Choose and keep past photos too.', ja: '過去の写真も選んで残せます。' }, '남기지 않은 사진을 정리해요': { en: 'Clean up photos you did not keep.', ja: '残さなかった写真を整理します。' }, '그대로 두기': { en: 'Keep them', ja: 'そのままにする' }, '정리하기': { en: 'Clean up', ja: '整理する' },
-  '새 앨범': { en: 'New Album', ja: '新しいアルバム' }, '새 안전 앨범': { en: 'New Album', ja: '新しいアルバム' }, '새 공유 앨범': { en: 'Create', ja: '作成' }, '기기 사진첩': { en: 'Device Library', ja: 'デバイスのライブラリ' }, '나의 순간들': { en: 'My Moments', ja: 'マイメモリーズ' }, '만든 앨범': { en: 'My Albums', ja: '作成したアルバム' }, '나만 보는 안전 앨범': { en: 'My Secure Albums', ja: '自分だけのセキュアアルバム' }, '공유 앨범': { en: 'Shared Albums', ja: '共有アルバム' },
+  '새 앨범': { en: 'New Album', ja: '新しいアルバム' }, '새 안전 앨범': { en: 'New Album', ja: '新しいアルバム' }, '새 공유 앨범': { en: 'Create', ja: '作成' }, '기기 사진첩': { en: 'Device Library', ja: 'デバイスライブラリ' }, '나의 순간들': { en: 'My Moments', ja: 'マイメモリーズ' }, '만든 앨범': { en: 'My Albums', ja: '作成したアルバム' }, '나만 보는 안전 앨범': { en: 'My Secure Albums', ja: '自分だけのセキュアアルバム' }, '공유 앨범': { en: 'Shared Albums', ja: '共有アルバム' },
   '함께 쓰는 공유 앨범': { en: 'Shared Spaces', ja: 'みんなの共有スペース' }, '코드로 참여': { en: 'Join with code', ja: 'コードで参加' }, '파트너': { en: 'Partner', ja: 'パートナー' }, '가족': { en: 'Family', ja: '家族' }, '친구': { en: 'Friends', ja: '友人' }, '소유자': { en: 'Owner', ja: 'オーナー' }, '관리자': { en: 'Admin', ja: '管理者' },
   '원본 그대로': { en: 'Original quality', ja: 'オリジナル品質' }, '원본 보관': { en: 'Originals', ja: 'オリジナルを保存' }, '효율 보관': { en: 'Space saver', ja: '省スペース保存' }, '원본': { en: 'Original', ja: 'オリジナル' }, '효율': { en: 'Optimized', ja: '省容量' }, '앨범 기본': { en: 'Album default', ja: 'アルバムの設定' }, '기기 앨범 연결': { en: 'Linked device album', ja: 'デバイスのアルバムを連携' },
   '기록 백업': { en: 'Backup', ja: 'バックアップ' }, '기기 기록 백업하기': { en: 'Back Up Device Memories', ja: 'デバイスの思い出をバックアップ' }, '확인하는 중': { en: 'Checking…', ja: '確認中…' }, '사진 내려받기 기한': { en: 'Download deadline', ja: 'ダウンロード期限' }, '사용한 공간': { en: 'Storage used', ja: '使用中のストレージ' }, '올릴 사진': { en: 'Photos to upload', ja: 'アップロードする写真' }, 'Wi-Fi에서만 사진 올리기': { en: 'Wi‑Fi uploads only', ja: 'Wi‑Fiのみでアップロード' }, '원본을 기기 사진첩에 저장': { en: 'Save originals to device', ja: 'オリジナルを端末に保存' }, '구독 관리': { en: 'Manage subscription', ja: 'サブスクリプションを管理' }, '로그아웃': { en: 'Sign out', ja: 'ログアウト' }, '계정 삭제': { en: 'Delete account', ja: 'アカウントを削除' },
@@ -546,7 +546,7 @@ export function showAlert(title: string, message?: string, buttons?: AlertButton
 
 /** 수량과 변수 자리는 언어마다 어순이 달라 공통 문자열 치환 대신 여기서 조립한다. */
 export function photoCount(language: AppLanguage, count: number) {
-  if (language === 'en') return `${count} photos`;
+  if (language === 'en') return count === 1 ? '1 photo' : `${count} photos`;
   if (language === 'ja') return `${count}枚`;
   return `${count}장`;
 }
@@ -649,13 +649,9 @@ export function LocalizationProvider({ children }: { children: ReactNode }) {
   // 스토어 자산 캡처 전용 딥링크는 DB 설정을 바꾸지 않고 현재 렌더에만 언어를 덮어쓴다.
   // useLinkingURL은 최초 URL과 이후 URL 모두 전달하므로 슬라이드마다 언어가 안정적으로 유지된다.
   const activeLanguage = previewLanguage ?? language;
-  // 날짜 포맷 함수는 기존 화면에서 전역 언어를 읽는다. 미리보기 언어가 바뀐 뒤에도
-  // 날짜가 직전 언어로 남지 않도록, 화면이 보이기 전에 바꾸고 한 번 다시 그린다.
-  const [, rerenderDates] = useState(0);
-  useLayoutEffect(() => {
-    applyLanguage(activeLanguage);
-    rerenderDates((version) => version + 1);
-  }, [activeLanguage]);
+  // 날짜 포맷 함수는 렌더 중에 전역 언어를 읽는다. effect에서 바꾸면 하위 화면이 이미 직전 언어로
+  // 날짜를 그린 뒤라 남으므로("Today · 11월 14일"), 하위 화면보다 먼저 여기서 맞춘다. 같은 값이면 아무것도 하지 않는다.
+  if (currentLanguage !== activeLanguage) applyLanguage(activeLanguage);
   const value = useMemo<I18n>(() => ({ language: activeLanguage, setLanguage, t: (key) => copy[activeLanguage][key] }), [activeLanguage, setLanguage]);
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
