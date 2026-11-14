@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { getSlides, STORE_LOCALES, type StoreLocale } from './slides.ts';
-import { bootedUdid, capture, launchDevelopmentBuild, sleep, terminate } from './simctl.ts';
+import { bootedUdid, capture, launchDevelopmentBuild, readSystemLanguages, setSystemLanguage, setSystemLanguages, sleep, terminate } from './simctl.ts';
 
 const requested = process.argv.find((arg) => arg.startsWith('--locale='))?.split('=')[1] ?? 'all';
 if (requested !== 'all' && !STORE_LOCALES.includes(requested as StoreLocale)) throw new Error('--locale는 ko, en, ja, all 중 하나여야 합니다.');
@@ -35,17 +35,24 @@ async function assertDevServer() {
 
 await assertDevServer();
 bootedUdid();
-for (const locale of locales) {
-  const rawDir = resolve(import.meta.dirname, 'raw', locale === 'ko' ? '' : locale);
-  mkdirSync(rawDir, { recursive: true });
-  terminate();
-  if (process.env.CAPTURE_USE_APP_SCHEME !== '1') {
-    // Metro bundle을 먼저 연 뒤 앱 scheme으로 Router 화면을 이동한다.
-    launchDevelopmentBuild();
-    await sleep(startupDelay);
+const systemLanguages = readSystemLanguages();
+try {
+  for (const locale of locales) {
+    const rawDir = resolve(import.meta.dirname, 'raw', locale === 'ko' ? '' : locale);
+    mkdirSync(rawDir, { recursive: true });
+    terminate();
+    // 지도 지명은 시스템 언어를 따르므로 앱을 다시 켜기 전에 맞춘다.
+    setSystemLanguage(locale);
+    if (process.env.CAPTURE_USE_APP_SCHEME !== '1') {
+      // Metro bundle을 먼저 연 뒤 앱 scheme으로 Router 화면을 이동한다.
+      launchDevelopmentBuild();
+      await sleep(startupDelay);
+    }
+    for (const slide of getSlides(locale)) {
+      await capture(rawDir, slide.route, slide.rawFile, locale, slide.delayMs ?? delay);
+    }
+    console.log(`✓ ${locale} 캡처 완료: ${rawDir}`);
   }
-  for (const [index, slide] of getSlides(locale).entries()) {
-    await capture(rawDir, slide.route, slide.rawFile, locale, slide.delayMs ?? delay);
-  }
-  console.log(`✓ ${locale} 캡처 완료: ${rawDir}`);
+} finally {
+  if (systemLanguages?.length) setSystemLanguages(systemLanguages);
 }

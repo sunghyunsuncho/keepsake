@@ -1,0 +1,736 @@
+{
+  "photos": [
+    {
+      "file": "keepsake-demo-europe-backpack.jpg",
+      "source": "유럽여행/sophia-didonato-eHTaq_tjEJk-unsplash.jpg",
+      "takenAt": "2026-05-02T09:40:00+02:00",
+      "lat": 48.8443,
+      "lng": 2.3743,
+      "place": "Gare de Lyon · Paris, France",
+      "memo": "Day one. Everything I need is on my back."
+    },
+    {
+      "file": "keepsake-demo-europe-pantheon.jpg",
+      "source": "유럽여행/ali-aziz-y_0Y06tPpU8-unsplash.jpg",
+      "takenAt": "2026-05-02T17:20:00+02:00",
+      "lat": 48.8462,
+      "lng": 2.3464,
+      "place": "Panthéon · Paris, France"
+    },
+    {
+      "file": "keepsake-demo-europe-flowers.jpg",
+      "source": "유럽여행/bruce-barrow-F2_wqqMuYaU-unsplash.jpg",
+      "takenAt": "2026-05-03T10:05:00+02:00",
+      "lat": 48.8575,
+      "lng": 2.36,
+      "place": "Le Marais · Paris, France",
+      "memo": "Bought peonies for the room. The florist wrapped them like a gift."
+    },
+    {
+      "file": "keepsake-demo-europe-arc.jpg",
+      "source": "유럽여행/lens-by-benji-WEKPNhAgvHU-unsplash.jpg",
+      "takenAt": "2026-05-03T19:12:00+02:00",
+      "lat": 48.8738,
+      "lng": 2.295,
+      "place": "Arc de Triomphe · Paris, France",
+      "memo": "Golden hour on the Champs-Élysées. We walked until our feet gave up, and it was worth every step.",
+      "detail": true
+    },
+    {
+      "file": "keepsake-demo-europe-nyhavn.jpg",
+      "source": "유럽여행/frank-huang--BkzZYkfv1E-unsplash.jpg",
+      "takenAt": "2026-05-06T15:30:00+02:00",
+      "lat": 55.6798,
+      "lng": 12.5911,
+      "place": "Nyhavn · Copenhagen, Denmark",
+      "memo": "Colorful houses, cold wind, warm coffee."
+    },
+    {
+      "file": "keepsake-demo-europe-wawel.jpg",
+      "source": "유럽여행/dominic-chasse-Flc23MGsEEk-unsplash.jpg",
+      "takenAt": "2026-05-08T11:20:00+02:00",
+      "lat": 50.0541,
+      "lng": 19.9354,
+      "place": "Wawel Castle · Kraków, Poland"
+    },
+    {
+      "file": "keepsake-demo-europe-david.jpg",
+      "source": "유럽여행/derek-vander-ark-hBHsEh_VNHc-unsplash.jpg",
+      "takenAt": "2026-05-10T10:45:00+02:00",
+      "lat": 43.7768,
+      "lng": 11.2586,
+      "place": "Galleria dell'Accademia · Florence, Italy",
+      "memo": "Taller than I imagined, and even more beautiful."
+    },
+    {
+      "file": "keepsake-demo-europe-terrace.jpg",
+      "source": "유럽여행/charlie-harland-w_wK_YY5fNU-unsplash.jpg",
+      "takenAt": "2026-05-10T18:30:00+02:00",
+      "lat": 43.7629,
+      "lng": 11.265,
+      "place": "Piazzale Michelangelo · Florence, Italy"
+    },
+    {
+      "file": "keepsake-demo-europe-alley.jpg",
+      "source": "유럽여행/bruno-da-costa-DHjzGzw5fl8-unsplash.jpg",
+      "takenAt": "2026-05-11T08:50:00+02:00",
+      "lat": 41.8986,
+      "lng": 12.4769,
+      "place": "Rome, Italy"
+    },
+    {
+      "file": "keepsake-demo-europe-seaside.jpg",
+      "source": "유럽여행/eugeniya-belova-bmRxeog8L_0-unsplash.jpg",
+      "takenAt": "2026-05-13T13:00:00+02:00",
+      "lat": 43.704,
+      "lng": 7.311,
+      "place": "Villefranche-sur-Mer, France",
+      "memo": "Long lunch by the sea. Nobody wanted to leave."
+    },
+    {
+      "file": "keepsake-demo-europe-coast.jpg",
+      "source": "유럽여행/rosalie-gdy-3AEv_aQ5MyY-unsplash.jpg",
+      "takenAt": "2026-05-13T18:40:00+02:00",
+      "lat": 43.728,
+      "lng": 7.361,
+      "place": "Èze, France"
+    },
+    {
+      "file": "keepsake-demo-europe-palma.jpg",
+      "source": "유럽여행/oliver-guhr-qnYal14Imes-unsplash.jpg",
+      "takenAt": "2026-05-14T11:15:00+02:00",
+      "lat": 39.5676,
+      "lng": 2.6484,
+      "place": "Palma Cathedral · Palma, Spain"
+    },
+    {
+      "file": "keepsake-demo-europe-madrid.jpg",
+      "source": "유럽여행/erik-fabian-AhbAMTXoong-unsplash.jpg",
+      "takenAt": "2026-05-15T12:10:00+02:00",
+      "lat": 40.42,
+      "lng": -3.7025,
+      "place": "Gran Vía · Madrid, Spain"
+    },
+    {
+      "file": "keepsake-demo-europe-summit.jpg",
+      "source": "유럽여행/mariah-krafft-rfqdseMM03s-unsplash.jpg",
+      "takenAt": "2026-05-16T10:20:00+02:00",
+      "lat": 45.9237,
+      "lng": 6.8694,
+      "place": "Chamonix-Mont-Blanc, France",
+      "memo": "Above the clouds. Worth the 5 a.m. alarm."
+    },
+    {
+      "file": "keepsake-demo-europe-moon.jpg",
+      "source": "유럽여행/bruno-da-costa-RrG396mMaPY-unsplash.jpg",
+      "takenAt": "2026-05-16T20:45:00+02:00",
+      "lat": 45.92,
+      "lng": 6.87,
+      "place": "Chamonix-Mont-Blanc, France",
+      "memo": "Last night of the trip. Same moon as home."
+    },
+    {
+      "file": "keepsake-demo-family-sunset-kiss.jpg",
+      "source": "가족/arifur-rahman-yikKOtj3H94-unsplash.jpg",
+      "takenAt": "2025-11-14T17:10:00+09:00",
+      "lat": 33.394,
+      "lng": 126.2397,
+      "place": "Hyeopjae Beach · Jeju, South Korea",
+      "memo": "Our first trip to Jeju together."
+    },
+    {
+      "file": "keepsake-demo-family-fly.jpg",
+      "source": "가족/lauren-lulu-taylor-vppMdk_GMo4-unsplash.jpg",
+      "takenAt": "2025-11-14T17:25:00+09:00",
+      "lat": 33.3942,
+      "lng": 126.2399,
+      "place": "Hyeopjae Beach · Jeju, South Korea",
+      "memo": "\"Again! Again!\" — at least twenty times."
+    },
+    {
+      "file": "keepsake-demo-family-hug.jpg",
+      "source": "가족/jordan-whitt-KQCXf_zvdaU-unsplash.jpg",
+      "takenAt": "2026-02-14T16:00:00+09:00",
+      "lat": 37.5444,
+      "lng": 127.0374,
+      "place": "Seoul Forest · Seoul, South Korea"
+    },
+    {
+      "file": "keepsake-demo-family-mirror.jpg",
+      "source": "가족/hector-falcon-QH555TgrB-w-unsplash.jpg",
+      "takenAt": "2026-03-22T11:00:00+09:00",
+      "lat": 37.5206,
+      "lng": 127.1214,
+      "place": "Olympic Park · Seoul, South Korea",
+      "memo": "He finally noticed his own reflection and couldn't stop laughing."
+    },
+    {
+      "file": "keepsake-demo-family-sisters.jpg",
+      "source": "가족/charlein-gracia--Ux5mdMJNEA-unsplash.jpg",
+      "takenAt": "2026-04-19T15:00:00+09:00",
+      "lat": 37.5284,
+      "lng": 126.9327,
+      "place": "Yeouido Hangang Park · Seoul, South Korea"
+    },
+    {
+      "file": "keepsake-demo-family-poppies.jpg",
+      "source": "가족/nathan-dumlao-4_mJ1TbMK8A-unsplash.jpg",
+      "takenAt": "2026-04-19T16:00:00+09:00",
+      "lat": 37.5286,
+      "lng": 126.933,
+      "place": "Yeouido Hangang Park · Seoul, South Korea",
+      "memo": "Spring picnic with everyone. The first family photo where nobody blinked."
+    },
+    {
+      "file": "keepsake-demo-family-balloons.jpg",
+      "source": "가족/preillumination-seth-2SoOmsMO8fg-unsplash.jpg",
+      "takenAt": "2026-05-05T14:00:00+09:00",
+      "lat": 37.5446,
+      "lng": 127.0557,
+      "place": "Seongsu-dong · Seoul, South Korea",
+      "memo": "Children's Day. Every balloon was \"the one\"."
+    },
+    {
+      "file": "keepsake-demo-family-bubbles.jpg",
+      "source": "가족/sebastien-lavalaye-I9XZaAvvC0Y-unsplash.jpg",
+      "takenAt": "2026-05-05T15:20:00+09:00",
+      "lat": 37.5448,
+      "lng": 127.056,
+      "place": "Seongsu-dong · Seoul, South Korea"
+    },
+    {
+      "file": "keepsake-demo-family-walk.jpg",
+      "source": "가족/aleksandra-sapozhnikova-i_7O5SdTSRM-unsplash.jpg",
+      "takenAt": "2026-06-07T18:10:00+09:00",
+      "lat": 37.5367,
+      "lng": 127.315,
+      "place": "Yangpyeong, South Korea"
+    },
+    {
+      "file": "keepsake-demo-family-kids-grass.jpg",
+      "source": "가족/laura-ohlman-sW6TRpgZLMw-unsplash.jpg",
+      "takenAt": "2026-06-07T18:30:00+09:00",
+      "lat": 37.5369,
+      "lng": 127.3152,
+      "place": "Yangpyeong, South Korea"
+    },
+    {
+      "file": "keepsake-demo-family-merry-go-round.jpg",
+      "source": "가족/kirill-fokin-vr-XlbkazPY-unsplash.jpg",
+      "takenAt": "2026-07-05T10:20:00+09:00",
+      "lat": 37.6557,
+      "lng": 126.7695,
+      "keep": false
+    },
+    {
+      "file": "keepsake-demo-family-garden-2.jpg",
+      "source": "가족/land-o-lakes-inc-Ab7yCgRb7SM-unsplash.jpg",
+      "takenAt": "2026-07-18T10:30:00+09:00",
+      "lat": 37.7726,
+      "lng": 128.9476,
+      "keep": false
+    },
+    {
+      "file": "keepsake-demo-family-garden.jpg",
+      "source": "가족/land-o-lakes-inc-p6wuN_3Wwqs-unsplash.jpg",
+      "takenAt": "2026-07-18T10:32:00+09:00",
+      "lat": 37.7726,
+      "lng": 128.9476,
+      "place": "Gangneung, South Korea",
+      "memo": "Grandma's garden. The tomatoes were ready."
+    },
+    {
+      "file": "keepsake-demo-family-barn.jpg",
+      "source": "가족/land-o-lakes-inc-yPBP2u24rMs-unsplash.jpg",
+      "takenAt": "2026-07-18T11:10:00+09:00",
+      "lat": 37.773,
+      "lng": 128.948,
+      "place": "Gangneung, South Korea"
+    },
+    {
+      "file": "keepsake-demo-family-swing.jpg",
+      "source": "가족/compagnons-FbLEYt9dc5Y-unsplash.jpg",
+      "takenAt": "2026-08-15T16:20:00+09:00",
+      "lat": 35.1587,
+      "lng": 129.1604,
+      "place": "Haeundae · Busan, South Korea",
+      "memo": "Higher, higher!"
+    },
+    {
+      "file": "keepsake-demo-family-silhouette.jpg",
+      "source": "가족/mike-scheid-0iqkntLw93A-unsplash.jpg",
+      "takenAt": "2026-08-15T19:30:00+09:00",
+      "lat": 35.159,
+      "lng": 129.161,
+      "place": "Haeundae · Busan, South Korea"
+    },
+    {
+      "file": "keepsake-demo-family-field-far.jpg",
+      "source": "가족/ilya-pavlov-XPT-OtA0E-8-unsplash.jpg",
+      "takenAt": "2026-09-27T17:10:00+09:00",
+      "lat": 35.8352,
+      "lng": 129.219,
+      "keep": false
+    },
+    {
+      "file": "keepsake-demo-family-field.jpg",
+      "source": "가족/jessica-rockowitz-5NLCaz2wJXE-unsplash.jpg",
+      "takenAt": "2026-09-27T17:15:00+09:00",
+      "lat": 35.8352,
+      "lng": 129.219,
+      "place": "Gyeongju, South Korea",
+      "memo": "Chuseok walk after dinner."
+    },
+    {
+      "file": "keepsake-demo-family-hike.jpg",
+      "source": "가족/land-o-lakes-inc-peEOQ4_dqOo-unsplash.jpg",
+      "takenAt": "2026-10-03T13:00:00+09:00",
+      "lat": 38.1192,
+      "lng": 128.4655,
+      "place": "Seoraksan · Sokcho, South Korea",
+      "memo": "Dad carried both of them the whole way down."
+    },
+    {
+      "file": "keepsake-demo-family-dusk.jpg",
+      "source": "가족/ta-focando-LOuffSFpWQI-unsplash.jpg",
+      "takenAt": "2026-10-03T18:20:00+09:00",
+      "lat": 38.19,
+      "lng": 128.6,
+      "place": "Sokcho, South Korea"
+    },
+    {
+      "file": "keepsake-demo-family-three-girls.jpg",
+      "source": "가족/nellie-adamyan-Plqyl1DPl0E-unsplash.jpg",
+      "takenAt": "2026-10-25T15:00:00+09:00",
+      "lat": 37.5679,
+      "lng": 126.8853,
+      "place": "Haneul Park · Seoul, South Korea"
+    },
+    {
+      "file": "keepsake-demo-friends-bonfire.jpg",
+      "source": "친구/kimson-doan-AZMmUy2qL6A-unsplash.jpg",
+      "takenAt": "2025-11-14T18:30:00+09:00",
+      "lat": 33.395,
+      "lng": 126.241,
+      "place": "Hyeopjae Beach · Jeju, South Korea",
+      "memo": "Marshmallows, bad guitar, best night."
+    },
+    {
+      "file": "keepsake-demo-friends-street.jpg",
+      "source": "친구/jed-villejo-pumko2FFxY0-unsplash.jpg",
+      "takenAt": "2026-03-07T21:00:00+09:00",
+      "lat": 37.5496,
+      "lng": 126.9139,
+      "place": "Hapjeong · Seoul, South Korea"
+    },
+    {
+      "file": "keepsake-demo-friends-hearts.jpg",
+      "source": "친구/melissa-askew-tSlvoSZK77c-unsplash.jpg",
+      "takenAt": "2026-06-20T17:30:00+09:00",
+      "lat": 37.37,
+      "lng": 126.73,
+      "place": "Siheung, South Korea"
+    },
+    {
+      "file": "keepsake-demo-friends-hug.jpg",
+      "source": "친구/joshua-koblin-oAbvkTcystE-unsplash.jpg",
+      "takenAt": "2026-06-20T18:00:00+09:00",
+      "lat": 37.3702,
+      "lng": 126.7302,
+      "place": "Siheung, South Korea",
+      "memo": "Ten years of friendship and still laughing at the same jokes."
+    },
+    {
+      "file": "keepsake-demo-friends-beach.jpg",
+      "source": "친구/omar-lopez-0-uzdU3gUYw-unsplash.jpg",
+      "takenAt": "2026-07-25T16:40:00+09:00",
+      "lat": 37.7726,
+      "lng": 128.9476,
+      "place": "Anmok Beach · Gangneung, South Korea"
+    },
+    {
+      "file": "keepsake-demo-friends-summit.jpg",
+      "source": "친구/chang-duong-Sj0iMtq_Z4w-unsplash.jpg",
+      "takenAt": "2026-08-01T19:40:00+09:00",
+      "lat": 37.37,
+      "lng": 128.39,
+      "place": "Pyeongchang, South Korea",
+      "memo": "We made it to the top just in time."
+    },
+    {
+      "file": "keepsake-demo-friends-four.jpg",
+      "source": "친구/helena-lopes-PGnqT0rXWLs-unsplash.jpg",
+      "takenAt": "2026-08-01T19:20:00+09:00",
+      "lat": 37.3702,
+      "lng": 128.3902,
+      "place": "Pyeongchang, South Korea"
+    },
+    {
+      "file": "keepsake-demo-friends-cablecar.jpg",
+      "source": "친구/duy-pham-Cecb0_8Hx-o-unsplash.jpg",
+      "takenAt": "2026-08-02T11:00:00+09:00",
+      "lat": 37.585,
+      "lng": 128.73,
+      "place": "Pyeongchang, South Korea"
+    },
+    {
+      "file": "keepsake-demo-friends-walk.jpg",
+      "source": "친구/joseph-pearson-Uj749Jv6Otw-unsplash.jpg",
+      "takenAt": "2026-09-13T16:00:00+09:00",
+      "lat": 37.5622,
+      "lng": 126.9256,
+      "place": "Yeonnam-dong · Seoul, South Korea"
+    },
+    {
+      "file": "keepsake-demo-friends-backlit.jpg",
+      "source": "친구/stefan-nutu-z56cnAEbKQI-unsplash.jpg",
+      "takenAt": "2026-09-13T17:50:00+09:00",
+      "lat": 37.5625,
+      "lng": 126.926,
+      "place": "Yeonnam-dong · Seoul, South Korea"
+    },
+    {
+      "file": "keepsake-demo-friends-door.jpg",
+      "source": "친구/land-o-lakes-inc-MdcJY5doCTo-unsplash.jpg",
+      "takenAt": "2026-10-10T12:00:00+09:00",
+      "lat": 37.5743,
+      "lng": 126.989,
+      "place": "Bukchon · Seoul, South Korea",
+      "memo": "Housewarming at Mina's new place."
+    },
+    {
+      "file": "keepsake-demo-friends-tea.jpg",
+      "source": "친구/toa-heftiba-l_ExpFwwOEg-unsplash.jpg",
+      "takenAt": "2026-10-10T14:30:00+09:00",
+      "lat": 37.5743,
+      "lng": 126.989,
+      "place": "Bukchon · Seoul, South Korea"
+    },
+    {
+      "file": "keepsake-demo-friends-fist.jpg",
+      "source": "친구/taylor-smith-XB_yndXE4ks-unsplash.jpg",
+      "takenAt": "2026-11-07T22:10:00+09:00",
+      "keep": false
+    },
+    {
+      "file": "keepsake-demo-friends-cafe.jpg",
+      "source": "친구/vitaly-gariev-9ZNNeEUM7Q4-unsplash.jpg",
+      "takenAt": "2026-11-08T15:00:00+09:00",
+      "lat": 37.5446,
+      "lng": 127.0557,
+      "place": "Seongsu-dong · Seoul, South Korea",
+      "memo": "Two coffees turned into three hours."
+    },
+    {
+      "file": "keepsake-demo-daily-cows.jpg",
+      "source": "일상/portraits-of-modern-dairy-EybomyD0SDo-unsplash.jpg",
+      "takenAt": "2026-09-05T06:30:00+09:00",
+      "keep": false
+    },
+    {
+      "file": "keepsake-demo-daily-bridge.jpg",
+      "source": "일상/ashford-marx-GSMs2thSBGo-unsplash.jpg",
+      "takenAt": "2026-09-20T13:10:00+09:00",
+      "lat": 33.247,
+      "lng": 126.56,
+      "place": "Seogwipo · Jeju, South Korea"
+    },
+    {
+      "file": "keepsake-demo-daily-wall.jpg",
+      "source": "일상/ana-curcan-fGBadeQQZEk-unsplash.jpg",
+      "takenAt": "2026-10-18T17:30:00+09:00",
+      "lat": 37.5444,
+      "lng": 127.0374,
+      "place": "Seoul Forest · Seoul, South Korea",
+      "memo": "Chasing her shadow down the wall."
+    },
+    {
+      "file": "keepsake-demo-daily-dinner.jpg",
+      "source": "일상/ionut-vlad-BD8sugLdOxQ-unsplash.jpg",
+      "takenAt": "2026-10-31T19:00:00+09:00",
+      "lat": 37.527,
+      "lng": 127.04,
+      "place": "Cheongdam-dong · Seoul, South Korea",
+      "memo": "Anniversary dinner. Same table as five years ago."
+    },
+    {
+      "file": "keepsake-demo-daily-autumn.jpg",
+      "source": "일상/jay-eshie-sQrP2HCYcio-unsplash.jpg",
+      "takenAt": "2026-11-01T14:20:00+09:00",
+      "lat": 37.58,
+      "lng": 126.977,
+      "place": "Samcheong-dong · Seoul, South Korea"
+    },
+    {
+      "file": "keepsake-demo-daily-kitchen.jpg",
+      "source": "일상/microsoft-copilot-3c_k7h8YgHw-unsplash.jpg",
+      "takenAt": "2026-11-11T20:10:00+09:00",
+      "lat": 37.5622,
+      "lng": 126.9256,
+      "place": "Yeonnam-dong · Seoul, South Korea",
+      "memo": "Sunday soup, the recipe from Mom."
+    },
+    {
+      "file": "keepsake-demo-daily-night.jpg",
+      "source": "일상/nikola-duza-l6yT16LonPs-unsplash.jpg",
+      "takenAt": "2026-11-12T23:40:00+09:00",
+      "keep": false
+    },
+    {
+      "file": "keepsake-demo-today-crosswalk.jpg",
+      "source": "일상/raymond-yeung-eN43ip-45gY-unsplash.jpg",
+      "takenAt": "2026-11-14T08:40:00+09:00",
+      "lat": 37.4979,
+      "lng": 127.0276,
+      "today": true
+    },
+    {
+      "file": "keepsake-demo-today-tree.jpg",
+      "source": "일상/austin-curtis-CTBXW-4LeFI-unsplash.jpg",
+      "takenAt": "2026-11-14T09:20:00+09:00",
+      "lat": 37.513,
+      "lng": 127.1,
+      "today": true
+    },
+    {
+      "file": "keepsake-demo-today-bookstore.jpg",
+      "source": "일상/farnaz-kohankhaki-q9HyWRksQ1g-unsplash.jpg",
+      "takenAt": "2026-11-14T11:05:00+09:00",
+      "lat": 37.511,
+      "lng": 127.098,
+      "today": true
+    },
+    {
+      "file": "keepsake-demo-today-flowers.jpg",
+      "source": "일상/harry-le-1ImX7JJsmvw-unsplash.jpg",
+      "takenAt": "2026-11-14T12:10:00+09:00",
+      "lat": 37.5115,
+      "lng": 127.099,
+      "today": true
+    },
+    {
+      "file": "keepsake-demo-today-dog.jpg",
+      "source": "일상/matt-seymour-GRNOz3l0c-c-unsplash.jpg",
+      "takenAt": "2026-11-14T12:40:00+09:00",
+      "lat": 37.5118,
+      "lng": 127.0995,
+      "today": true
+    },
+    {
+      "file": "keepsake-demo-today-ferris-wheel.jpg",
+      "source": "일상/ruben-mavarez-xw9xtg7D5Ew-unsplash.jpg",
+      "takenAt": "2026-11-14T13:30:00+09:00",
+      "lat": 37.5111,
+      "lng": 127.0981,
+      "today": true
+    }
+  ],
+  "albums": [
+    {
+      "title": "Europe Trip",
+      "photos": "europe-",
+      "cover": {
+        "photo": "europe-arc"
+      },
+      "secure": "original"
+    },
+    {
+      "title": "Family",
+      "photos": "family-",
+      "cover": {
+        "photo": "family-poppies"
+      },
+      "secure": "original"
+    },
+    {
+      "title": "Friends",
+      "photos": "friends-"
+    },
+    {
+      "title": "Everyday",
+      "photos": "daily-",
+      "cover": {
+        "emoji": "☕️"
+      }
+    },
+    {
+      "title": "Golden Hour",
+      "photos": [
+        "family-fly",
+        "family-silhouette",
+        "family-dusk",
+        "friends-summit",
+        "friends-four",
+        "friends-backlit",
+        "europe-arc",
+        "europe-terrace",
+        "europe-moon"
+      ],
+      "cover": {
+        "photo": "friends-summit"
+      }
+    },
+    {
+      "title": "Little Ones",
+      "photos": [
+        "family-mirror",
+        "family-sisters",
+        "family-balloons",
+        "family-bubbles",
+        "family-kids-grass",
+        "family-swing",
+        "family-three-girls",
+        "daily-wall"
+      ],
+      "cover": {
+        "emoji": "🎈"
+      }
+    }
+  ],
+  "secureAlbums": [
+    {
+      "title": "Best of 2026",
+      "quality": "display",
+      "photos": [
+        "europe-summit",
+        "europe-nyhavn",
+        "europe-seaside",
+        "family-poppies",
+        "family-hike",
+        "friends-hug",
+        "friends-summit",
+        "friends-cafe",
+        "daily-dinner"
+      ],
+      "cover": {
+        "photo": "europe-summit"
+      }
+    }
+  ],
+  "sharedAlbums": [
+    {
+      "title": "Our Family",
+      "relation": "family",
+      "quality": "display",
+      "displayName": "Alex",
+      "photos": [
+        "family-poppies",
+        "family-balloons",
+        "family-swing",
+        "family-field",
+        "family-hike",
+        "family-garden"
+      ],
+      "members": [
+        {
+          "displayName": "Mom",
+          "photos": [
+            "family-three-girls",
+            "family-sunset-kiss",
+            "family-hug",
+            "family-bubbles",
+            "family-walk"
+          ]
+        },
+        {
+          "displayName": "Dad",
+          "photos": [
+            "family-barn",
+            "family-silhouette",
+            "family-dusk"
+          ]
+        },
+        {
+          "displayName": "Grandma",
+          "photos": [
+            "family-sisters",
+            "family-kids-grass"
+          ]
+        }
+      ],
+      "captions": {
+        "family-three-girls": "Holding hands all the way to the old oak tree.",
+        "family-dusk": "Last light on the ridge before heading home.",
+        "family-hike": "Little legs, big trail. Nobody complained once.",
+        "family-field": "Running through the tall grass until sunset.",
+        "family-swing": "Higher, higher!",
+        "family-barn": "Saturday morning at the farm.",
+        "family-garden": "Grandma's tomatoes are finally ripe.",
+        "family-walk": "Evening walk after dinner.",
+        "family-bubbles": "Bubble party in the backyard.",
+        "family-poppies": "The poppy field was in full bloom.",
+        "family-sisters": "My girls, all grown up.",
+        "family-kids-grass": "Picnic day in the park.",
+        "family-hug": "Hugs for everyone."
+      },
+      "comments": [
+        {
+          "photo": "family-three-girls",
+          "by": "Grandma",
+          "text": "My three sunshines! Please print this one for my fridge.",
+          "minutesAgo": 185
+        },
+        {
+          "photo": "family-three-girls",
+          "by": "Alex",
+          "text": "Best afternoon of the whole fall.",
+          "minutesAgo": 150
+        },
+        {
+          "photo": "family-three-girls",
+          "by": "Dad",
+          "text": "Framing this one for the hallway.",
+          "minutesAgo": 42
+        },
+        {
+          "photo": "family-dusk",
+          "by": "Mom",
+          "text": "That sky! Worth the long walk back.",
+          "minutesAgo": 1500
+        },
+        {
+          "photo": "family-dusk",
+          "by": "Alex",
+          "text": "We stayed out until the first stars came out.",
+          "minutesAgo": 1440
+        },
+        {
+          "photo": "family-hike",
+          "by": "Grandma",
+          "text": "Look how tall they're getting!",
+          "minutesAgo": 2900
+        },
+        {
+          "photo": "family-hike",
+          "by": "Mom",
+          "text": "Next time we start earlier 😅",
+          "minutesAgo": 2850
+        },
+        {
+          "photo": "family-field",
+          "by": "Dad",
+          "text": "Golden hour did all the work.",
+          "minutesAgo": 4300
+        },
+        {
+          "photo": "family-swing",
+          "by": "Grandma",
+          "text": "Alex, you used to swing just like that.",
+          "minutesAgo": 8700
+        },
+        {
+          "photo": "family-barn",
+          "by": "Mom",
+          "text": "Our favorite Saturday spot.",
+          "minutesAgo": 9900
+        },
+        {
+          "photo": "family-sisters",
+          "by": "Alex",
+          "text": "Thanks for catching this, Grandma!",
+          "minutesAgo": 11500
+        }
+      ]
+    }
+  ]
+}

@@ -64,7 +64,7 @@ try {
     if (!featureGraphicOnly) {
       const out = outputDir(locale, kind); mkdirSync(out, { recursive: true });
       const slides = getSlides(locale);
-      for (const slide of slides) { const html = renderSlide(slide, resolve(rawDir(locale), slide.rawFile), slides.length, size); const file = resolve(tmp, `${kind}-${locale}-${slide.no}.html`); writeFileSync(file, html); await page.setViewportSize(size); await page.goto(`file://${file}`); await page.screenshot({ path: resolve(out, `${slide.no}.png`) }); }
+      for (const slide of slides) { const html = renderSlide(slide, resolve(rawDir(locale), slide.rawFile), slides.length, size, locale); const file = resolve(tmp, `${kind}-${locale}-${slide.no}.html`); writeFileSync(file, html); await page.setViewportSize(size); await page.goto(`file://${file}`); await page.screenshot({ path: resolve(out, `${slide.no}.png`) }); }
       console.log(`✓ ${kind}/${storeLocale(locale)}: ${out}`);
     }
     if (kind === 'play') {

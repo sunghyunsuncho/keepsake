@@ -5,15 +5,18 @@ export const PLAY_SIZE = { width: 1620, height: 2880 };
 export const IOS_SIZE = { width: 1242, height: 2688 };
 const escape = (text: string) => text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 
-export function renderSlide(slide: Slide, rawPath: string, total: number, size: { width: number; height: number }) {
+export function renderSlide(slide: Slide, rawPath: string, total: number, size: { width: number; height: number }, lang: string) {
   const scale = Math.min(size.width / PLAY_SIZE.width, size.height / PLAY_SIZE.height);
   const px = (n: number) => Math.round(n * scale);
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><style>
-    *{box-sizing:border-box} body{margin:0;background:#F4F1EC;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:#171A1E}
-    .canvas{width:${size.width}px;height:${size.height}px;padding:${px(108)}px ${px(96)}px ${px(86)}px;display:flex;flex-direction:column;background:linear-gradient(160deg,#F8F6F2,#EEE9E1)}
-    .number{font-size:${px(24)}px;letter-spacing:.16em;color:#CD5837;font-weight:700}.title{font-size:${px(54)}px;line-height:1.24;font-weight:600;margin-top:${px(38)}px}.accent{font-size:${px(72)}px;line-height:1.18;font-weight:800;margin-top:${px(10)}px;color:#16212B;letter-spacing:-.035em}.desc{font-size:${px(31)}px;line-height:1.45;color:#5F6A75;margin-top:${px(28)}px}
-    .phone{margin:auto;max-height:${px(1640)}px;aspect-ratio:1290/2796;padding:${px(10)}px;border-radius:${px(62)}px;background:#16191D;box-shadow:0 ${px(28)}px ${px(70)}px rgba(22,33,43,.25);overflow:hidden}.phone img{width:100%;height:100%;display:block;object-fit:cover;border-radius:${px(52)}px}.footer{font-size:${px(22)}px;color:#8A8177;letter-spacing:.12em;text-align:right}
-  </style></head><body><main class="canvas"><div class="number">${slide.no} / ${String(total).padStart(2, '0')}</div><div class="title">${escape(slide.title)}</div><div class="accent">${escape(slide.accent)}</div><div class="desc">${escape(slide.description)}</div><div class="phone"><img src="${pathToFileURL(rawPath).href}"></div><div class="footer">KEEPSAKE</div></main></body></html>`;
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><style>
+    *{box-sizing:border-box} body{margin:0;background:#F4F1EC;font-family:-apple-system,BlinkMacSystemFont,${lang === 'ja' ? '"Hiragino Sans","Noto Sans JP",' : ''}"Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:#171A1E}
+    .canvas{width:${size.width}px;height:${size.height}px;padding:${px(120)}px ${px(90)}px ${px(90)}px;display:flex;flex-direction:column;background:linear-gradient(160deg,#F8F6F2,#EEE9E1)}
+    .number{font-size:${px(34)}px;letter-spacing:.16em;color:#CD5837;font-weight:700}.title{font-size:${px(74)}px;line-height:1.22;font-weight:600;margin-top:${px(36)}px}.accent{font-size:${px(104)}px;line-height:1.14;font-weight:800;margin-top:${px(12)}px;color:#16212B;letter-spacing:-.035em}.desc{font-size:${px(44)}px;line-height:1.42;color:#5F6A75;margin-top:${px(30)}px}
+    :lang(ko) :is(.title,.accent,.desc){word-break:keep-all} :lang(ja) :is(.title,.accent,.desc){word-break:auto-phrase}
+    /* 휴대폰은 문구 아래 남은 높이를 모두 쓴다. 폭은 화면 비율로 정해지고 가운데 둔다. */
+    .stage{flex:1;min-height:0;display:flex;justify-content:center;margin-top:${px(64)}px}
+    .phone{height:100%;max-width:100%;aspect-ratio:1290/2796;padding:${px(14)}px;border-radius:${px(84)}px;background:#16191D;box-shadow:0 ${px(32)}px ${px(80)}px rgba(22,33,43,.25);overflow:hidden}.phone img{width:100%;height:100%;display:block;object-fit:cover;border-radius:${px(70)}px}
+  </style></head><body><main class="canvas"><div class="number">${slide.no} / ${String(total).padStart(2, '0')}</div><div class="title">${escape(slide.title)}</div><div class="accent">${escape(slide.accent)}</div><div class="desc">${escape(slide.description)}</div><div class="stage"><div class="phone"><img src="${pathToFileURL(rawPath).href}"></div></div></main></body></html>`;
 }
 
 export const FEATURE_GRAPHIC_SIZE = { width: 1024, height: 500 }; // Play Console 고정 규격

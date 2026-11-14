@@ -2,7 +2,7 @@
 include compose.dev.env
 COMPOSE = docker compose --env-file compose.dev.env
 
-.PHONY: up down api migrate migration test lint api-types mobile ios icons
+.PHONY: up down api migrate migration test lint api-types mobile ios icons demo-photos demo-family
 
 # 인프라 (Postgres, S3 호환 스토리지)
 up:
@@ -47,3 +47,11 @@ ios:
 # mobile/assets/source/keepsake_icon.png → 앱 아이콘·스플래시·스토어 아이콘
 icons:
 	uv run --with pillow python -I scripts/generate_icons.py
+
+# 스토어 스크린샷용 데모 사진을 부팅된 iOS 시뮬레이터 사진첩에 넣는다 (store-assets/README.md)
+demo-photos:
+	uv run --with pillow --with piexif python -I scripts/store_demo_photos.py --source "$(SOURCE)"
+
+# 데모 공유 앨범에 가족 구성원과 그들이 담은 사진을 넣는다. API 서버가 떠 있어야 한다 (store-assets/README.md)
+demo-family:
+	cd backend && uv run --with pillow python -m scripts.store_demo_family --source "$(SOURCE)" --api http://localhost:$(API_PORT)
