@@ -3,6 +3,7 @@ import { router, useFocusEffect, type Href } from 'expo-router';
 import { useCallback } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
+import { sharedAlbumLink } from '@/components/notification-links';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -43,7 +44,7 @@ export default function NotificationsScreen() {
         <Ionicons name="notifications-off-outline" size={40} color={theme.textSecondary} />
         <ThemedText type="smallBold">아직 받은 알림이 없어요</ThemedText>
         <ThemedText type="small" themeColor="textSecondary" style={styles.center}>
-          고르기 알림과 안전 보관 소식이 여기에 모여요. 고르기 알림은 설정 탭에서 켤 수 있어요.
+          고르기 알림, 안전 보관 소식, 공유 앨범의 내 사진에 달린 댓글이 여기에 모여요. 고르기 알림은 설정 탭에서 켤 수 있어요.
         </ThemedText>
       </ThemedView>
     );
@@ -62,7 +63,8 @@ export default function NotificationsScreen() {
 
 function NotificationRow({ entry }: { entry: NotificationEntry }) {
   const theme = useTheme();
-  const target = entry.url ? OPENABLE[entry.url] : undefined;
+  const shared = sharedAlbumLink(entry.url);
+  const target = shared ? { href: shared, icon: 'chatbubble-outline' as const } : entry.url ? OPENABLE[entry.url] : undefined;
   const unread = entry.read_at === null;
   return (
     <Pressable

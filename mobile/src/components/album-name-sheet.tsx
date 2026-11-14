@@ -83,7 +83,7 @@ export function AlbumNameSheet({
  * 안드로이드에서 Modal 안의 입력창은 키보드에 밀려 올라가지 않는다 (KeyboardAvoidingView가 창 크기 변화를 받지 못함).
  * 키보드 높이만큼 아래를 띄운다.
  */
-function useAndroidKeyboardHeight(active: boolean) {
+export function useAndroidKeyboardHeight(active: boolean) {
   const [height, setHeight] = useState(0);
   useEffect(() => {
     if (Platform.OS !== 'android' || !active) return;

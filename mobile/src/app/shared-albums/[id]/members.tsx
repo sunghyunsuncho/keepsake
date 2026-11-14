@@ -359,7 +359,7 @@ function MembersSection({ album }: { album: SharedAlbumDetail }) {
         있어요. 소유자는 관리자 중 한 명으로, 이 앨범을 자기 요금제의 공유 앨범 수로 세요.
       </ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
-        구성원을 눌러 신고하거나 차단할 수 있어요. 차단한 사람의 사진은 나에게만 보이지 않아요.
+        구성원을 눌러 신고하거나 차단할 수 있어요. 차단한 사람의 사진과 댓글은 나에게만 보이지 않아요.
       </ThemedText>
     </Section>
   );

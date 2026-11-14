@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { FlashList } from '@shopify/flash-list';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -26,6 +26,8 @@ import { Button } from '@/components/button';
 import { GalleryHeader, TileRow } from '@/components/gallery';
 import { PHOTO_QUALITY, PhotoQualityBadge } from '@/components/photo-quality';
 import { chooseReportReason, confirmBlock, type ReportTarget } from '@/components/report-block';
+import { SharedCaptionSheet } from '@/components/shared-caption-sheet';
+import { SharedCommentsSheet } from '@/components/shared-comments-sheet';
 import { SharedItemPhoto } from '@/components/shared-item-photo';
 import { SharedStoryCard } from '@/components/shared-story-card';
 import { HeaderButton } from '@/components/stack-header';
@@ -58,7 +60,17 @@ import {
 import { formatFullDate } from '@/lib/dates';
 import { sortForGallery } from '@/lib/gallery';
 import { formatBytes, formatSize } from '@/lib/storage';
-import { addedBy, localizeText, memberCount, photoCount, selectionSummary, showAlert, useTranslation } from '@/lib/i18n';
+import {
+  addedBy,
+  commentCount,
+  localizeText,
+  memberCount,
+  memberName,
+  photoCount,
+  selectionSummary,
+  showAlert,
+  useTranslation,
+} from '@/lib/i18n';
 
 /** 촬영 시각이 없는 항목은 담은 시각으로 묶는다. */
 type DatedItem = SharedItem & { taken_at: string };
@@ -66,8 +78,13 @@ type DatedItem = SharedItem & { taken_at: string };
 // 공유 앨범: 구성원이 함께 담은 사진을 내 앨범처럼 해 → 달 → 날 → 이야기 순으로 당겨 본다.
 // 사진마다 누가 담았는지 보이고, 사진은 올린 사람이나 관리자만 앨범에서 뺄 수 있다 (서버가 다시 확인한다).
 // 단계와 정렬은 내 앨범과 같은 설정을 쓴다.
+// 댓글 알림은 ?item=…&comments=1로 열어, 그 사진을 크게 보고 댓글을 바로 띄운다.
 export default function SharedAlbumScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, item: linkedItem, comments: linkedComments } = useLocalSearchParams<{
+    id: string;
+    item?: string;
+    comments?: string;
+  }>();
   const db = useSQLiteContext();
   const theme = useTheme();
   const { language } = useTranslation();
@@ -83,6 +100,10 @@ export default function SharedAlbumScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [removing, setRemoving] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [openComments, setOpenComments] = useState(false);
+  const [captioning, setCaptioning] = useState<SharedItem | null>(null);
+  // 댓글을 남기면 사진 목록을 다시 받으므로, 같은 링크로 사진을 다시 열지 않게 연 링크를 기억한다.
+  const handledLink = useRef<string | null>(null);
   const order = settings?.album_sort_order ?? DEFAULT_SETTINGS.album_sort_order;
 
   const shown = useMemo(
@@ -102,6 +123,27 @@ export default function SharedAlbumScreen() {
   });
   const zoom = gallery.zoom;
   const { gesture: pinch, style: pinchStyle } = usePinchZoom(gallery.stepZoom);
+
+  // 알림으로 열었으면 사진과 정렬 설정을 다 받은 뒤 한 번만 연다 (설정 전에 열면 기본 정렬의 순번으로 다른 사진이 열린다).
+  // 사진이 빠졌거나 차단한 사람의 사진이면 앨범만 보여 준다.
+  useEffect(() => {
+    // 링크를 비운 뒤에는 잊어, 같은 사진의 알림을 다시 눌러도 열리게 한다.
+    if (!linkedItem) {
+      handledLink.current = null;
+      return;
+    }
+    if (!items || !settings || handledLink.current === linkedItem) return;
+    handledLink.current = linkedItem;
+    router.setParams({ item: undefined, comments: undefined });
+    setAuthor(null);
+    const index = sortForGallery(
+      items.map((item): DatedItem => ({ ...item, taken_at: item.taken_at ?? item.added_at })),
+      order,
+    ).findIndex((entry) => entry.id === linkedItem);
+    if (index < 0) return;
+    setOpenComments(linkedComments === '1');
+    setViewing(index);
+  }, [linkedItem, linkedComments, items, settings, order]);
 
   const canUpload = account?.subscription.can_upload ?? false;
 
@@ -148,6 +190,10 @@ export default function SharedAlbumScreen() {
   };
   const openManage = () => router.push({ pathname: '/shared-albums/[id]/members', params: { id } });
   const openViewer = (item: DatedItem) => setViewing(sorted.findIndex((entry) => entry.id === item.id));
+  const openWithComments = (item: DatedItem) => {
+    setOpenComments(true);
+    openViewer(item);
+  };
 
   const toggleEditing = () => {
     setEditing((current) => !current);
@@ -283,7 +329,7 @@ export default function SharedAlbumScreen() {
 
   // 표지로 고를 수 있는 사진: 표시용 사진이 올라간 것 (서버가 그 사진으로 표지를 그린다).
   const coverable = sorted.filter((item) => item.stored_variants.includes('display'));
-  // 해 단계는 칸이 작아 이름표를 붙이지 않는다.
+  // 해 단계는 칸이 작아 이름표와 댓글 수를 붙이지 않는다.
   const renderTile = (item: DatedItem, style: ImageStyle) => (
     <View>
       <SharedItemPhoto albumId={id} item={item} variant="thumb" style={style} />
@@ -291,6 +337,18 @@ export default function SharedAlbumScreen() {
         <View style={styles.authorTag} pointerEvents="none">
           <ThemedText style={styles.authorTagText} numberOfLines={1} localize={false}>
             {item.is_mine ? localizeText(language, '나') : item.author_name}
+          </ThemedText>
+        </View>
+      )}
+      {zoom !== 'year' && item.comment_count > 0 && (
+        <View
+          style={styles.commentTag}
+          pointerEvents="none"
+          accessible
+          accessibilityLabel={commentCount(language, item.comment_count)}>
+          <Ionicons name="chatbubble" size={10} color="#fff" />
+          <ThemedText style={styles.authorTagText} localize={false}>
+            {item.comment_count}
           </ThemedText>
         </View>
       )}
@@ -374,6 +432,8 @@ export default function SharedAlbumScreen() {
                     item={row.moment}
                     takenAt={row.moment.taken_at}
                     onOpen={() => openViewer(row.moment)}
+                    onOpenComments={() => openWithComments(row.moment)}
+                    onWriteCaption={() => setCaptioning(row.moment)}
                     selecting={editing}
                     selected={selectedIds.has(row.moment.id)}
                     onSelect={() => toggleSelected(row.moment)}
@@ -407,8 +467,13 @@ export default function SharedAlbumScreen() {
         albumQuality={album.photo_quality}
         items={sorted}
         index={viewing}
-        onClose={() => setViewing(null)}
+        openComments={openComments}
+        onClose={() => {
+          setViewing(null);
+          setOpenComments(false);
+        }}
       />
+      {captioning && <SharedCaptionSheet albumId={id} item={captioning} onClose={() => setCaptioning(null)} />}
       {admin && (
         <>
           <AlbumNameSheet
@@ -757,7 +822,7 @@ function Chip({ label, selected, onPress }: { label: string; selected: boolean; 
 }
 
 /**
- * 전체 화면으로 옆으로 넘겨 본다. 아래에 누가 언제 담았는지와, 뺄 수 있으면 [앨범에서 빼기]를 둔다.
+ * 전체 화면으로 옆으로 넘겨 본다. 아래에 누가 언제 담았는지와 댓글, 뺄 수 있으면 [앨범에서 빼기]를 둔다.
  * 다른 사람이 담은 사진은 신고하거나 담은 사람을 차단할 수 있다 (차단하면 그 사람의 사진이 목록에서 빠져 닫는다).
  */
 function SharedViewer({
@@ -765,12 +830,15 @@ function SharedViewer({
   albumQuality,
   items,
   index,
+  openComments,
   onClose,
 }: {
   albumId: string;
   albumQuality: SharedAlbumDetail['photo_quality'];
   items: SharedItem[];
   index: number | null;
+  /** 열자마자 댓글도 띄운다 (댓글 알림으로 열었을 때) */
+  openComments: boolean;
   onClose: () => void;
 }) {
   const db = useSQLiteContext();
@@ -779,6 +847,8 @@ function SharedViewer({
   const insets = useSafeAreaInsets();
   const [current, setCurrent] = useState(0);
   const [removing, setRemoving] = useState(false);
+  const [commenting, setCommenting] = useState<SharedItem | null>(null);
+  const [captioning, setCaptioning] = useState<SharedItem | null>(null);
   const item = index === null ? undefined : items[current];
 
   const confirmRemove = (target: SharedItem) => {
@@ -814,7 +884,7 @@ function SharedViewer({
 
   const reportOrBlock = (target: SharedItem) => {
     // 나간 구성원은 서버가 '나간 구성원'으로 보낸다. 문구에 넣기 전에 번역한다.
-    const name = localizeText(language, target.author_name);
+    const name = memberName(language, target.author_name);
     const person: ReportTarget = { albumId, userId: target.author_id, name, itemId: target.id };
     showActionSheet('신고 또는 차단', undefined, [
       { text: '이 사진 신고하기', onPress: () => chooseReportReason(person, onClose) },
@@ -875,7 +945,15 @@ function SharedViewer({
   };
 
   return (
-    <Modal visible={index !== null} animationType="fade" onRequestClose={onClose} onShow={() => setCurrent(index ?? 0)}>
+    <Modal
+      visible={index !== null}
+      animationType="fade"
+      onRequestClose={onClose}
+      onShow={() => {
+        setCurrent(index ?? 0);
+        // 댓글 시트는 이 Modal이 다 뜬 뒤에 띄워야 iOS에서 겹쳐 열린다.
+        if (openComments && index !== null) setCommenting(items[index] ?? null);
+      }}>
       <View style={styles.viewer}>
         {index !== null && (
           <FlatList
@@ -917,7 +995,13 @@ function SharedViewer({
                 : { bottom: 0, paddingBottom: insets.bottom + Spacing.three },
             ]}>
             <View style={styles.flex}>
-              <ThemedText style={styles.viewerAuthor} localize={false}>{item.is_mine ? localizeText(language, '내가 담았어요') : addedBy(language, item.author_name)}</ThemedText>
+              <ThemedText style={styles.viewerAuthor} localize={false}>{item.is_mine ? localizeText(language, '내가 담았어요') : addedBy(language, memberName(language, item.author_name))}</ThemedText>
+              {/* 담은 사람이 구성원에게 쓴 글. 사용자가 쓴 글이라 번역하지 않는다. */}
+              {!!item.caption && (
+                <ThemedText style={styles.viewerCaption} numberOfLines={4} localize={false}>
+                  {item.caption}
+                </ThemedText>
+              )}
               {item.taken_at && (
                 <ThemedText type="small" style={styles.viewerDate}>
                   {formatFullDate(item.taken_at, item.taken_tz_offset)}
@@ -941,6 +1025,29 @@ function SharedViewer({
                 </ThemedText>
               </Pressable>
             </View>
+            {item.is_mine && (
+              <Pressable
+                onPress={() => setCaptioning(item)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={localizeText(language, '구성원에게 보일 글')}
+                style={styles.viewerAction}>
+                <Ionicons name="create-outline" size={22} color="#fff" />
+              </Pressable>
+            )}
+            <Pressable
+              onPress={() => setCommenting(item)}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={commentCount(language, item.comment_count)}
+              style={[styles.viewerAction, styles.viewerComments]}>
+              <Ionicons name="chatbubble-outline" size={22} color="#fff" />
+              {item.comment_count > 0 && (
+                <ThemedText type="smallBold" style={styles.viewerCount} localize={false}>
+                  {item.comment_count}
+                </ThemedText>
+              )}
+            </Pressable>
             {!item.is_mine && (
               <Pressable
                 onPress={() => reportOrBlock(item)}
@@ -968,6 +1075,20 @@ function SharedViewer({
         )}
         {/* 화질 고르기 시트를 이 Modal 위에 띄운다. */}
         <ActionSheetHost />
+        {captioning && (
+          <SharedCaptionSheet albumId={albumId} item={captioning} onClose={() => setCaptioning(null)} />
+        )}
+        {commenting && (
+          <SharedCommentsSheet
+            albumId={albumId}
+            item={commenting}
+            onClose={() => setCommenting(null)}
+            onBlocked={() => {
+              setCommenting(null);
+              onClose();
+            }}
+          />
+        )}
       </View>
     </Modal>
   );
@@ -1013,6 +1134,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
   authorTagText: { color: '#fff', fontSize: 11, lineHeight: 15, fontWeight: 600 },
+  // 동영상 표시가 왼쪽 아래에 있어 댓글 수는 오른쪽 아래에 둔다.
+  commentTag: {
+    position: 'absolute',
+    right: Spacing.one,
+    bottom: Spacing.one,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: Spacing.one + 2,
+    paddingVertical: 1,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
   viewer: { flex: 1, backgroundColor: '#000' },
   viewerClose: { position: 'absolute', right: Spacing.three },
   // 위(동영상)나 아래(사진) 중 한쪽에만 붙인다. 둘 다 주면 막대가 화면 높이로 늘어난다.
@@ -1029,6 +1163,9 @@ const styles = StyleSheet.create({
   },
   viewerAuthor: { color: '#fff', fontWeight: 700 },
   viewerDate: { color: 'rgba(255,255,255,0.8)' },
+  viewerCaption: { color: '#fff', marginVertical: 2 },
   viewerQuality: { flexDirection: 'row', alignItems: 'center', gap: 3, alignSelf: 'flex-start', marginTop: 2 },
   viewerAction: { padding: Spacing.one },
+  viewerComments: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  viewerCount: { color: '#fff' },
 });

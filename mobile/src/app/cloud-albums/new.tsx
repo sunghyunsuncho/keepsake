@@ -26,6 +26,7 @@ import { useDbQuery } from '@/db/changes';
 import { useTheme } from '@/hooks/use-theme';
 import { syncCloud, useCloudState } from '@/lib/cloud/engine';
 import { SHARED_ALBUM_LIMITS } from '@/lib/cloud/purchases';
+import { registerPushToken } from '@/lib/cloud/push';
 import { CloudError } from '@/lib/cloud/session';
 import {
   convertToSharedAlbum,
@@ -116,6 +117,8 @@ export default function NewCloudAlbumScreen() {
         const album = convert
           ? await convertToSharedAlbum(db, params.convert!, body)
           : await createSharedAlbum(body);
+        // 내 사진에 구성원이 댓글을 남기면 알린다.
+        registerPushToken({ ask: true });
         if (convert) {
           syncCloud(db);
           // 바꾼 안전 앨범은 지워졌다. 그 화면이 뒤에 남지 않게 안전 사진첩까지 닫고 새 공유 앨범을 연다.

@@ -12,6 +12,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { CloudError, useCloudSession } from '@/lib/cloud/session';
 import { useDbQuery } from '@/db/changes';
 import { useCloudState } from '@/lib/cloud/engine';
+import { registerPushToken } from '@/lib/cloud/push';
 import { localizeText, showAlert, useTranslation } from '@/lib/i18n';
 import {
   DISPLAY_NAME_MAX,
@@ -79,6 +80,8 @@ export default function JoinSharedAlbumScreen() {
     setJoining(true);
     try {
       const album = await joinSharedAlbum(code, name.trim(), allocation ?? 0);
+      // 내 사진에 구성원이 댓글을 남기면 알린다.
+      registerPushToken({ ask: true });
       router.replace({ pathname: '/shared-albums/[id]', params: { id: album.id } });
     } catch (e) {
       showAlert(

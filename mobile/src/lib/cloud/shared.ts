@@ -29,6 +29,7 @@ export type Relation = SharedAlbumSummary['relation'];
 type Quality = SharedAlbumSummary['photo_quality'];
 export type SharedAlbumList = components['schemas']['SharedAlbumList'];
 export type LeavePreview = components['schemas']['LeavePreview'];
+export type SharedComment = components['schemas']['CommentOut'];
 
 const GB = 1024 * 1024 * 1024;
 /** 할당을 고르는 단계 (GB). 내 남은 용량을 넘는 것은 고를 수 없다. */
@@ -42,6 +43,8 @@ export const RELATIONS: Record<Relation, { label: string; icon: 'home-outline' |
 };
 export const RELATION_ORDER: Relation[] = ['family', 'friends', 'partner', 'other'];
 export const DISPLAY_NAME_MAX = 20;
+export const COMMENT_MAX = 500;
+export const CAPTION_MAX = 300;
 
 /**
  * 앱 밖으로 보내는 초대 메시지. 링크는 https라 카카오톡·문자에서도 눌린다.
@@ -354,18 +357,79 @@ export async function transferOwner(albumId: string, userId: string) {
 export type ReportReason = components['schemas']['ReportRequest']['reason'];
 export type BlockedUser = components['schemas']['BlockedUserOut'];
 
-/** 사진(itemId)이나 구성원(userId)을 신고한다. 운영자가 보고 사진을 빼거나 구성원을 내보낸다. */
+/** 사진(itemId)·댓글(commentId)이나 구성원(userId)을 신고한다. 운영자가 보고 사진·댓글을 빼거나 구성원을 내보낸다. */
 export async function reportShared(
   albumId: string,
-  target: { itemId: string } | { userId: string },
+  target: { itemId: string } | { commentId: string } | { userId: string },
   reason: ReportReason,
 ) {
+  const about =
+    'itemId' in target
+      ? { item_id: target.itemId }
+      : 'commentId' in target
+        ? { comment_id: target.commentId }
+        : { user_id: target.userId };
   unwrap(
     await cloudApi.POST('/shared-albums/{album_id}/reports', {
       params: { path: { album_id: albumId } },
-      body: { ...('itemId' in target ? { item_id: target.itemId } : { user_id: target.userId }), reason },
+      body: { ...about, reason },
     }),
   );
+}
+
+/** 사진에 남긴 댓글. 오래된 것부터 오고, 내가 차단한 사람의 댓글은 서버가 뺀다. */
+export async function listComments(albumId: string, itemId: string) {
+  return unwrap(
+    await cloudApi.GET('/shared-albums/{album_id}/items/{item_id}/comments', {
+      params: { path: { album_id: albumId, item_id: itemId } },
+    }),
+  ).comments;
+}
+
+/** 구성원이면 누구나 남긴다. 목록의 댓글 수도 바뀌므로 알린다. */
+export async function addComment(albumId: string, itemId: string, body: string) {
+  const comment = unwrap(
+    await cloudApi.POST('/shared-albums/{album_id}/items/{item_id}/comments', {
+      params: { path: { album_id: albumId, item_id: itemId } },
+      body: { body },
+    }),
+  );
+  notifyChange();
+  return comment;
+}
+
+/**
+ * 구성원에게 보일 글을 쓴다 (null이나 빈 글이면 지운다). 담은 사람만 쓸 수 있다.
+ * 개인 메모와 따로 둔다: 메모를 가져와 쓰더라도 그때의 글을 옮길 뿐, 나중에 메모를 고쳐도 바뀌지 않는다.
+ */
+export async function setSharedItemCaption(albumId: string, itemId: string, caption: string | null) {
+  unwrap(
+    await cloudApi.PATCH('/shared-albums/{album_id}/items/{item_id}', {
+      params: { path: { album_id: albumId, item_id: itemId } },
+      body: { caption },
+    }),
+  );
+  notifyChange();
+}
+
+/** 내가 담은 사진의 개인 메모. 공유용 글을 쓸 때 가져올 수 있게 보여 준다. */
+export async function myMemo(db: SQLiteDatabase, momentId: string | null | undefined) {
+  if (!momentId) return '';
+  const row = await db.getFirstAsync<{ memo: string }>(
+    'SELECT memo FROM moments WHERE id = ? AND deleted_at IS NULL',
+    momentId,
+  );
+  return row?.memo.trim() ?? '';
+}
+
+/** 쓴 사람이나 관리자만 지운다 (서버가 확인한다). */
+export async function deleteComment(albumId: string, itemId: string, commentId: string) {
+  unwrap(
+    await cloudApi.DELETE('/shared-albums/{album_id}/items/{item_id}/comments/{comment_id}', {
+      params: { path: { album_id: albumId, item_id: itemId, comment_id: commentId } },
+    }),
+  );
+  notifyChange();
 }
 
 /** 이 앨범에서 만난 사람을 차단한다. 그 사람이 담은 사진은 모든 공유 앨범에서 나에게 보이지 않는다. */

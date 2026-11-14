@@ -35,7 +35,7 @@ export default function BlockedUsersScreen() {
     <ThemedView style={styles.flex}>
       <ScrollView contentContainerStyle={styles.content}>
         <ThemedText type="small" themeColor="textSecondary">
-          차단한 사람이 공유 앨범에 담은 사진은 모든 공유 앨범에서 나에게 보이지 않아요. 상대방에게는 알리지 않고, 다른 구성원에게는 그대로 보여요.
+          차단한 사람이 공유 앨범에 담은 사진과 남긴 댓글은 모든 공유 앨범에서 나에게 보이지 않아요. 상대방에게는 알리지 않고, 다른 구성원에게는 그대로 보여요.
         </ThemedText>
         {!users ? (
           error ? (

@@ -9,6 +9,7 @@ import { ActionSheetHost } from '@/components/action-sheet';
 import { CloudSync } from '@/components/cloud-sync';
 import { LocalImportPrompt } from '@/components/local-import-prompt';
 import { NotificationInbox } from '@/components/notification-inbox';
+import { NotificationLinks } from '@/components/notification-links';
 import { ModalHeader, StackHeader } from '@/components/stack-header';
 import { ReviewReminders } from '@/components/review-reminders';
 import { WelcomeGate } from '@/components/welcome-gate';
@@ -54,6 +55,7 @@ function RootLayout() {
                 <LocalImportPrompt />
                 <ReviewReminders />
                 <NotificationInbox />
+                <NotificationLinks />
                 <AppStack />
                 <ActionSheetHost />
               </LocalizationProvider>

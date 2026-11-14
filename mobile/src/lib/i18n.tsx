@@ -4,7 +4,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import * as Linking from 'expo-linking';
 
 import { type AppLanguage, deviceLanguage, getSettings, setSetting } from '@/db/settings';
-import { setDateLanguage } from '@/lib/dates';
+import { formatShortDate, setDateLanguage } from '@/lib/dates';
 import { rescheduleReminders } from '@/lib/reminders';
 
 export type { AppLanguage } from '@/db/settings';
@@ -349,7 +349,7 @@ const legacyText: Record<string, { en: string; ja: string }> = {
   '가족·친구·파트너와 함께 사진을 담는 앨범이에요.': { en: 'Albums you fill together with family, friends, or a partner.', ja: '家族・友人・パートナーと一緒に写真を追加するアルバムです。' },
   '누가 담았는지 사진마다 보이고, 각자 담은 사진은 각자 관리해요.': { en: 'Each photo shows who added it, and everyone manages the photos they added.', ja: '誰が追加したかが写真ごとに表示され、自分が追加した写真はそれぞれが管理します。' },
   '이 빌드에서는 로그인을 사용할 수 없어요.': { en: 'Sign-in isn’t available in this build.', ja: 'このビルドではログインを利用できません。' },
-  '고르기 알림과 안전 보관 소식이 여기에 모여요. 고르기 알림은 설정 탭에서 켤 수 있어요.': { en: 'Photo review reminders and secure storage updates appear here. You can turn on reminders in the Settings tab.', ja: '写真を選ぶリマインダーと安全保管のお知らせがここに表示されます。リマインダーは設定タブでオンにできます。' },
+  '고르기 알림, 안전 보관 소식, 공유 앨범의 내 사진에 달린 댓글이 여기에 모여요. 고르기 알림은 설정 탭에서 켤 수 있어요.': { en: 'Photo review reminders, secure storage updates, and comments on your photos in shared albums appear here. You can turn on reminders in the Settings tab.', ja: '写真を選ぶリマインダー、安全保管のお知らせ、共有アルバムのあなたの写真へのコメントがここに表示されます。リマインダーは設定タブでオンにできます。' },
   'Keepsake는 아래 오픈소스 소프트웨어를 사용해요. 각 소프트웨어는 표시된 라이선스를 따릅니다.': { en: 'Keepsake uses the open-source software below. Each is provided under the license shown.', ja: 'Keepsakeは以下のオープンソースソフトウェアを使用しています。各ソフトウェアには記載のライセンスが適用されます。' },
   // 공유 앨범 참여
   '초대를 찾지 못했어요': { en: 'Invitation not found', ja: '招待が見つかりませんでした' },
@@ -511,8 +511,28 @@ const legacyText: Record<string, { en: string; ja: string }> = {
   '이 사진 신고하기': { en: 'Report this photo', ja: 'この写真を報告' },
   '신고 또는 차단': { en: 'Report or block', ja: '報告またはブロック' },
   '차단한 사람이 없어요.': { en: 'You haven’t blocked anyone.', ja: 'ブロックした人はいません。' },
-  '차단한 사람이 공유 앨범에 담은 사진은 모든 공유 앨범에서 나에게 보이지 않아요. 상대방에게는 알리지 않고, 다른 구성원에게는 그대로 보여요.': { en: 'Photos that people you’ve blocked add to shared albums are hidden from you in every shared album. They aren’t told, and other members still see them.', ja: 'ブロックした人が共有アルバムに追加した写真は、すべての共有アルバムであなたにだけ表示されなくなります。相手には知らせず、ほかのメンバーには通常どおり表示されます。' },
-  '구성원을 눌러 신고하거나 차단할 수 있어요. 차단한 사람의 사진은 나에게만 보이지 않아요.': { en: 'Tap a member to report or block them. Photos from people you block are hidden only for you.', ja: 'メンバーをタップすると、報告やブロックができます。ブロックした人の写真は、あなたにだけ表示されなくなります。' },
+  '차단한 사람이 공유 앨범에 담은 사진과 남긴 댓글은 모든 공유 앨범에서 나에게 보이지 않아요. 상대방에게는 알리지 않고, 다른 구성원에게는 그대로 보여요.': { en: 'Photos and comments that people you’ve blocked add to shared albums are hidden from you in every shared album. They aren’t told, and other members still see them.', ja: 'ブロックした人が共有アルバムに追加した写真とコメントは、すべての共有アルバムであなたにだけ表示されなくなります。相手には知らせず、ほかのメンバーには通常どおり表示されます。' },
+  '구성원을 눌러 신고하거나 차단할 수 있어요. 차단한 사람의 사진과 댓글은 나에게만 보이지 않아요.': { en: 'Tap a member to report or block them. Photos and comments from people you block are hidden only for you.', ja: 'メンバーをタップすると、報告やブロックができます。ブロックした人の写真とコメントは、あなたにだけ表示されなくなります。' },
+  '댓글': { en: 'Comments', ja: 'コメント' },
+  '댓글 남기기': { en: 'Add a comment…', ja: 'コメントを追加…' },
+  '보내기': { en: 'Send', ja: '送信' },
+  '아직 댓글이 없어요.\n이 사진에 얽힌 이야기를 남겨 보세요.': { en: 'No comments yet.\nShare the story behind this photo.', ja: 'まだコメントはありません。\nこの写真の思い出を書いてみましょう。' },
+  '댓글을 불러오지 못했어요.\n인터넷 연결을 확인해 주세요.': { en: 'Couldn’t load comments.\nPlease check your internet connection.', ja: 'コメントを読み込めませんでした。\nインターネット接続を確認してください。' },
+  '댓글을 남기지 못했어요': { en: 'Couldn’t post your comment', ja: 'コメントを投稿できませんでした' },
+  '댓글을 지울까요?': { en: 'Delete this comment?', ja: 'コメントを削除しますか？' },
+  '구성원 모두에게서 사라져요.': { en: 'It will be removed for every member.', ja: 'すべてのメンバーから削除されます。' },
+  '댓글 지우기': { en: 'Delete comment', ja: 'コメントを削除' },
+  '댓글을 지우지 못했어요': { en: 'Couldn’t delete the comment', ja: 'コメントを削除できませんでした' },
+  '이 댓글 신고하기': { en: 'Report this comment', ja: 'このコメントを報告' },
+  '댓글 메뉴': { en: 'Comment options', ja: 'コメントのメニュー' },
+  '구성원에게 보일 글': { en: 'Caption for members', ja: 'メンバーに見せる文章' },
+  '이 사진에 얽힌 이야기를 들려주세요': { en: 'Share the story behind this photo', ja: 'この写真の思い出を聞かせてください' },
+  '내 메모 가져오기': { en: 'Use my note', ja: '自分のメモを使う' },
+  '개인 메모는 나만 봐요. 여기에 쓴 글만 구성원 모두에게 보여요.': { en: 'Your notes are only for you. Only what you write here is shown to every member.', ja: 'メモは自分だけが見られます。ここに書いた文章だけがメンバー全員に表示されます。' },
+  '올리기': { en: 'Post', ja: '投稿' },
+  '글 지우기': { en: 'Remove caption', ja: '文章を削除' },
+  '글을 올리지 못했어요': { en: 'Couldn’t post the caption', ja: '文章を投稿できませんでした' },
+  '눌러서 구성원에게 이야기를 들려주세요': { en: 'Tap to tell everyone the story', ja: 'タップしてみんなに思い出を伝えましょう' },
   '차단한 사람 목록을 불러오지 못했어요.': { en: 'Couldn’t load the people you’ve blocked.', ja: 'ブロックした人の一覧を読み込めませんでした。' },
 };
 
@@ -573,6 +593,33 @@ export function addedBy(language: AppLanguage, name: string) {
   if (language === 'en') return `Added by ${name}`;
   if (language === 'ja') return `${name}さんが追加`;
   return `${name}님이 담았어요`;
+}
+
+/**
+ * 공유 앨범 구성원 이름. 사용자가 정한 이름은 그대로 두고, 나간 사람에게 서버가 붙인 '나간 구성원'만 번역한다
+ * (이름이 '나'·'가족'처럼 번역 표의 문구와 같아도 바뀌지 않게).
+ */
+export function memberName(language: AppLanguage, name: string) {
+  return name === '나간 구성원' ? localizeText(language, name) : name;
+}
+
+/** 사진에 달린 댓글 수 (크게 보기의 댓글 버튼). */
+export function commentCount(language: AppLanguage, count: number) {
+  if (language === 'en') return count === 1 ? '1 comment' : `${count} comments`;
+  if (language === 'ja') return `コメント${count}件`;
+  return `댓글 ${count}개`;
+}
+
+/** 댓글을 남긴 때. 일주일이 지나면 날짜로 보여 준다. */
+export function timeAgo(language: AppLanguage, iso: string) {
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (minutes < 1) return { ko: '방금', en: 'Just now', ja: 'たった今' }[language];
+  if (minutes < 60) return { ko: `${minutes}분 전`, en: `${minutes} min ago`, ja: `${minutes}分前` }[language];
+  if (hours < 24) return { ko: `${hours}시간 전`, en: hours === 1 ? '1 hr ago' : `${hours} hrs ago`, ja: `${hours}時間前` }[language];
+  if (days < 7) return { ko: `${days}일 전`, en: days === 1 ? 'Yesterday' : `${days} days ago`, ja: `${days}日前` }[language];
+  return formatShortDate(iso);
 }
 
 export function selectionSummary(language: AppLanguage, count: number) {
