@@ -21,6 +21,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { showAdPrivacyOptions, useAds } from '@/lib/ads';
 import { useCloudState } from '@/lib/cloud/engine';
 import { type Account, useCloudSession } from '@/lib/cloud/session';
+import { registerPushToken } from '@/lib/cloud/push';
 import { formatFullDate } from '@/lib/dates';
 import { openLegalDocument } from '@/lib/legal';
 import { LANGUAGE_LABELS, useTranslation } from '@/lib/i18n';
@@ -64,7 +65,10 @@ export default function SettingsScreen() {
         text: `${LANGUAGE_LABELS[option]}${option === language ? ' ✓' : ''}`,
         onPress: () => {
           // 저장 실패 시 Provider가 이전 언어로 되돌린다. 시트 동작에서 미처리 Promise는 남기지 않는다.
-          void setLanguage(option).catch(() => {});
+          // 서버가 보내는 알림 문구도 새 언어로 받게 다시 알린다.
+          void setLanguage(option)
+            .then(() => registerPushToken({ ask: false }))
+            .catch(() => {});
         },
       })),
       { text: t('cancel'), style: 'cancel' as const },

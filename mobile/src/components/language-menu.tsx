@@ -6,6 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { APP_LANGUAGES } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
+import { registerPushToken } from '@/lib/cloud/push';
 import { LANGUAGE_LABELS, useTranslation } from '@/lib/i18n';
 
 type Anchor = { top: number; right: number };
@@ -64,7 +65,10 @@ export function LanguageMenu() {
                   onPress={() => {
                     close();
                     // 저장 실패 시 Provider가 이전 언어로 되돌린다.
-                    void setLanguage(option).catch(() => {});
+                    // 서버가 보내는 알림 문구도 새 언어로 받게 다시 알린다.
+                    void setLanguage(option)
+                      .then(() => registerPushToken({ ask: false }))
+                      .catch(() => {});
                   }}
                   style={({ pressed }) => [styles.item, pressed && { backgroundColor: theme.backgroundElement }]}>
                   <ThemedText localize={false} type={selected ? 'smallBold' : 'small'} themeColor={selected ? 'text' : 'textSecondary'}>

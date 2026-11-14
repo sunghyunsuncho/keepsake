@@ -7,7 +7,7 @@ import { isAccountDb, keepAccountSpace, retireAccountSpace } from '@/db/spaces';
 import { pushDeviceLinks, relinkFromLibrary, restoreDeviceLinks } from '@/lib/cloud/device-links';
 import { adoptPhotosWithoutAlbum, countPendingUploads, releaseUnwantedPhotos, uploadPending } from '@/lib/cloud/photos';
 import { clearPurchasesUser, setPurchasesUser } from '@/lib/cloud/purchases';
-import { registerPushToken } from '@/lib/cloud/push';
+import { registerPushToken, unregisterPushToken } from '@/lib/cloud/push';
 import { refreshSharedItems } from '@/lib/cloud/shared';
 import {
   ACCOUNT_UNAVAILABLE,
@@ -147,8 +147,9 @@ async function runOnce(db: SQLiteDatabase, onlyIfLocalChanges: boolean) {
       if (savedKey !== null) await resetAccountSpace(db);
       await setSetting(db, 'cloud_account_key', accountKey);
     }
-    if (!pushTokenChecked && subscription.status !== 'none') {
-      // 토큰은 바뀔 수 있으므로 앱을 실행할 때마다 한 번 알린다 (권한은 구독 직후에만 묻는다).
+    if (!pushTokenChecked) {
+      // 토큰은 바뀔 수 있으므로 앱을 실행할 때마다 한 번 알린다. 구독하지 않은 공유 앨범 구성원도 댓글 알림을 받는다.
+      // 권한은 여기서 묻지 않는다 (구독하거나 공유 앨범을 쓰기 시작할 때 묻는다).
       pushTokenChecked = true;
       registerPushToken({ ask: false });
     }
@@ -271,6 +272,12 @@ setSessionLostHandler(async (userId, accountGone) => {
 
 /** 로그아웃. Local로 돌아간다. 계정 공간은 기기에 남아 다시 로그인하면 이어서 쓴다. */
 export async function signOut() {
+  // 세션이 남아 있을 때 이 기기를 계정의 알림에서 뺀다 (로그아웃한 휴대폰에 그 계정의 댓글 알림이 오지 않게).
+  await unregisterPushToken();
+  await endSession();
+}
+
+async function endSession() {
   // 도는 동기화를 먼저 끝낸다. 세션을 지우면 쓰던 공간이 바뀐다.
   pauses++;
   try {
@@ -300,5 +307,6 @@ export async function deleteAccount() {
   } finally {
     pauses--;
   }
-  await signOut();
+  // 계정과 함께 서버의 기기 등록도 지워졌다.
+  await endSession();
 }
