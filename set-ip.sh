@@ -1,6 +1,6 @@
 #!/bin/bash
 # 실기기 테스트용으로 로컬 주소를 이 맥의 LAN IP로 바꾼다.
-#   mobile/.env   EXPO_PUBLIC_API_URL  → http://<IP>:API_PORT
+#   mobile/.env   EXPO_PUBLIC_LOCAL_API_URL  → http://<IP>:API_PORT  (개발 번들만 쓴다)
 #   backend/.env  R2_ENDPOINT_URL      → http://<IP>:S3_PORT  (presigned 사진 URL을 휴대폰이 열 수 있게)
 #
 # ./set-ip.sh           -- LAN IP로 변경 (Wi-Fi가 바뀌면 다시 실행)
@@ -65,11 +65,11 @@ PYEOF
 
 API_URL="http://${HOST}:${API_PORT}"
 S3_URL="http://${HOST}:${S3_PORT}"
-MOBILE_CHANGED=$(set_env "$MOBILE_ENV" EXPO_PUBLIC_API_URL "$API_URL")
+MOBILE_CHANGED=$(set_env "$MOBILE_ENV" EXPO_PUBLIC_LOCAL_API_URL "$API_URL")
 BACKEND_CHANGED=$(set_env "$BACKEND_ENV" R2_ENDPOINT_URL "$S3_URL")
 
 echo -e "${BOLD}완료${RESET}"
-echo -e "  mobile/.env   ${GREEN}EXPO_PUBLIC_API_URL=${API_URL}${RESET}"
+echo -e "  mobile/.env   ${GREEN}EXPO_PUBLIC_LOCAL_API_URL=${API_URL}${RESET}"
 echo -e "  backend/.env  ${GREEN}R2_ENDPOINT_URL=${S3_URL}${RESET}"
 
 if [ -z "$MOBILE_CHANGED" ] && [ -z "$BACKEND_CHANGED" ]; then

@@ -67,13 +67,14 @@ npx eas-cli@latest build --profile development --platform ios      # 또는 andr
 ```
 
 빌드된 앱을 기기에 설치한 뒤 `make mobile`로 개발 서버에 연결한다.
-API 주소(`mobile/.env`의 `EXPO_PUBLIC_API_URL`):
+개발 중(Metro 번들)에는 언제나 로컬 서버를 쓴다. 주소는 `mobile/.env`의 `EXPO_PUBLIC_LOCAL_API_URL`이고,
+`EXPO_PUBLIC_API_URL`(EAS 환경 변수, `eas env:pull`로 받은 `.env.local` 포함)은 개발 중에는 보지 않는다:
 
 - iOS 시뮬레이터: `http://localhost:18020` 그대로 (`./set-ip.sh --local`)
 - Android 에뮬레이터: `http://10.0.2.2:18020` (에뮬레이터 안의 localhost는 에뮬레이터 자신)
 - 실기기: `./set-ip.sh` — Mac의 LAN IP로 API 주소와 `backend/.env`의 `R2_ENDPOINT_URL`을 함께 바꾼다 (Cloud 사진의 presigned URL을 휴대폰이 열 수 있어야 하므로)
 
-`.env`는 git에 올라가지 않으므로 EAS 클라우드 빌드에는 포함되지 않는다. preview·production 빌드의 API 주소는 서버를 배포할 때(Phase 2) `eas.json`의 `env`나 EAS 환경 변수로 지정한다.
+`.env`는 git에 올라가지 않으므로 EAS 클라우드 빌드에는 포함되지 않는다. preview·production 빌드의 API 주소는 EAS 환경 변수 `EXPO_PUBLIC_API_URL`로 지정한다.
 
 ## Cloud 백업 (Phase 2)
 
