@@ -346,6 +346,43 @@ export async function transferOwner(albumId: string, userId: string) {
   return album;
 }
 
+export type ReportReason = components['schemas']['ReportRequest']['reason'];
+export type BlockedUser = components['schemas']['BlockedUserOut'];
+
+/** 사진(itemId)이나 구성원(userId)을 신고한다. 운영자가 보고 사진을 빼거나 구성원을 내보낸다. */
+export async function reportShared(
+  albumId: string,
+  target: { itemId: string } | { userId: string },
+  reason: ReportReason,
+) {
+  unwrap(
+    await cloudApi.POST('/shared-albums/{album_id}/reports', {
+      params: { path: { album_id: albumId } },
+      body: { ...('itemId' in target ? { item_id: target.itemId } : { user_id: target.userId }), reason },
+    }),
+  );
+}
+
+/** 이 앨범에서 만난 사람을 차단한다. 그 사람이 담은 사진은 모든 공유 앨범에서 나에게 보이지 않는다. */
+export async function blockUser(albumId: string, userId: string) {
+  unwrap(
+    await cloudApi.POST('/shared-albums/{album_id}/blocks', {
+      params: { path: { album_id: albumId } },
+      body: { user_id: userId },
+    }),
+  );
+  notifyChange();
+}
+
+export async function unblockUser(userId: string) {
+  unwrap(await cloudApi.DELETE('/shared-albums/blocks/{user_id}', { params: { path: { user_id: userId } } }));
+  notifyChange();
+}
+
+export async function listBlockedUsers() {
+  return unwrap(await cloudApi.GET('/shared-albums/blocks')).users;
+}
+
 type SharedVariant = SharedItem['stored_variants'][number];
 
 async function sharedItemDownload(albumId: string, itemId: string, variant: SharedVariant) {

@@ -8,6 +8,7 @@ import { AllocationPicker } from '@/components/allocation-picker';
 import { Button } from '@/components/button';
 import { PhotoQualityPicker } from '@/components/photo-quality';
 import { RelationPicker } from '@/components/relation-picker';
+import { chooseReportReason, confirmBlock, unblock } from '@/components/report-block';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -228,12 +229,14 @@ function MembersSection({ album }: { album: SharedAlbumDetail }) {
   const { language } = useTranslation();
   const admin = album.role === 'admin';
 
+  // 관리자는 역할·소유자·내보내기를, 누구나 신고·차단을 고른다.
   const manage = (member: SharedMember) => {
     const makeAdmin = member.role !== 'admin';
-    // 선택지가 4개까지라 시트로 연다 (안드로이드 Alert는 버튼을 3개까지만 보여 준다).
+    const person = { albumId: album.id, userId: member.user_id, name: member.display_name };
+    // 선택지가 많아 시트로 연다 (안드로이드 Alert는 버튼을 3개까지만 보여 준다).
     showActionSheet(member.display_name, undefined, [
       // 관리자는 여럿 둘 수 있다. 소유자는 관리자에서 해제할 수 없다.
-      ...(!member.is_owner
+      ...(admin && !member.is_owner
         ? [
             {
               text: makeAdmin ? '관리자로 지정' : '관리자에서 해제',
@@ -244,7 +247,7 @@ function MembersSection({ album }: { album: SharedAlbumDetail }) {
             },
           ]
         : []),
-      ...(album.is_owner
+      ...(admin && album.is_owner
         ? [
             {
               text: '소유자 넘기기',
@@ -279,9 +282,13 @@ function MembersSection({ album }: { album: SharedAlbumDetail }) {
             },
           ]
         : []),
-      ...(!member.is_owner
+      ...(admin && !member.is_owner
         ? [{ text: '앨범에서 내보내기', style: 'destructive' as const, onPress: () => confirmRemoval(album, member, () => {}) }]
         : []),
+      { text: '신고하기', onPress: () => chooseReportReason(person) },
+      member.blocked
+        ? { text: '차단 풀기', onPress: () => unblock(member.user_id) }
+        : { text: '차단하기', style: 'destructive' as const, onPress: () => confirmBlock(person) },
       { text: '취소', style: 'cancel' },
     ]);
   };
@@ -290,7 +297,7 @@ function MembersSection({ album }: { album: SharedAlbumDetail }) {
     <Section title={{ ko: `구성원 ${album.members.length}명`, en: `Members (${album.members.length})`, ja: `メンバー ${album.members.length}人` }[language]}>
       <View style={[styles.list, { borderColor: theme.border }]}>
         {album.members.map((member, index) => {
-          const canManage = admin && !member.is_me;
+          const canManage = !member.is_me;
           return (
             <Pressable
               key={member.user_id}
@@ -328,6 +335,13 @@ function MembersSection({ album }: { album: SharedAlbumDetail }) {
                   }`}
                 </ThemedText>
               </View>
+              {member.blocked && (
+                <View style={[styles.badge, { backgroundColor: theme.backgroundElement }]}>
+                  <ThemedText type="small" themeColor="textSecondary" style={{ fontWeight: 700 }}>
+                    차단함
+                  </ThemedText>
+                </View>
+              )}
               {(member.is_owner || member.role === 'admin') && (
                 <View style={[styles.badge, { backgroundColor: theme.backgroundElement }]}>
                   <ThemedText type="small" style={{ color: theme.accent, fontWeight: 700 }}>
@@ -343,6 +357,9 @@ function MembersSection({ album }: { album: SharedAlbumDetail }) {
       <ThemedText type="small" themeColor="textSecondary">
         관리자는 여러 명 둘 수 있어요. 관리자는 모든 사진을 빼고 구성원과 앨범을 관리하고, 구성원은 자기가 담은 사진만 뺄 수
         있어요. 소유자는 관리자 중 한 명으로, 이 앨범을 자기 요금제의 공유 앨범 수로 세요.
+      </ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">
+        구성원을 눌러 신고하거나 차단할 수 있어요. 차단한 사람의 사진은 나에게만 보이지 않아요.
       </ThemedText>
     </Section>
   );

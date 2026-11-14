@@ -3,7 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { CloudArrowUpIcon, FileTextIcon, FlagIcon, GlobeSimpleIcon, ImageSquareIcon, LightbulbIcon, ListChecksIcon, ShieldCheckIcon, SignInIcon, UserIcon } from 'phosphor-react-native';
+import { CloudArrowUpIcon, FileTextIcon, FlagIcon, GlobeSimpleIcon, ProhibitIcon, ImageSquareIcon, LightbulbIcon, ListChecksIcon, ShieldCheckIcon, SignInIcon, UserIcon } from 'phosphor-react-native';
 
 import { AccountRows, CloudLibraryRows, RecordBackupRows } from '@/components/cloud-section';
 import { showActionSheet } from '@/components/action-sheet';
@@ -96,6 +96,8 @@ export default function SettingsScreen() {
 
         {session && (
           <SettingsSection title={t('account')}>
+            {/* 공유 앨범에서 차단한 사람. 앨범을 나간 사람의 차단도 여기서 푼다. */}
+            <SettingsRow label={t('blockedUsers')} icon={ProhibitIcon} onPress={() => router.push('/blocked-users')} />
             <AccountRows />
           </SettingsSection>
         )}

@@ -87,6 +87,7 @@ function AppStack() {
       <Stack.Screen name="plans" options={{ title: title.plans, presentation: 'modal', header: ModalHeader }} />
       <Stack.Screen name="notifications" options={{ title: title.notifications, header: StackHeader }} />
       <Stack.Screen name="open-source-licenses" options={{ title: title.licenses, header: StackHeader }} />
+      <Stack.Screen name="blocked-users" options={{ title: title.blocked, header: StackHeader }} />
       <Stack.Screen name="cloud-albums/new" options={{ title: title.newAlbum, presentation: 'modal', header: ModalHeader }} />
       <Stack.Screen name="cloud-import" options={{ title: title.import, presentation: 'modal', header: ModalHeader }} />
       <Stack.Screen name="shared-albums/join" options={{ title: title.join, presentation: 'modal', header: ModalHeader }} />

@@ -313,6 +313,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/shared-albums/blocks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Blocks */
+        get: operations["shared_albums_list_blocks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/blocks/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Unblock */
+        delete: operations["shared_albums_unblock"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/shared-albums/invites/{code}": {
         parameters: {
             query?: never;
@@ -455,6 +489,47 @@ export interface paths {
         get: operations["shared_albums_leave_preview"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/{album_id}/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report
+         * @description 사진이나 구성원을 신고한다. 운영자가 관리자 화면에서 보고 사진을 빼거나 구성원을 내보낸다.
+         */
+        post: operations["shared_albums_report"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/{album_id}/blocks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Block
+         * @description 이 앨범에서 만난 사람을 차단한다. 그 사람이 담은 사진은 모든 공유 앨범에서 나에게 보이지
+         *     않는다.
+         */
+        post: operations["shared_albums_block"];
         delete?: never;
         options?: never;
         head?: never;
@@ -647,6 +722,28 @@ export interface components {
             over_capacity: boolean;
             /** Cleanup After */
             cleanup_after: string | null;
+        };
+        /** BlockList */
+        BlockList: {
+            /** Users */
+            users: components["schemas"]["BlockedUserOut"][];
+        };
+        /** BlockRequest */
+        BlockRequest: {
+            /** User Id */
+            user_id: string;
+        };
+        /** BlockedUserOut */
+        BlockedUserOut: {
+            /** User Id */
+            user_id: string;
+            /** Display Name */
+            display_name: string | null;
+            /**
+             * Blocked At
+             * Format: date-time
+             */
+            blocked_at: string;
         };
         /**
          * ContributorOut
@@ -858,6 +955,8 @@ export interface components {
             joined_at: string;
             /** Is Me */
             is_me: boolean;
+            /** Blocked */
+            blocked: boolean;
         };
         /** MyItemRow */
         MyItemRow: {
@@ -936,6 +1035,20 @@ export interface components {
         RemoveMyItemsResponse: {
             /** Removed */
             removed: number;
+        };
+        /** ReportRequest */
+        ReportRequest: {
+            /** Item Id */
+            item_id?: string | null;
+            /** User Id */
+            user_id?: string | null;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "sexual" | "violence" | "harassment" | "spam" | "other";
+            /** Detail */
+            detail?: string | null;
         };
         /** SessionResponse */
         SessionResponse: {
@@ -1783,6 +1896,55 @@ export interface operations {
             };
         };
     };
+    shared_albums_list_blocks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockList"];
+                };
+            };
+        };
+    };
+    shared_albums_unblock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     shared_albums_preview_invite: {
         parameters: {
             query?: never;
@@ -2125,6 +2287,72 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LeavePreview"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_block: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlockRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

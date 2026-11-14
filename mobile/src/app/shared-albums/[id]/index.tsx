@@ -25,6 +25,7 @@ import { AlbumNameSheet } from '@/components/album-name-sheet';
 import { Button } from '@/components/button';
 import { GalleryHeader, TileRow } from '@/components/gallery';
 import { PHOTO_QUALITY, PhotoQualityBadge } from '@/components/photo-quality';
+import { chooseReportReason, confirmBlock, type ReportTarget } from '@/components/report-block';
 import { SharedItemPhoto } from '@/components/shared-item-photo';
 import { SharedStoryCard } from '@/components/shared-story-card';
 import { HeaderButton } from '@/components/stack-header';
@@ -752,7 +753,10 @@ function Chip({ label, selected, onPress }: { label: string; selected: boolean; 
   );
 }
 
-/** 전체 화면으로 옆으로 넘겨 본다. 아래에 누가 언제 담았는지와, 뺄 수 있으면 [앨범에서 빼기]를 둔다. */
+/**
+ * 전체 화면으로 옆으로 넘겨 본다. 아래에 누가 언제 담았는지와, 뺄 수 있으면 [앨범에서 빼기]를 둔다.
+ * 다른 사람이 담은 사진은 신고하거나 담은 사람을 차단할 수 있다 (차단하면 그 사람의 사진이 목록에서 빠져 닫는다).
+ */
 function SharedViewer({
   albumId,
   albumQuality,
@@ -803,6 +807,21 @@ function SharedViewer({
         },
       ],
     );
+  };
+
+  const reportOrBlock = (target: SharedItem) => {
+    // 나간 구성원은 서버가 '나간 구성원'으로 보낸다. 문구에 넣기 전에 번역한다.
+    const name = localizeText(language, target.author_name);
+    const person: ReportTarget = { albumId, userId: target.author_id, name, itemId: target.id };
+    showActionSheet('신고 또는 차단', undefined, [
+      { text: '이 사진 신고하기', onPress: () => chooseReportReason(person, onClose) },
+      {
+        text: { ko: `${name}님 차단하기`, en: `Block ${name}`, ja: `${name}さんをブロック` }[language],
+        style: 'destructive',
+        onPress: () => confirmBlock(person, onClose),
+      },
+      { text: '취소', style: 'cancel' },
+    ]);
   };
 
   // 화질은 사진마다 하나라 구성원 모두 같은 파일을 본다. 빼기처럼 올린 사람이나 관리자만 바꾼다.
@@ -919,6 +938,16 @@ function SharedViewer({
                 </ThemedText>
               </Pressable>
             </View>
+            {!item.is_mine && (
+              <Pressable
+                onPress={() => reportOrBlock(item)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={localizeText(language, '신고 또는 차단')}
+                style={styles.viewerAction}>
+                <Ionicons name="flag-outline" size={22} color="#fff" />
+              </Pressable>
+            )}
             {item.can_delete &&
               (removing ? (
                 <ActivityIndicator color="#fff" />

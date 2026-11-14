@@ -43,6 +43,7 @@ const copy = {
     version: '버전',
     contact: '문의',
     openSource: '오픈소스 라이선스',
+    blockedUsers: '차단한 사람',
     close: '닫기',
     reminder: '고르기 알림', reminderFrequency: '알림 빈도', reminderTime: '알림 시각', allowNotifications: '알림 허용하기',
     howToUse: '앱 사용법', plansGuide: '이용 등급 안내', comparePlans: '등급별로 비교하기', skip: '건너뛰기', next: '다음', getStarted: '시작하기',
@@ -56,7 +57,7 @@ const copy = {
     welcomeLightText: '남기지 않은 사진은 정리 후보로 모여 한 번에 지울 수 있어요. 고르기 알림을 켜 두면 사진이 쌓이기 전에 알려드려요.',
   },
   en: {
-    language: 'Language', chooseLanguage: 'Choose language', cancel: 'Cancel', deviceLibrary: 'Device Library', secureLibrary: 'Secure Library', choosePhotos: 'Choose Photos', settings: 'Settings', account: 'Account', helpAndInfo: 'Help & Information', terms: 'Terms of Service', privacy: 'Privacy Policy', startPoint: 'Reset review point', notSet: 'Not set', savedRecords: 'Saved memories', resetStartTitle: 'Reset your review starting point?', resetStartMessage: 'Your saved photos will stay. You can choose a new starting point the next time you open Choose Photos.', reset: 'Reset', signedInAccount: 'Signed-in account', notSignedIn: 'Not signed in', localOnly: 'Your memories are only on this device', signInAndBackup: 'Sign in to back up your memories', subscribeAgain: 'Subscribe again', startSecureStorage: 'Start secure photo storage', loadingAccount: 'Loading account information', secureStorageActive: 'Secure storage · Your photos are protected', subscriptionEnded: 'Subscription ended · Download photos for 30 days', freeBackup: 'Free · Your memories are backed up', version: 'Version', contact: 'Contact', openSource: 'Open-source licenses', close: 'Close', reminder: 'Photo review reminders', reminderFrequency: 'Reminder frequency', reminderTime: 'Reminder time', allowNotifications: 'Allow notifications',
+    language: 'Language', chooseLanguage: 'Choose language', cancel: 'Cancel', deviceLibrary: 'Device Library', secureLibrary: 'Secure Library', choosePhotos: 'Choose Photos', settings: 'Settings', account: 'Account', helpAndInfo: 'Help & Information', terms: 'Terms of Service', privacy: 'Privacy Policy', startPoint: 'Reset review point', notSet: 'Not set', savedRecords: 'Saved memories', resetStartTitle: 'Reset your review starting point?', resetStartMessage: 'Your saved photos will stay. You can choose a new starting point the next time you open Choose Photos.', reset: 'Reset', signedInAccount: 'Signed-in account', notSignedIn: 'Not signed in', localOnly: 'Your memories are only on this device', signInAndBackup: 'Sign in to back up your memories', subscribeAgain: 'Subscribe again', startSecureStorage: 'Start secure photo storage', loadingAccount: 'Loading account information', secureStorageActive: 'Secure storage · Your photos are protected', subscriptionEnded: 'Subscription ended · Download photos for 30 days', freeBackup: 'Free · Your memories are backed up', version: 'Version', contact: 'Contact', openSource: 'Open-source licenses', blockedUsers: 'Blocked people', close: 'Close', reminder: 'Photo review reminders', reminderFrequency: 'Reminder frequency', reminderTime: 'Reminder time', allowNotifications: 'Allow notifications',
     howToUse: 'How to use', plansGuide: 'Plans', comparePlans: 'Compare plans', skip: 'Skip', next: 'Next', getStarted: 'Get started',
     welcomePickTitle: 'Keep only the photos that matter',
     welcomePickText: 'Choose Photos shows your photos in order, starting after the last one you reviewed. Keep the few you will still want to see in ten years, and jot down the story behind them.',
@@ -68,7 +69,7 @@ const copy = {
     welcomeLightText: 'Photos you did not keep become cleanup candidates you can delete all at once. Turn on reminders and we will nudge you before photos pile up.',
   },
   ja: {
-    language: '言語', chooseLanguage: '言語を選択', cancel: 'キャンセル', deviceLibrary: 'デバイスのライブラリ', secureLibrary: 'セキュアライブラリ', choosePhotos: '写真を選ぶ', settings: '設定', account: 'アカウント', helpAndInfo: 'ヘルプと情報', terms: '利用規約', privacy: 'プライバシーポリシー', startPoint: '見直し位置をリセット', notSet: '未設定', savedRecords: '残した思い出', resetStartTitle: '開始位置をリセットしますか？', resetStartMessage: '残した写真はそのままです。次に「写真を選ぶ」を開いたときに、あらためて決められます。', reset: 'リセット', signedInAccount: 'ログイン中のアカウント', notSignedIn: 'ログインしていません', localOnly: '思い出はこのデバイスにのみ保存されています', signInAndBackup: 'ログインして思い出をバックアップ', subscribeAgain: '再登録する', startSecureStorage: '写真の安全保管を始める', loadingAccount: 'アカウント情報を読み込んでいます', secureStorageActive: '安全保管 · 写真も保管されています', subscriptionEnded: 'サブスクリプション終了 · 30日間写真をダウンロードできます', freeBackup: '無料 · 思い出をバックアップしています', version: 'バージョン', contact: 'お問い合わせ', openSource: 'オープンソースライセンス', close: '閉じる', reminder: '写真を選ぶリマインダー', reminderFrequency: 'リマインダーの頻度', reminderTime: '通知時刻', allowNotifications: '通知を許可する',
+    language: '言語', chooseLanguage: '言語を選択', cancel: 'キャンセル', deviceLibrary: 'デバイスのライブラリ', secureLibrary: 'セキュアライブラリ', choosePhotos: '写真を選ぶ', settings: '設定', account: 'アカウント', helpAndInfo: 'ヘルプと情報', terms: '利用規約', privacy: 'プライバシーポリシー', startPoint: '見直し位置をリセット', notSet: '未設定', savedRecords: '残した思い出', resetStartTitle: '開始位置をリセットしますか？', resetStartMessage: '残した写真はそのままです。次に「写真を選ぶ」を開いたときに、あらためて決められます。', reset: 'リセット', signedInAccount: 'ログイン中のアカウント', notSignedIn: 'ログインしていません', localOnly: '思い出はこのデバイスにのみ保存されています', signInAndBackup: 'ログインして思い出をバックアップ', subscribeAgain: '再登録する', startSecureStorage: '写真の安全保管を始める', loadingAccount: 'アカウント情報を読み込んでいます', secureStorageActive: '安全保管 · 写真も保管されています', subscriptionEnded: 'サブスクリプション終了 · 30日間写真をダウンロードできます', freeBackup: '無料 · 思い出をバックアップしています', version: 'バージョン', contact: 'お問い合わせ', openSource: 'オープンソースライセンス', blockedUsers: 'ブロックした人', close: '閉じる', reminder: '写真を選ぶリマインダー', reminderFrequency: 'リマインダーの頻度', reminderTime: '通知時刻', allowNotifications: '通知を許可する',
     howToUse: '使い方', plansGuide: 'プランのご案内', comparePlans: 'プランを比較', skip: 'スキップ', next: '次へ', getStarted: 'はじめる',
     welcomePickTitle: '残したい写真だけを選ぶ',
     welcomePickText: '「写真を選ぶ」では、前回見た写真の次から順番に表示します。十年後も見返したい数枚だけを選んで残し、そのときの思い出をメモしておきましょう。',
@@ -491,6 +492,28 @@ const legacyText: Record<string, { en: string; ja: string }> = {
   '바꾸면 남은 기간을 새 요금제에 맞춰 계산해요. 해지나 작은 요금제로 바꾸기는 스토어의 구독 관리에서 할 수 있어요.': { en: 'When you switch, the rest of your current period is prorated to the new plan. To cancel or move to a smaller plan, use your store’s subscription settings.', ja: '切り替えると、残りの期間は新しいプランに合わせて計算されます。解約や小さいプランへの変更は、ストアのサブスクリプション管理から行えます。' },
   // 구독 안내
   '다시 구독하기': { en: 'Subscribe again', ja: '再登録する' },
+  // 신고·차단
+  '신고하기': { en: 'Report', ja: '報告する' },
+  '어떤 문제가 있나요?': { en: 'What’s the problem?', ja: 'どのような問題がありますか？' },
+  '신고한 내용은 운영팀만 보고, 상대방에게는 알리지 않아요.': { en: 'Only our team sees your report. The other person isn’t told.', ja: '報告内容は運営チームだけが確認し、相手には知らせません。' },
+  '성적인 콘텐츠': { en: 'Sexual content', ja: '性的なコンテンツ' },
+  '폭력적이거나 위험한 콘텐츠': { en: 'Violent or dangerous content', ja: '暴力的または危険なコンテンツ' },
+  '괴롭힘이나 혐오': { en: 'Harassment or hate', ja: '嫌がらせやヘイト' },
+  '스팸': { en: 'Spam', ja: 'スパム' },
+  '기타': { en: 'Something else', ja: 'その他' },
+  '신고했어요': { en: 'Report sent', ja: '報告しました' },
+  '신고하지 못했어요': { en: 'Couldn’t send the report', ja: '報告できませんでした' },
+  '차단하지 못했어요': { en: 'Couldn’t block', ja: 'ブロックできませんでした' },
+  '차단을 풀지 못했어요': { en: 'Couldn’t unblock', ja: 'ブロックを解除できませんでした' },
+  '차단하기': { en: 'Block', ja: 'ブロックする' },
+  '차단 풀기': { en: 'Unblock', ja: 'ブロックを解除' },
+  '차단함': { en: 'Blocked', ja: 'ブロック中' },
+  '이 사진 신고하기': { en: 'Report this photo', ja: 'この写真を報告' },
+  '신고 또는 차단': { en: 'Report or block', ja: '報告またはブロック' },
+  '차단한 사람이 없어요.': { en: 'You haven’t blocked anyone.', ja: 'ブロックした人はいません。' },
+  '차단한 사람이 공유 앨범에 담은 사진은 모든 공유 앨범에서 나에게 보이지 않아요. 상대방에게는 알리지 않고, 다른 구성원에게는 그대로 보여요.': { en: 'Photos that people you’ve blocked add to shared albums are hidden from you in every shared album. They aren’t told, and other members still see them.', ja: 'ブロックした人が共有アルバムに追加した写真は、すべての共有アルバムであなたにだけ表示されなくなります。相手には知らせず、ほかのメンバーには通常どおり表示されます。' },
+  '구성원을 눌러 신고하거나 차단할 수 있어요. 차단한 사람의 사진은 나에게만 보이지 않아요.': { en: 'Tap a member to report or block them. Photos from people you block are hidden only for you.', ja: 'メンバーをタップすると、報告やブロックができます。ブロックした人の写真は、あなたにだけ表示されなくなります。' },
+  '차단한 사람 목록을 불러오지 못했어요.': { en: 'Couldn’t load the people you’ve blocked.', ja: 'ブロックした人の一覧を読み込めませんでした。' },
 };
 
 export function localizeText(language: AppLanguage, value: string) {
@@ -557,10 +580,10 @@ export function selectionSummary(language: AppLanguage, count: number) {
   if (language === 'ja') return `${photoCount(language, count)}を選択中`;
   return `${photoCount(language, count)} 골랐어요`;
 }
-export const ROUTE_TITLES: Record<AppLanguage, Record<'day' | 'map' | 'cleanup' | 'cloud' | 'notifications' | 'licenses' | 'newAlbum' | 'import' | 'join' | 'manageAlbum' | 'plans' | 'signIn', string>> = {
-  ko: { day: '지난 사진', map: '앨범 지도', cleanup: '사진 정리', cloud: '안전 보관', notifications: '알림', licenses: '오픈소스 라이선스', newAlbum: '새 안전 앨범', import: '기기 기록 백업하기', join: '공유 앨범 참여', manageAlbum: '앨범 관리', plans: '이용 등급 안내', signIn: '로그인' },
-  en: { day: 'Past Photos', map: 'Album Map', cleanup: 'Clean Up Photos', cloud: 'Secure Storage', notifications: 'Notifications', licenses: 'Open-source Licenses', newAlbum: 'New Secure Album', import: 'Back Up Device Memories', join: 'Join Shared Album', manageAlbum: 'Manage Album', plans: 'Plans', signIn: 'Sign In' },
-  ja: { day: '過去の写真', map: 'アルバムマップ', cleanup: '写真を整理', cloud: '安全保管', notifications: '通知', licenses: 'オープンソースライセンス', newAlbum: '新しいセキュアアルバム', import: 'デバイスの思い出をバックアップ', join: '共有アルバムに参加', manageAlbum: 'アルバムを管理', plans: 'プランのご案内', signIn: 'ログイン' },
+export const ROUTE_TITLES: Record<AppLanguage, Record<'day' | 'map' | 'cleanup' | 'cloud' | 'notifications' | 'licenses' | 'newAlbum' | 'import' | 'join' | 'manageAlbum' | 'plans' | 'signIn' | 'blocked', string>> = {
+  ko: { day: '지난 사진', map: '앨범 지도', cleanup: '사진 정리', cloud: '안전 보관', notifications: '알림', licenses: '오픈소스 라이선스', newAlbum: '새 안전 앨범', import: '기기 기록 백업하기', join: '공유 앨범 참여', manageAlbum: '앨범 관리', plans: '이용 등급 안내', signIn: '로그인', blocked: '차단한 사람' },
+  en: { day: 'Past Photos', map: 'Album Map', cleanup: 'Clean Up Photos', cloud: 'Secure Storage', notifications: 'Notifications', licenses: 'Open-source Licenses', newAlbum: 'New Secure Album', import: 'Back Up Device Memories', join: 'Join Shared Album', manageAlbum: 'Manage Album', plans: 'Plans', signIn: 'Sign In', blocked: 'Blocked People' },
+  ja: { day: '過去の写真', map: 'アルバムマップ', cleanup: '写真を整理', cloud: '安全保管', notifications: '通知', licenses: 'オープンソースライセンス', newAlbum: '新しいセキュアアルバム', import: 'デバイスの思い出をバックアップ', join: '共有アルバムに参加', manageAlbum: 'アルバムを管理', plans: 'プランのご案内', signIn: 'ログイン', blocked: 'ブロックした人' },
 };
 type I18n = { language: AppLanguage; t: (key: TranslationKey) => string; setLanguage: (language: AppLanguage) => Promise<void> };
 const I18nContext = createContext<I18n | null>(null);
