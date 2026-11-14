@@ -115,7 +115,12 @@ export interface paths {
         /** Register Device */
         put: operations["account_register_device"];
         post?: never;
-        delete?: never;
+        /**
+         * Unregister Device
+         * @description 로그아웃할 때 앱이 부른다. 그 뒤로 이 기기는 이 계정의 알림(댓글·유예)을 받지 않는다.
+         *     이미 다른 계정으로 옮겨 간 토큰은 건드리지 않는다.
+         */
+        delete: operations["account_unregister_device"];
         options?: never;
         head?: never;
         patch?: never;
@@ -506,7 +511,8 @@ export interface paths {
         put?: never;
         /**
          * Report
-         * @description 사진이나 구성원을 신고한다. 운영자가 관리자 화면에서 보고 사진을 빼거나 구성원을 내보낸다.
+         * @description 사진·댓글이나 구성원을 신고한다. 운영자가 관리자 화면에서 보고 사진·댓글을 빼거나 구성원을
+         *     내보낸다.
          */
         post: operations["shared_albums_report"];
         delete?: never;
@@ -558,6 +564,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/shared-albums/{album_id}/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Item
+         * @description 올린 사람이나 관리자만 뺀다. 올린 사람의 기록은 남는다.
+         */
+        delete: operations["shared_albums_remove_item"];
+        options?: never;
+        head?: never;
+        /**
+         * Set Item Caption
+         * @description 구성원에게 보일 글은 담은 사람만 쓴다 (관리자는 문제가 있으면 사진을 뺀다).
+         */
+        patch: operations["shared_albums_set_item_caption"];
+        trace?: never;
+    };
     "/shared-albums/{album_id}/items/quality": {
         parameters: {
             query?: never;
@@ -576,26 +606,6 @@ export interface paths {
          */
         post: operations["shared_albums_set_item_quality"];
         delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/shared-albums/{album_id}/items/{item_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove Item
-         * @description 올린 사람이나 관리자만 뺀다. 올린 사람의 기록은 남는다.
-         */
-        delete: operations["shared_albums_remove_item"];
         options?: never;
         head?: never;
         patch?: never;
@@ -657,6 +667,50 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/{album_id}/items/{item_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Comments
+         * @description 오래된 댓글부터. 내가 차단한 사람의 댓글은 빼고 보낸다.
+         */
+        get: operations["shared_albums_list_comments"];
+        put?: never;
+        /**
+         * Create Comment
+         * @description 구성원이면 누구나 남긴다 (구독은 묻지 않는다). 사진을 담은 사람에게 알린다.
+         */
+        post: operations["shared_albums_create_comment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shared-albums/{album_id}/items/{item_id}/comments/{comment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Comment
+         * @description 쓴 사람이나 관리자만 지운다.
+         */
+        delete: operations["shared_albums_delete_comment"];
         options?: never;
         head?: never;
         patch?: never;
@@ -745,6 +799,31 @@ export interface components {
              */
             blocked_at: string;
         };
+        /** CommentList */
+        CommentList: {
+            /** Comments */
+            comments: components["schemas"]["CommentOut"][];
+        };
+        /** CommentOut */
+        CommentOut: {
+            /** Id */
+            id: string;
+            /** Author Id */
+            author_id: string;
+            /** Author Name */
+            author_name: string;
+            /** Is Mine */
+            is_mine: boolean;
+            /** Can Delete */
+            can_delete: boolean;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /**
          * ContributorOut
          * @description 사진을 담은 사람별 사용량. 용량이 넘쳤을 때 누구의 사진을 정리할지 고르는 데 쓴다.
@@ -762,6 +841,11 @@ export interface components {
             item_count: number;
             /** Bytes */
             bytes: number;
+        };
+        /** CreateCommentRequest */
+        CreateCommentRequest: {
+            /** Body */
+            body: string;
         };
         /** CreateSharedAlbumRequest */
         CreateSharedAlbumRequest: {
@@ -834,6 +918,12 @@ export interface components {
              * @enum {string}
              */
             platform: "ios" | "android";
+            /**
+             * Language
+             * @default ko
+             * @enum {string}
+             */
+            language: "ko" | "en" | "ja";
         };
         /** DownloadResponse */
         DownloadResponse: {
@@ -892,6 +982,11 @@ export interface components {
             /** Already Member */
             already_member: boolean;
         };
+        /** ItemCaptionRequest */
+        ItemCaptionRequest: {
+            /** Caption */
+            caption?: string | null;
+        };
         /** ItemQualityRequest */
         ItemQualityRequest: {
             /** Item Ids */
@@ -910,6 +1005,15 @@ export interface components {
              * @default 0
              */
             allocated_bytes: number;
+        };
+        /** LatestComment */
+        LatestComment: {
+            /** Author Name */
+            author_name: string;
+            /** Is Mine */
+            is_mine: boolean;
+            /** Body */
+            body: string;
         };
         /**
          * LeavePreview
@@ -1040,6 +1144,8 @@ export interface components {
         ReportRequest: {
             /** Item Id */
             item_id?: string | null;
+            /** Comment Id */
+            comment_id?: string | null;
             /** User Id */
             user_id?: string | null;
             /**
@@ -1213,6 +1319,11 @@ export interface components {
             photo_quality: "original" | "display";
             /** Quality Chosen */
             quality_chosen: boolean;
+            /** Caption */
+            caption: string | null;
+            /** Comment Count */
+            comment_count: number;
+            latest_comment: components["schemas"]["LatestComment"] | null;
             /**
              * Added At
              * Format: date-time
@@ -1518,6 +1629,35 @@ export interface operations {
                 "application/json": components["schemas"]["DeviceRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    account_unregister_device: {
+        parameters: {
+            query: {
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             204: {
@@ -2433,18 +2573,49 @@ export interface operations {
             };
         };
     };
-    shared_albums_set_item_quality: {
+    shared_albums_remove_item: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 album_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_set_item_caption: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+                item_id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ItemQualityRequest"];
+                "application/json": components["schemas"]["ItemCaptionRequest"];
             };
         };
         responses: {
@@ -2466,17 +2637,20 @@ export interface operations {
             };
         };
     };
-    shared_albums_remove_item: {
+    shared_albums_set_item_quality: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 album_id: string;
-                item_id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemQualityRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {
@@ -2581,6 +2755,105 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DownloadResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_list_comments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_create_comment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCommentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shared_albums_delete_comment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                album_id: string;
+                item_id: string;
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

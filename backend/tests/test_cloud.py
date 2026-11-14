@@ -711,7 +711,7 @@ def test_grace_notifications_then_deletion_after_30_days(client, db):
 
     sent: list[str] = []
 
-    def notify(_db, target, title, _body):
+    def notify(_db, target, title, _body, **_k):
         if target == user_id:
             sent.append(title)
 
@@ -1135,7 +1135,7 @@ def test_jobs_skip_accounts_being_deleted(client, db, monkeypatch):
     give_final_notice(db, user_id, expired_at)
     sent: list[str] = []
 
-    jobs.notify_grace(db, expired_at, lambda _db, target, _title, _body: sent.append(target))
+    jobs.notify_grace(db, expired_at, lambda _db, target, _title, _body, **_k: sent.append(target))
     jobs.expire_grace(db, expired_at + timedelta(days=31))
 
     assert user_id not in sent
@@ -1150,24 +1150,37 @@ def test_purge_waits_after_final_notice_when_jobs_were_stopped(client, db):
 
     sent: list[str] = []
 
-    def notify(_db, target, title, _body):
+    def notify(_db, target, title, _body, **_k):
         if target == user_id:
             sent.append(title)
 
     jobs.run(db, now=stopped_until, notify=notify)
 
-    assert sent == [jobs.GRACE_MESSAGES["d1"][0]]
+    assert sent == [jobs.GRACE_MESSAGES["d1"]["ko"][0]]
     assert prefix_keys(user_id) != []  # 경고를 보낸 실행에서는 지우지 않는다
 
-    jobs.run(db, now=stopped_until + jobs.FINAL_NOTICE_WAIT, notify=lambda *_a: None)
+    jobs.run(db, now=stopped_until + jobs.FINAL_NOTICE_WAIT, notify=lambda *_a, **_k: None)
 
     assert prefix_keys(user_id) == []
+
+
+def test_grace_notice_is_sent_in_every_app_language(client, db):
+    user_id, expired_at = expired_user_with_photo(client)
+    sent: list[dict] = []
+    jobs.notify_grace(
+        db,
+        expired_at,
+        lambda _db, target, title, body, translations=None: sent.append(dict(translations)),
+    )
+    assert sent[0]["ko"] == jobs.GRACE_MESSAGES["expired"]["ko"]
+    assert sent[0]["en"][0] == "Your Secure Storage subscription has ended"
+    assert sent[0]["ja"][0] == "安全保管のサブスクリプションが終了しました"
 
 
 def test_failed_push_is_sent_again_and_delays_purge(client, db):
     user_id, expired_at = expired_user_with_photo(client)
 
-    def down(*_args):
+    def down(*_args, **_kwargs):
         raise jobs.PushFailed("expo")
 
     jobs.notify_grace(db, expired_at + timedelta(days=29, hours=12), down)
@@ -1257,10 +1270,10 @@ def test_final_notice_wait_applies_even_long_after_grace(client, db):
     user_id, expired_at = expired_user_with_photo(client)
     resumed = expired_at + timedelta(days=40)
 
-    jobs.run(db, now=resumed, notify=lambda *_a: None)
+    jobs.run(db, now=resumed, notify=lambda *_a, **_k: None)
     assert prefix_keys(user_id) != []
 
-    jobs.run(db, now=resumed + jobs.FINAL_NOTICE_WAIT, notify=lambda *_a: None)
+    jobs.run(db, now=resumed + jobs.FINAL_NOTICE_WAIT, notify=lambda *_a, **_k: None)
     assert prefix_keys(user_id) == []
 
 
@@ -1300,7 +1313,7 @@ def test_purge_runs_in_one_job_with_real_clock_and_removes_orphans(client, db):
         Body=b"x",
     )
 
-    jobs.run(db, notify=lambda *_a: None)
+    jobs.run(db, notify=lambda *_a, **_k: None)
 
     # 고른 실행의 시각보다 먼저 올라온 객체만 지우므로, 시계가 앞선 객체는 다음 실행에서 지워진다.
     jobs.sweep_storage_cleanups(db, datetime.now(UTC) + timedelta(minutes=5))

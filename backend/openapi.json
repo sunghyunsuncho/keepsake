@@ -168,15 +168,20 @@
         ],
         "summary": "Register Device",
         "operationId": "account_register_device",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/DeviceRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "204": {
@@ -192,12 +197,48 @@
               }
             }
           }
-        },
+        }
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Unregister Device",
+        "description": "로그아웃할 때 앱이 부른다. 그 뒤로 이 기기는 이 계정의 알림(댓글·유예)을 받지 않는다.\n이미 다른 계정으로 옮겨 간 토큰은 건드리지 않는다.",
+        "operationId": "account_unregister_device",
         "security": [
           {
             "HTTPBearer": []
           }
-        ]
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 255,
+              "pattern": "^Expo(nent)?PushToken\\[.+\\]$",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/sync/push": {
@@ -1360,7 +1401,7 @@
           "shared_albums"
         ],
         "summary": "Report",
-        "description": "사진이나 구성원을 신고한다. 운영자가 관리자 화면에서 보고 사진을 빼거나 구성원을 내보낸다.",
+        "description": "사진·댓글이나 구성원을 신고한다. 운영자가 관리자 화면에서 보고 사진·댓글을 빼거나 구성원을\n내보낸다.",
         "operationId": "shared_albums_report",
         "security": [
           {
@@ -1570,6 +1611,114 @@
         }
       }
     },
+    "/shared-albums/{album_id}/items/{item_id}": {
+      "patch": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Set Item Caption",
+        "description": "구성원에게 보일 글은 담은 사람만 쓴다 (관리자는 문제가 있으면 사진을 뺀다).",
+        "operationId": "shared_albums_set_item_caption",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemCaptionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Remove Item",
+        "description": "올린 사람이나 관리자만 뺀다. 올린 사람의 기록은 남는다.",
+        "operationId": "shared_albums_remove_item",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/shared-albums/{album_id}/items/quality": {
       "post": {
         "tags": [
@@ -1604,56 +1753,6 @@
             }
           }
         },
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/shared-albums/{album_id}/items/{item_id}": {
-      "delete": {
-        "tags": [
-          "shared_albums"
-        ],
-        "summary": "Remove Item",
-        "description": "올린 사람이나 관리자만 뺀다. 올린 사람의 기록은 남는다.",
-        "operationId": "shared_albums_remove_item",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "album_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Album Id"
-            }
-          },
-          {
-            "name": "item_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Item Id"
-            }
-          }
-        ],
         "responses": {
           "204": {
             "description": "Successful Response"
@@ -1830,6 +1929,187 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shared-albums/{album_id}/items/{item_id}/comments": {
+      "get": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "List Comments",
+        "description": "오래된 댓글부터. 내가 차단한 사람의 댓글은 빼고 보낸다.",
+        "operationId": "shared_albums_list_comments",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Create Comment",
+        "description": "구성원이면 누구나 남긴다 (구독은 묻지 않는다). 사진을 담은 사람에게 알린다.",
+        "operationId": "shared_albums_create_comment",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCommentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shared-albums/{album_id}/items/{item_id}/comments/{comment_id}": {
+      "delete": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Delete Comment",
+        "description": "쓴 사람이나 관리자만 지운다.",
+        "operationId": "shared_albums_delete_comment",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Comment Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -2085,6 +2365,66 @@
         ],
         "title": "BlockedUserOut"
       },
+      "CommentList": {
+        "properties": {
+          "comments": {
+            "items": {
+              "$ref": "#/components/schemas/CommentOut"
+            },
+            "type": "array",
+            "title": "Comments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "comments"
+        ],
+        "title": "CommentList"
+      },
+      "CommentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "author_id": {
+            "type": "string",
+            "title": "Author Id"
+          },
+          "author_name": {
+            "type": "string",
+            "title": "Author Name"
+          },
+          "is_mine": {
+            "type": "boolean",
+            "title": "Is Mine"
+          },
+          "can_delete": {
+            "type": "boolean",
+            "title": "Can Delete"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "author_id",
+          "author_name",
+          "is_mine",
+          "can_delete",
+          "body",
+          "created_at"
+        ],
+        "title": "CommentOut"
+      },
       "ContributorOut": {
         "properties": {
           "author_id": {
@@ -2130,6 +2470,21 @@
         ],
         "title": "ContributorOut",
         "description": "사진을 담은 사람별 사용량. 용량이 넘쳤을 때 누구의 사진을 정리할지 고르는 데 쓴다."
+      },
+      "CreateCommentRequest": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Body"
+          }
+        },
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "title": "CreateCommentRequest"
       },
       "CreateSharedAlbumRequest": {
         "properties": {
@@ -2317,6 +2672,16 @@
               "android"
             ],
             "title": "Platform"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "ko",
+              "en",
+              "ja"
+            ],
+            "title": "Language",
+            "default": "ko"
           }
         },
         "type": "object",
@@ -2457,6 +2822,24 @@
         ],
         "title": "InvitePreview"
       },
+      "ItemCaptionRequest": {
+        "properties": {
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          }
+        },
+        "type": "object",
+        "title": "ItemCaptionRequest"
+      },
       "ItemQualityRequest": {
         "properties": {
           "item_ids": {
@@ -2519,6 +2902,29 @@
           "display_name"
         ],
         "title": "JoinRequest"
+      },
+      "LatestComment": {
+        "properties": {
+          "author_name": {
+            "type": "string",
+            "title": "Author Name"
+          },
+          "is_mine": {
+            "type": "boolean",
+            "title": "Is Mine"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          }
+        },
+        "type": "object",
+        "required": [
+          "author_name",
+          "is_mine",
+          "body"
+        ],
+        "title": "LatestComment"
       },
       "LeavePreview": {
         "properties": {
@@ -2856,6 +3262,18 @@
               }
             ],
             "title": "Item Id"
+          },
+          "comment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 36
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment Id"
           },
           "user_id": {
             "anyOf": [
@@ -3351,6 +3769,31 @@
             "type": "boolean",
             "title": "Quality Chosen"
           },
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "comment_count": {
+            "type": "integer",
+            "title": "Comment Count"
+          },
+          "latest_comment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LatestComment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "added_at": {
             "type": "string",
             "format": "date-time",
@@ -3376,6 +3819,9 @@
           "stored_variants",
           "photo_quality",
           "quality_chosen",
+          "caption",
+          "comment_count",
+          "latest_comment",
           "added_at"
         ],
         "title": "SharedItemOut"

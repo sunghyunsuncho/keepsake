@@ -22,11 +22,18 @@ from app.models.cloud import (
     SharedAlbum,
     SharedAlbumItem,
     SharedAlbumMember,
+    SharedItemComment,
     SyncRecord,
     Usage,
     User,
 )
-from app.shared import items_of_author, lock_album_row, remove_items, remove_member_rows
+from app.shared import (
+    items_of_author,
+    lock_album_row,
+    remove_comments_of_author,
+    remove_items,
+    remove_member_rows,
+)
 from app.storage import r2_client
 
 # 운영자용 회원 관리 화면. 모바일 앱이 쓰지 않으므로 OpenAPI 스키마(앱 TS 타입)에 넣지 않는다.
@@ -182,9 +189,9 @@ def set_access(user_id: str, body: AccessRequest, db: DbSession) -> dict[str, st
 # ---------------------------------------------------------------------------
 # 신고 (공유 앨범의 사진·구성원)
 
-# dismiss: 문제없음 / remove_item: 신고한 사진을 앨범에서 뺀다 / remove_member: 신고당한 사람을
-# 앨범에서 내보내고 그 사람이 담은 사진도 모두 뺀다
-ReportAction = Literal["dismiss", "remove_item", "remove_member"]
+# dismiss: 문제없음 / remove_item: 신고한 사진을 앨범에서 뺀다 / remove_comment: 신고한 댓글을
+# 지운다 / remove_member: 신고당한 사람을 앨범에서 내보내고 그 사람이 담은 사진·댓글도 모두 뺀다
+ReportAction = Literal["dismiss", "remove_item", "remove_comment", "remove_member"]
 
 
 class AdminReport(BaseModel):
@@ -208,6 +215,12 @@ class AdminReport(BaseModel):
     reported_items: int
     item_id: str | None
     item_in_album: bool
+    # 신고한 사진에 담은 사람이 쓴 글 (지금 값)
+    item_caption: str | None
+    comment_id: str | None
+    # 신고할 때의 댓글 내용 (지워진 뒤에도 남는다)
+    comment_body: str | None
+    comment_exists: bool
     # 신고한 사진의 표시용 파일 (10분 동안 열린다). 파일이 지워졌으면 없다.
     photo_url: str | None
 
@@ -284,7 +297,17 @@ def list_reports(db: DbSession, state: Literal["open", "closed"] = "open") -> Ad
         ):
             author_items[(album_id, author_id)] = count
     item_ids = {r.item_id for r in reports if r.item_id}
-    items = set(db.scalars(select(SharedAlbumItem.id).where(SharedAlbumItem.id.in_(item_ids))))
+    items = dict(
+        db.execute(
+            select(SharedAlbumItem.id, SharedAlbumItem.caption).where(
+                SharedAlbumItem.id.in_(item_ids)
+            )
+        ).all()
+    )
+    comment_ids = {r.comment_id for r in reports if r.comment_id}
+    comments = set(
+        db.scalars(select(SharedItemComment.id).where(SharedItemComment.id.in_(comment_ids)))
+    )
     photo_urls = _photo_urls(db, list(reports))
     return AdminReportList(
         open=db.scalar(select(func.count()).where(ContentReport.status == "open")) or 0,
@@ -309,6 +332,10 @@ def list_reports(db: DbSession, state: Literal["open", "closed"] = "open") -> Ad
                 reported_items=author_items.get((r.album_id, r.reported_user_id), 0),
                 item_id=r.item_id,
                 item_in_album=r.item_id in items,
+                item_caption=items.get(r.item_id) if r.item_id else None,
+                comment_id=r.comment_id,
+                comment_body=r.comment_body,
+                comment_exists=r.comment_id in comments,
                 photo_url=photo_urls.get(r.id),
             )
             for r in reports
@@ -318,8 +345,8 @@ def list_reports(db: DbSession, state: Literal["open", "closed"] = "open") -> Ad
 
 @router.post("/reports/{report_id}/resolve")
 def resolve_report(report_id: str, body: ResolveRequest, db: DbSession) -> dict[str, str]:
-    """신고를 처리한다. 같은 사진(remove_item)이나 같은 사람(remove_member)에 대한 다른 신고도 함께
-    닫는다.
+    """신고를 처리한다. 같은 사진(remove_item)·댓글(remove_comment)이나 같은 사람(remove_member)에
+    대한 다른 신고도 함께 닫는다.
 
     이미 처리한 신고는 다시 처리하지 않는다 (나중에 다시 들어온 구성원을 옛 신고로 내보내지 않게).
     잠그는 순서는 앨범 → 신고다. 같은 앨범의 신고 두 건을 동시에 처리해도 서로 기다리다 멈추지
@@ -330,6 +357,8 @@ def resolve_report(report_id: str, body: ResolveRequest, db: DbSession) -> dict[
         raise HTTPException(status.HTTP_404_NOT_FOUND, "report not found")
     if body.action == "remove_item" and found.item_id is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "not a photo report")
+    if body.action == "remove_comment" and found.comment_id is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "not a comment report")
     album = lock_album_row(db, found.album_id) if body.action != "dismiss" else None
     report = db.scalar(
         select(ContentReport)
@@ -344,13 +373,19 @@ def resolve_report(report_id: str, body: ResolveRequest, db: DbSession) -> dict[
         if album is not None and db.get(SharedAlbumItem, report.item_id) is not None:
             remove_items(db, album, [report.item_id])  # type: ignore[list-item]
         same = same | (ContentReport.item_id == report.item_id)
+    elif body.action == "remove_comment":
+        comment = db.get(SharedItemComment, report.comment_id)
+        if comment is not None:
+            db.delete(comment)
+        same = same | (ContentReport.comment_id == report.comment_id)
     elif body.action == "remove_member":
         if album is not None:
             if db.get(SharedAlbumMember, (album.id, report.reported_user_id)) is not None:
                 remove_member_rows(db, album, report.reported_user_id, keep_photos=False)
             else:
-                # 사진을 남기고 나간 사람이면 남긴 사진만 뺀다.
+                # 사진을 남기고 나간 사람이면 남긴 사진·댓글만 뺀다.
                 remove_items(db, album, items_of_author(db, album.id, report.reported_user_id))
+                remove_comments_of_author(db, album.id, report.reported_user_id)
         same = same | (
             (ContentReport.album_id == report.album_id)
             & (ContentReport.reported_user_id == report.reported_user_id)

@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -61,6 +61,7 @@ class AccountResponse(BaseModel):
 class DeviceRequest(BaseModel):
     expo_push_token: str = Field(max_length=255, pattern=r"^Expo(nent)?PushToken\[.+\]$")
     platform: Literal["ios", "android"]
+    language: Literal["ko", "en", "ja"] = "ko"
 
 
 def account_response(db: DbSession, user: User) -> AccountResponse:
@@ -122,11 +123,33 @@ def register_device(payload: DeviceRequest, user: CurrentUser, db: DbSession) ->
     lock_active_user(db, user.id)
     device = db.get(Device, payload.expo_push_token)
     if device is None:
-        db.add(Device(token=payload.expo_push_token, user_id=user.id, platform=payload.platform))
+        db.add(
+            Device(
+                token=payload.expo_push_token,
+                user_id=user.id,
+                platform=payload.platform,
+                language=payload.language,
+            )
+        )
     else:
         # 같은 기기에서 다른 계정으로 로그인하면 토큰의 주인을 옮긴다.
         device.user_id, device.platform = user.id, payload.platform
+        device.language = payload.language
     db.commit()
+
+
+@router.delete("/devices", status_code=status.HTTP_204_NO_CONTENT)
+def unregister_device(
+    user: CurrentUser,
+    db: DbSession,
+    token: str = Query(max_length=255, pattern=r"^Expo(nent)?PushToken\[.+\]$"),
+) -> None:
+    """로그아웃할 때 앱이 부른다. 그 뒤로 이 기기는 이 계정의 알림(댓글·유예)을 받지 않는다.
+    이미 다른 계정으로 옮겨 간 토큰은 건드리지 않는다."""
+    device = db.get(Device, token)
+    if device is not None and device.user_id == user.id:
+        db.delete(device)
+        db.commit()
 
 
 @router.delete("", status_code=status.HTTP_204_NO_CONTENT)

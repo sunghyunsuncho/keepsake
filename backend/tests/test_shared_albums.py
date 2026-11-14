@@ -758,12 +758,18 @@ def test_when_nobody_funds_the_album_everyones_photos_are_released(client, db):
     assert detail["storage"]["capacity_bytes"] == 0 and detail["storage"]["bytes_total"] == 15
 
     sent: list[tuple[str, str]] = []
-    notify = lambda _db, user_id, title, body: sent.append((user_id, body))  # noqa: E731
+    english: list[str] = []
+
+    def notify(_db, user_id, _title, body, translations):
+        sent.append((user_id, body))
+        english.append(translations["en"][1])
+
     now = datetime.now(UTC)
     jobs.expire_unfunded_albums(db, now, notify)
     # 먼저 남은 구성원에게 기한을 알리고, 그동안 사진은 그대로 볼 수 있다.
     assert sorted(user_id for user_id, _ in sent) == sorted([b_id, c_id])
     assert "30일 뒤" in sent[0][1]
+    assert "deleted in 30 days" in english[0]
     assert len(items(client, c, created["id"])) == 3
 
     jobs.expire_unfunded_albums(db, now + timedelta(days=31), notify)
@@ -789,8 +795,8 @@ def test_subscribed_uploader_keeps_files_when_an_unfunded_album_is_released(clie
         f"/shared-albums/{created['id']}/members/{a_id}", params={"photos": "keep"}, headers=a
     )
     now = datetime.now(UTC)
-    jobs.expire_unfunded_albums(db, now, lambda *args: None)
-    jobs.expire_unfunded_albums(db, now + timedelta(days=31), lambda *args: None)
+    jobs.expire_unfunded_albums(db, now, lambda *_a, **_k: None)
+    jobs.expire_unfunded_albums(db, now + timedelta(days=31), lambda *_a, **_k: None)
     # 아직 구독 중인 사람의 파일은 지우지 않고 그 사람의 개인 사용량으로 돌아간다.
     assert object_statuses(db, a_id) == ["stored"]
     assert usage(client, a)["bytes_total"] == 5
@@ -806,12 +812,12 @@ def test_funding_again_during_the_notice_keeps_the_album(client, db):
     store(client, a, moment_id, "display", b"12345")
     lapse(client, db, a_id)
     now = datetime.now(UTC)
-    jobs.expire_unfunded_albums(db, now, lambda *args: None)
+    jobs.expire_unfunded_albums(db, now, lambda *_a, **_k: None)
     # B가 용량을 나눠 주면 정리하지 않는다.
     client.patch(
         f"/shared-albums/{created['id']}/members/{b_id}", headers=b, json={"allocated_bytes": 10}
     )
-    jobs.expire_unfunded_albums(db, now + timedelta(days=31), lambda *args: None)
+    jobs.expire_unfunded_albums(db, now + timedelta(days=31), lambda *_a, **_k: None)
     assert len(items(client, b, created["id"])) == 1
     db.expire_all()
     assert db.get(SharedAlbum, created["id"]).unfunded_since is None
@@ -887,12 +893,14 @@ def test_album_is_flagged_when_funding_disappears_not_by_scanning(client, db):
 
     sent: list[str] = []
     now = datetime.now(UTC)
-    jobs.expire_unfunded_albums(db, now, lambda _db, user_id, *_: sent.append(user_id))
+    jobs.expire_unfunded_albums(db, now, lambda _db, user_id, *_, **__: sent.append(user_id))
     assert sent == [b_id]
     # 기한은 알린 때부터 센다. 그 전에는 다시 알리지도, 지우지도 않는다.
-    jobs.expire_unfunded_albums(db, now + timedelta(days=29), lambda *_: sent.append("again"))
+    jobs.expire_unfunded_albums(
+        db, now + timedelta(days=29), lambda *_a, **_k: sent.append("again")
+    )
     assert sent == [b_id] and len(items(client, b, created["id"])) == 1
-    jobs.expire_unfunded_albums(db, now + timedelta(days=31), lambda *_: None)
+    jobs.expire_unfunded_albums(db, now + timedelta(days=31), lambda *_a, **_k: None)
     assert items(client, b, created["id"]) == []
 
 
@@ -904,9 +912,13 @@ def test_account_deletion_tells_admins_how_many_photos_left(client, monkeypatch)
     for _ in range(2):
         add(client, member, created["id"], push_moment(client, member))
     sent: list[tuple[str, str]] = []
-    monkeypatch.setattr(
-        jobs, "send_push", lambda _db, user_id, _t, body: sent.append((user_id, body))
-    )
+    english: list[str] = []
+
+    def send_push(_db, user_id, _title, body, translations):
+        sent.append((user_id, body))
+        english.append(translations["en"][1])
+
+    monkeypatch.setattr(jobs, "send_push", send_push)
     owner_id = album(client, owner, created["id"])["members"][0]["user_id"]
 
     assert client.delete("/account", headers=member).status_code == 204
@@ -915,4 +927,8 @@ def test_account_deletion_tells_admins_how_many_photos_left(client, monkeypatch)
             owner_id,
             "'우리 가족'에 사진을 담았던 구성원이 계정을 지워, 그 사람이 담은 사진 2장이 빠졌어요.",
         )
+    ]
+    assert english == [
+        "A member who added photos to “우리 가족” deleted their account, "
+        "so the 2 photos they added were removed."
     ]

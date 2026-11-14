@@ -264,6 +264,8 @@ class SharedAlbumItem(Base):
     # 파일은 사진마다 하나라 구성원 모두 같은 파일을 보고, 앨범 사용량도 사진마다 남기는 파일로
     # 센다 (app/shared.py item_quality).
     photo_quality: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # 담은 사람이 구성원에게 보여 줄 글. 개인 메모와 따로 둔다 (메모는 구성원에게 보내지 않는다).
+    caption: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 담을 때의 촬영 정보. 메모와 장소는 개인 기록이라 옮기지 않는다.
     media_type: Mapped[str] = mapped_column(String(8), default="photo")
     duration: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -277,6 +279,26 @@ class SharedAlbumItem(Base):
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # 이 항목이 앨범 화질로 쓰는 파일 크기 (저장된 것만). 앨범 bytes_total의 한 몫이다.
     bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
+class SharedItemComment(Base):
+    """공유 앨범 사진에 구성원이 남긴 댓글. 그 사진을 볼 수 있는 구성원끼리만 보인다.
+
+    사진이 빠지거나 앨범이 지워지면 함께 지운다. 앨범을 나가도 남기지만(이름은 '나간 구성원'),
+    사진까지 빼고 나가거나 내보내지면 그 사람이 이 앨범에 남긴 댓글도 지운다.
+    """
+
+    __tablename__ = "shared_item_comments"
+    __table_args__ = (Index("ix_shared_item_comments_item", "item_id", "created_at"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    album_id: Mapped[str] = mapped_column(
+        ForeignKey("shared_albums.id", ondelete="CASCADE"), index=True
+    )
+    item_id: Mapped[str] = mapped_column(ForeignKey("shared_album_items.id", ondelete="CASCADE"))
+    # 계정을 지우면 그 사람의 댓글도 지운다. 인덱스가 없으면 계정을 지울 때 댓글 전체를 훑는다.
+    author_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class UserBlock(Base):
@@ -317,12 +339,16 @@ class ContentReport(Base):
     # 사진을 신고했을 때만 있다. moment_id는 항목이 빠진 뒤에도 운영자가 파일을 찾게 둔다.
     item_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     moment_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # 댓글을 신고했을 때만 있다. 댓글이 지워진 뒤에도 운영자가 내용을 보게 신고할 때의 글을
+    # 옮겨 둔다.
+    comment_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    comment_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 'sexual' | 'violence' | 'harassment' | 'spam' | 'other'
     reason: Mapped[str] = mapped_column(String(16))
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     # open: 처리 전 / closed: 처리함 (action에 무엇을 했는지)
     status: Mapped[str] = mapped_column(String(16), default="open")
-    # 'dismiss' | 'remove_item' | 'remove_member'
+    # 'dismiss' | 'remove_item' | 'remove_comment' | 'remove_member'
     action: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -356,12 +382,14 @@ class Usage(Base):
 
 
 class Device(Base):
-    """유예 알림을 보낼 Expo 푸시 토큰."""
+    """유예 알림·댓글 알림을 보낼 Expo 푸시 토큰."""
 
     __tablename__ = "devices"
     token: Mapped[str] = mapped_column(String(255), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     platform: Mapped[str] = mapped_column(String(16))
+    # 앱 언어 ('ko' | 'en' | 'ja'). 댓글 알림처럼 서버가 만드는 문구를 이 언어로 보낸다.
+    language: Mapped[str] = mapped_column(String(8), default="ko", server_default="ko")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )

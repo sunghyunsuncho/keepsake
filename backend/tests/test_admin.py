@@ -73,7 +73,7 @@ def test_complimentary_access_survives_an_expired_store_subscription(client, db,
         jobs.run(
             db,
             now=expired_at + timedelta(days=days),
-            notify=lambda _db, target, title, _body: target == user_id and sent.append(title),
+            notify=lambda _db, target, title, _body, **_k: target == user_id and sent.append(title),
         )
     db.expire_all()
     assert sent == []

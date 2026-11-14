@@ -6,8 +6,9 @@
 import logging
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from typing import Protocol
 
 import httpx
 from sqlalchemy import delete, func, select, text
@@ -73,34 +74,100 @@ GRACE_STAGES: tuple[tuple[str, timedelta | None], ...] = (
     ("d1", timedelta(days=1)),
 )
 
-GRACE_MESSAGES = {
-    "expired": (
-        "Cloud 구독이 끝났어요",
-        "30일 동안 백업한 사진을 내려받을 수 있어요. 다시 구독하면 그대로 이어져요.",
-    ),
-    "d7": ("7일 뒤 Cloud 백업이 삭제돼요", "필요한 원본은 지금 기기로 내려받아 두세요."),
-    "d1": ("곧 Cloud 백업이 삭제돼요", "필요한 원본은 지금 내려받아 두세요. 기기의 기록은 남아요."),
+# 서버가 보내는 알림 문구. 기기마다 앱 언어로 보낸다 (devices.language, send_push).
+# 언어별 (제목, 본문)이고, {} 자리는 notify_localized가 채운다.
+Messages = Mapping[str, tuple[str, str]]
+
+GRACE_MESSAGES: dict[str, Messages] = {
+    "expired": {
+        "ko": (
+            "Cloud 구독이 끝났어요",
+            "30일 동안 백업한 사진을 내려받을 수 있어요. 다시 구독하면 그대로 이어져요.",
+        ),
+        "en": (
+            "Your Secure Storage subscription has ended",
+            "You can download your backed-up photos for 30 days. "
+            "Subscribe again to pick up right where you left off.",
+        ),
+        "ja": (
+            "安全保管のサブスクリプションが終了しました",
+            "30日間、バックアップした写真をダウンロードできます。再登録すれば、そのまま続けられます。",
+        ),
+    },
+    "d7": {
+        "ko": ("7일 뒤 Cloud 백업이 삭제돼요", "필요한 원본은 지금 기기로 내려받아 두세요."),
+        "en": (
+            "Your Secure Storage backup will be deleted in 7 days",
+            "Download any originals you need to your device now.",
+        ),
+        "ja": (
+            "7日後に安全保管のバックアップが削除されます",
+            "必要なオリジナルは、今のうちにデバイスへダウンロードしておいてください。",
+        ),
+    },
+    "d1": {
+        "ko": (
+            "곧 Cloud 백업이 삭제돼요",
+            "필요한 원본은 지금 내려받아 두세요. 기기의 기록은 남아요.",
+        ),
+        "en": (
+            "Your Secure Storage backup will be deleted soon",
+            "Download any originals you need now. The memories on your device will stay.",
+        ),
+        "ja": (
+            "まもなく安全保管のバックアップが削除されます",
+            "必要なオリジナルは今すぐダウンロードしてください。デバイスの思い出は残ります。",
+        ),
+    },
 }
 
-Notifier = Callable[[Session, str, str, str], None]
+
+class Notifier(Protocol):
+    def __call__(
+        self,
+        db: Session,
+        user_id: str,
+        title: str,
+        body: str,
+        *,
+        translations: Mapping[str, tuple[str, str]] | None = None,
+    ) -> None: ...
 
 
 class PushFailed(Exception):
     """알림 서비스에 전달하지 못했다. 단계를 저장하지 않아 다음 실행 때 다시 보낸다."""
 
 
-def send_push(db: Session, user_id: str, title: str, body: str) -> None:
-    """Expo 푸시 서비스로 사용자의 모든 기기에 보낸다. 한 기기에도 전달하지 못하면 PushFailed."""
-    tokens = db.scalars(select(Device.token).where(Device.user_id == user_id)).all()
-    if not tokens:
+def send_push(
+    db: Session,
+    user_id: str,
+    title: str,
+    body: str,
+    *,
+    url: str = "/settings",
+    translations: Mapping[str, tuple[str, str]] | None = None,
+) -> None:
+    """Expo 푸시 서비스로 사용자의 모든 기기에 보낸다. 한 기기에도 전달하지 못하면 PushFailed.
+
+    url: 알림을 누르면 앱이 여는 화면.
+    translations: 기기 언어별 (제목, 본문). 없는 언어는 title·body로 보낸다.
+    """
+    devices = db.execute(
+        select(Device.token, Device.language).where(Device.user_id == user_id)
+    ).all()
+    if not devices:
         return
+    tokens = [t for t, _ in devices]
     headers = {"Content-Type": "application/json"}
     token = get_settings().expo_access_token
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    messages = [
-        {"to": t, "title": title, "body": body, "data": {"url": "/settings"}} for t in tokens
-    ]
+    messages = []
+    for device_token, language in devices:
+        text_title, text_body = (translations or {}).get(language, (title, body))
+        messages.append(
+            {"to": device_token, "title": text_title, "body": text_body, "data": {"url": url}}
+        )
     try:
         response = httpx.post(EXPO_PUSH_URL, json=messages, headers=headers, timeout=15)
         response.raise_for_status()
@@ -125,6 +192,19 @@ def send_push(db: Session, user_id: str, title: str, body: str) -> None:
     # TODO(Phase 3): 이메일 발송. 메일 서비스를 정하면 여기서 함께 보낸다.
 
 
+def notify_localized(
+    notify: Notifier, db: Session, user_id: str, messages: Messages, **values: object
+) -> None:
+    """언어별 문구에 값을 채워 보낸다. 언어를 모르는 기기에는 한국어로 보낸다.
+
+    값에 없는 자리는 쓰지 않는 언어도 있다 (예: 영어 복수형 photos)."""
+    texts = {
+        language: (title.format(**values), body.format(**values))
+        for language, (title, body) in messages.items()
+    }
+    notify(db, user_id, *texts["ko"], translations=texts)
+
+
 def notify_grace(db: Session, now: datetime, notify: Notifier = send_push) -> None:
     user_ids = db.scalars(
         select(Entitlement.user_id)
@@ -147,7 +227,7 @@ def notify_grace(db: Session, now: datetime, notify: Notifier = send_push) -> No
             if stage == entitlement.notified_stage:
                 continue
             # 놓친 단계(작업이 멈췄던 경우)는 건너뛰고 가장 가까운 단계 하나만 보낸다.
-            notify(db, user_id, *GRACE_MESSAGES[stage])
+            notify_localized(notify, db, user_id, GRACE_MESSAGES[stage])
             entitlement.notified_stage = stage
             entitlement.notified_at = now
             db.commit()
@@ -258,10 +338,22 @@ def recheck_lapsed_subscriptions(db: Session, now: datetime) -> None:
             db.rollback()
 
 
-LEFT_PHOTOS_MESSAGE = (
-    "공유 앨범의 사진이 빠졌어요",
-    "'{title}'에 사진을 담았던 구성원이 계정을 지워, 그 사람이 담은 사진 {count}장이 빠졌어요.",
-)
+LEFT_PHOTOS_MESSAGES: Messages = {
+    "ko": (
+        "공유 앨범의 사진이 빠졌어요",
+        "'{title}'에 사진을 담았던 구성원이 계정을 지워, 그 사람이 담은 사진 {count}장이 빠졌어요.",
+    ),
+    "en": (
+        "Photos were removed from a shared album",
+        "A member who added photos to “{title}” deleted their account, "
+        "so the {photos} they added {were} removed.",
+    ),
+    "ja": (
+        "共有アルバムの写真が外れました",
+        "「{title}」に写真を追加したメンバーがアカウントを削除したため、"
+        "そのメンバーが追加した写真{count}枚が外れました。",
+    ),
+}
 
 
 def notify_deleted_photos(
@@ -272,11 +364,15 @@ def notify_deleted_photos(
     for admins, title, count in notices:
         for admin_id in admins:
             try:
-                notify(
+                notify_localized(
+                    notify,
                     db,
                     admin_id,
-                    LEFT_PHOTOS_MESSAGE[0],
-                    LEFT_PHOTOS_MESSAGE[1].format(title=title, count=count),
+                    LEFT_PHOTOS_MESSAGES,
+                    title=title,
+                    count=count,
+                    photos="photo" if count == 1 else f"{count} photos",
+                    were="was" if count == 1 else "were",
                 )
                 db.commit()
             except Exception:
@@ -381,11 +477,25 @@ def clean_objects(db: Session, now: datetime) -> None:
             db.rollback()
 
 
-UNFUNDED_MESSAGE = (
-    "공유 앨범에 보관 용량이 없어요",
-    "'{title}'에 용량을 나눠 준 구성원이 없어 {days}일 뒤 사진이 지워져요. "
-    "필요한 사진은 앨범에서 기기 사진첩에 저장하거나, 구독 후 용량을 나눠 주세요.",
-)
+UNFUNDED_MESSAGES: Messages = {
+    "ko": (
+        "공유 앨범에 보관 용량이 없어요",
+        "'{title}'에 용량을 나눠 준 구성원이 없어 {days}일 뒤 사진이 지워져요. "
+        "필요한 사진은 앨범에서 기기 사진첩에 저장하거나, 구독 후 용량을 나눠 주세요.",
+    ),
+    "en": (
+        "A shared album has no storage",
+        "No one is sharing storage with “{title}”, so its photos will be deleted in {days} days. "
+        "Save the photos you want to your device library from the album, "
+        "or subscribe and share some of your storage.",
+    ),
+    "ja": (
+        "共有アルバムに保管容量がありません",
+        "「{title}」に容量を割り当てているメンバーがいないため、{days}日後に写真が削除されます。"
+        "必要な写真はアルバムからデバイスのライブラリに保存するか、"
+        "サブスクリプション後に容量を割り当ててください。",
+    ),
+}
 
 
 def expire_unfunded_albums(db: Session, now: datetime, notify: Notifier = send_push) -> None:
@@ -422,11 +532,8 @@ def expire_unfunded_albums(db: Session, now: datetime, notify: Notifier = send_p
                 db.commit()
                 for member_id in members:
                     try:
-                        notify(
-                            db,
-                            member_id,
-                            UNFUNDED_MESSAGE[0],
-                            UNFUNDED_MESSAGE[1].format(title=title, days=days),
+                        notify_localized(
+                            notify, db, member_id, UNFUNDED_MESSAGES, title=title, days=days
                         )
                         db.commit()
                     except Exception:

@@ -36,6 +36,7 @@ from app.models.cloud import (
     SharedAlbum,
     SharedAlbumItem,
     SharedAlbumMember,
+    SharedItemComment,
     SharedMoment,
     Usage,
 )
@@ -410,6 +411,15 @@ def remove_items(db: Session, album: SharedAlbum, item_ids: list[str]) -> None:
     refresh_funding(db, album)
 
 
+def remove_comments_of_author(db: Session, album_id: str, author_id: str) -> None:
+    """한 사람이 이 앨범에 남긴 댓글을 모두 지운다 (사진까지 빼고 나가거나 내보낼 때)."""
+    db.execute(
+        delete(SharedItemComment).where(
+            SharedItemComment.album_id == album_id, SharedItemComment.author_id == author_id
+        )
+    )
+
+
 def delete_album(db: Session, album: SharedAlbum) -> None:
     """앨범을 지운다 (album은 잠근 상태). 담았던 파일은 각자의 개인 사용량으로 돌아간다."""
     by_author: dict[str, set[str]] = {}
@@ -452,13 +462,14 @@ def pick_owner(db: Session, album: SharedAlbum, members: list[SharedAlbumMember]
 
 
 def remove_member_rows(db: Session, album: SharedAlbum, user_id: str, keep_photos: bool) -> None:
-    """구성원을 뺀다. 할당도 함께 빠진다. keep_photos면 그 사람이 담은 사진은 앨범에 남는다.
+    """구성원을 뺀다. 할당도 함께 빠진다. keep_photos면 그 사람이 담은 사진과 댓글은 앨범에 남는다.
 
     관리자가 남지 않으면 가장 먼저 참여한 구성원이 관리자가 되고, 소유자가 나가면 소유자를 넘긴다.
     마지막 구성원이 나가면 앨범을 지운다.
     """
     if not keep_photos:
         remove_items(db, album, items_of_author(db, album.id, user_id))
+        remove_comments_of_author(db, album.id, user_id)
     member = db.get(SharedAlbumMember, (album.id, user_id))
     if member is not None:
         db.delete(member)

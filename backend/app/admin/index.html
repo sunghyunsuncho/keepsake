@@ -265,14 +265,15 @@ function render(data) {
 }
 
 const REASON_LABEL = { sexual: '성적인 콘텐츠', violence: '폭력·위험', harassment: '괴롭힘·혐오', spam: '스팸', other: '기타' };
-const ACTION_LABEL = { dismiss: '문제없음으로 닫음', remove_item: '사진을 뺌', remove_member: '구성원을 내보내고 사진을 뺌' };
+const ACTION_LABEL = { dismiss: '문제없음으로 닫음', remove_item: '사진을 뺌', remove_comment: '댓글을 지움', remove_member: '구성원을 내보내고 사진·댓글을 뺌' };
 
 async function resolveReport(report, action, button) {
   const ask = {
     remove_item: '이 사진을 공유 앨범에서 뺄까요? 올린 사람의 개인 기록은 남아요.',
+    remove_comment: '이 댓글을 지울까요?',
     remove_member: report.still_member
-      ? `${report.reported_name || '이 사람'}을(를) 앨범에서 내보내고 담은 사진도 모두 뺄까요?`
-      : `앨범을 나간 이 사람이 남긴 사진 ${report.reported_items}장을 모두 뺄까요?`,
+      ? `${report.reported_name || '이 사람'}을(를) 앨범에서 내보내고 담은 사진과 댓글도 모두 뺄까요?`
+      : `앨범을 나간 이 사람이 남긴 사진 ${report.reported_items}장과 댓글을 모두 뺄까요?`,
     dismiss: '문제없음으로 닫을까요?',
   }[action];
   if (!confirm(ask)) return;
@@ -306,11 +307,13 @@ function renderReports(data) {
       img.referrerPolicy = 'no-referrer';
       card.append(img);
     } else {
-      card.append(text('div', report.item_id ? '사진 파일이 없어요' : '구성원 신고', 'noimg'));
+      card.append(text('div', report.item_id ? '사진 파일이 없어요' : report.comment_id ? '댓글 신고' : '구성원 신고', 'noimg'));
     }
     const body = document.createElement('div');
     body.className = 'body';
-    body.append(text('div', `${REASON_LABEL[report.reason] || report.reason} · ${report.item_id ? '사진' : '구성원'}`, 'email'));
+    body.append(text('div', `${REASON_LABEL[report.reason] || report.reason} · ${report.item_id ? '사진' : report.comment_id ? '댓글' : '구성원'}`, 'email'));
+    if (report.item_caption) body.append(text('div', `사진 글: “${report.item_caption}”`));
+    if (report.comment_id) body.append(text('div', `댓글: “${report.comment_body ?? ''}”${report.comment_exists ? '' : ' (지워짐)'}`));
     if (report.detail) body.append(text('div', `“${report.detail}”`));
     body.append(text('div', `앨범: ${report.album_title}${report.album_exists ? '' : ' (지워짐)'}`, 'small'));
     body.append(text('div', `신고당한 사람: ${report.reported_name || '(나간 구성원)'} · ${report.reported_email || '이메일 없음'}${report.still_member ? '' : ' · 앨범에 없음'}`, 'small'));
@@ -328,6 +331,7 @@ function renderReports(data) {
         actions.append(button);
       };
       if (report.item_id && report.item_in_album) add('사진 빼기', 'remove_item', 'danger');
+      if (report.comment_id && report.comment_exists) add('댓글 지우기', 'remove_comment', 'danger');
       if (report.still_member) add('구성원 내보내기', 'remove_member', 'danger');
       else if (report.reported_items > 0) add(`남긴 사진 ${report.reported_items}장 빼기`, 'remove_member', 'danger');
       add('문제없음', 'dismiss');

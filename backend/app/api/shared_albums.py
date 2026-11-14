@@ -9,23 +9,28 @@ docs/PLAN.md §0 '공유 앨범', docs/PRICING.md.
 - 소유자(관리자 중 한 명)의 요금제가 공유 앨범 수를 정한다. 관리자는 여럿일 수 있다.
 - 앨범 공간이 남아 있으면 구독하지 않은 구성원도 사진을 담는다. 보기는 로그인만 하면 된다.
 - 사진은 올린 사람이나 관리자만 뺀다.
-- 구성원은 사진이나 다른 구성원을 신고하고(운영자가 관리자 화면에서 처리한다), 차단할 수 있다.
-  차단한 사람이 담은 사진은 모든 앨범에서 나에게만 보이지 않는다.
-- 메모와 장소 이름은 개인 기록이라 다른 구성원에게 보내지 않는다. 촬영 시각·좌표·파일 종류는
+- 구성원은 사진에 댓글을 남긴다. 내 댓글은 내가, 모든 댓글은 관리자가 지운다. 사진을 담은 사람에게
+  푸시로 알린다.
+- 구성원은 사진·댓글이나 다른 구성원을 신고하고(운영자가 관리자 화면에서 처리한다), 차단할 수 있다.
+  차단한 사람이 담은 사진과 남긴 댓글은 모든 앨범에서 나에게만 보이지 않는다.
+- 메모와 장소 이름은 개인 기록이라 다른 구성원에게 보내지 않는다. 구성원에게 보일 글은 담은 사람이
+  사진마다 따로 쓴다 (caption). 촬영 시각·좌표·파일 종류는
   공유 사진의 EXIF와 지도 표시에 필요해 구성원에게 보낸다.
 """
 
+import logging
 import re
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, func, select, tuple_
 from sqlalchemy.orm import Session
 
+from app import jobs
 from app.api.deps import CurrentUser, DbSession
 from app.api.uploads import (
     DOWNLOAD_URL_TTL,
@@ -36,6 +41,7 @@ from app.api.uploads import (
 )
 from app.cloud import can_write, lock_active_user
 from app.config import get_settings
+from app.db import SessionLocal
 from app.models.cloud import (
     CloudObject,
     ContentReport,
@@ -45,6 +51,7 @@ from app.models.cloud import (
     SharedAlbumInvite,
     SharedAlbumItem,
     SharedAlbumMember,
+    SharedItemComment,
     User,
     UserBlock,
 )
@@ -74,6 +81,7 @@ from app.shared import (
 from app.shared import delete_album as delete_album_rows
 from app.storage import r2_client
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/shared-albums", tags=["shared_albums"])
 
 MAX_MEMBERS = 30
@@ -93,6 +101,13 @@ CoverMode = Literal["latest", "photo", "design"]
 DisplayName = Annotated[str, Field(min_length=1, max_length=20)]
 Allocation = Annotated[int, Field(ge=0, le=10 * 1024 * GIB)]
 ReportReason = Literal["sexual", "violence", "harassment", "spam", "other"]
+COMMENT_MAX_LENGTH = 500
+CAPTION_MAX_LENGTH = 300
+# 같은 사람이 같은 사진에 이어서 남긴 댓글은 이 시간 안이면 다시 알리지 않는다
+# (대화하듯 여러 개 남길 때).
+COMMENT_NOTIFY_QUIET = timedelta(minutes=10)
+# 알림에 보여 줄 댓글 앞부분 길이
+COMMENT_PREVIEW_LENGTH = 80
 
 
 def _non_blank(value: str) -> str:
@@ -221,6 +236,12 @@ class SharedAlbumList(BaseModel):
     suggested_allocation: int
 
 
+class LatestComment(BaseModel):
+    author_name: str
+    is_mine: bool
+    body: str
+
+
 class SharedItemOut(BaseModel):
     id: str
     author_id: str
@@ -244,6 +265,12 @@ class SharedItemOut(BaseModel):
     photo_quality: Quality
     # 사진마다 따로 고른 화질인지
     quality_chosen: bool
+    # 담은 사람이 구성원에게 보여 주려고 쓴 글 (개인 메모와 따로)
+    caption: str | None
+    # 내가 차단한 사람의 댓글은 세지 않는다
+    comment_count: int
+    # 가장 최근 댓글 (이야기 카드에 한 줄로 보여 준다)
+    latest_comment: LatestComment | None
     added_at: datetime
 
 
@@ -257,6 +284,11 @@ class AddItemsRequest(BaseModel):
     moment_ids: list[str] = Field(min_length=1, max_length=500)
     # 담는 사진에 따로 고른 화질. None이면 앨범 화질을 따른다.
     photo_quality: Quality | None = None
+
+
+class ItemCaptionRequest(BaseModel):
+    # 비우거나 None이면 글을 지운다.
+    caption: str | None = Field(default=None, max_length=CAPTION_MAX_LENGTH)
 
 
 class ItemQualityRequest(BaseModel):
@@ -324,9 +356,34 @@ class TransferOwnerRequest(BaseModel):
     user_id: str = Field(max_length=36)
 
 
+class CommentOut(BaseModel):
+    id: str
+    author_id: str
+    author_name: str
+    is_mine: bool
+    # 내 댓글이거나 내가 관리자
+    can_delete: bool
+    body: str
+    created_at: datetime
+
+
+class CommentList(BaseModel):
+    comments: list[CommentOut]
+
+
+class CreateCommentRequest(BaseModel):
+    body: str = Field(min_length=1, max_length=COMMENT_MAX_LENGTH)
+
+    @field_validator("body")
+    @classmethod
+    def required_body(cls, value: str) -> str:
+        return _non_blank(value)
+
+
 class ReportRequest(BaseModel):
-    # 사진을 신고하면 item_id, 구성원을 신고하면 user_id를 보낸다.
+    # 사진을 신고하면 item_id, 댓글을 신고하면 comment_id, 구성원을 신고하면 user_id를 보낸다.
     item_id: str | None = Field(default=None, max_length=36)
+    comment_id: str | None = Field(default=None, max_length=36)
     user_id: str | None = Field(default=None, max_length=36)
     reason: ReportReason
     detail: str | None = Field(default=None, max_length=500)
@@ -1038,26 +1095,38 @@ def remove_member(
 
 
 def _other_person(db: Session, album_id: str, user_id: str, target_id: str) -> str | None:
-    """이 앨범의 구성원이거나 사진을 남긴 다른 사람이면 그 사람의 이 앨범 이름을 준다 (나간 사람은
-    None). 아니면 404, 나 자신이면 422."""
+    """이 앨범의 구성원이거나 사진·댓글을 남긴 다른 사람이면 그 사람의 이 앨범 이름을 준다 (나간
+    사람은 None). 아니면 404, 나 자신이면 422."""
     if target_id == user_id:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "cannot target yourself")
     member = db.get(SharedAlbumMember, (album_id, target_id))
     if member is not None:
         return member.display_name
-    if not items_of_author(db, album_id, target_id):
+    commented = db.scalar(
+        select(SharedItemComment.id)
+        .where(SharedItemComment.album_id == album_id, SharedItemComment.author_id == target_id)
+        .limit(1)
+    )
+    if not items_of_author(db, album_id, target_id) and commented is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "member not found")
     return None
 
 
 @router.post("/{album_id}/reports", status_code=status.HTTP_204_NO_CONTENT)
 def report(album_id: str, payload: ReportRequest, user: CurrentUser, db: DbSession) -> None:
-    """사진이나 구성원을 신고한다. 운영자가 관리자 화면에서 보고 사진을 빼거나 구성원을 내보낸다."""
+    """사진·댓글이나 구성원을 신고한다. 운영자가 관리자 화면에서 보고 사진·댓글을 빼거나 구성원을
+    내보낸다."""
     _membership(db, album_id, user.id)
     album = db.get(SharedAlbum, album_id)
     assert album is not None
     item = None
-    if payload.item_id is not None:
+    comment = None
+    if payload.comment_id is not None:
+        comment = db.get(SharedItemComment, payload.comment_id)
+        if comment is None or comment.album_id != album_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "comment not found")
+        target_id = comment.author_id
+    elif payload.item_id is not None:
         item = db.get(SharedAlbumItem, payload.item_id)
         if item is None or item.album_id != album_id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "item not found")
@@ -1065,7 +1134,9 @@ def report(album_id: str, payload: ReportRequest, user: CurrentUser, db: DbSessi
     elif payload.user_id is not None:
         target_id = payload.user_id
     else:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "item_id or user_id is required")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "item_id, comment_id or user_id is required"
+        )
     name = _other_person(db, album_id, user.id, target_id)
     # 같은 대상을 같은 이유로 처리 전에 또 신고하면 하나만 둔다 (반복 신고로 처리 목록이 늘지 않게).
     pending = db.scalar(
@@ -1074,6 +1145,11 @@ def report(album_id: str, payload: ReportRequest, user: CurrentUser, db: DbSessi
             ContentReport.album_id == album_id,
             ContentReport.reported_user_id == target_id,
             ContentReport.item_id.is_(None) if item is None else ContentReport.item_id == item.id,
+            (
+                ContentReport.comment_id.is_(None)
+                if comment is None
+                else ContentReport.comment_id == comment.id
+            ),
             ContentReport.reason == payload.reason,
             ContentReport.status == "open",
         )
@@ -1089,6 +1165,8 @@ def report(album_id: str, payload: ReportRequest, user: CurrentUser, db: DbSessi
             reported_name=name,
             item_id=item.id if item else None,
             moment_id=item.moment_id if item else None,
+            comment_id=comment.id if comment else None,
+            comment_body=comment.body if comment else None,
             reason=payload.reason,
             detail=(payload.detail or "").strip() or None,
         )
@@ -1163,6 +1241,49 @@ def list_items(
                 _number(data.get("lat")),
                 _number(data.get("lng")),
             )
+    comment_counts: dict[str, int] = {}
+    latest: dict[str, LatestComment] = {}
+    if page:
+        visible = (
+            SharedItemComment.item_id.in_([item.id for item, _ in page]),
+            SharedItemComment.author_id.not_in(_blocked_ids(user.id)),
+        )
+        comment_counts = dict(
+            db.execute(
+                select(SharedItemComment.item_id, func.count())
+                .where(*visible)
+                .group_by(SharedItemComment.item_id)
+            ).all()
+        )
+        ranked = (
+            select(
+                SharedItemComment.item_id,
+                SharedItemComment.author_id,
+                SharedItemComment.body,
+                func.row_number()
+                .over(
+                    partition_by=SharedItemComment.item_id,
+                    order_by=(SharedItemComment.created_at.desc(), SharedItemComment.id.desc()),
+                )
+                .label("rank"),
+            )
+            .where(*visible)
+            .subquery()
+        )
+        for item_id, author_id, body, name in db.execute(
+            select(
+                ranked.c.item_id, ranked.c.author_id, ranked.c.body, SharedAlbumMember.display_name
+            )
+            .outerjoin(
+                SharedAlbumMember,
+                (SharedAlbumMember.album_id == album_id)
+                & (SharedAlbumMember.user_id == ranked.c.author_id),
+            )
+            .where(ranked.c.rank == 1)
+        ):
+            latest[item_id] = LatestComment(
+                author_name=name or "나간 구성원", is_mine=author_id == user.id, body=body
+            )
     items = []
     for item, name in page:
         mine = item.author_id == user.id
@@ -1194,6 +1315,9 @@ def list_items(
                 ),  # type: ignore[arg-type]
                 photo_quality=item_quality(item, album),  # type: ignore[arg-type]
                 quality_chosen=item.photo_quality is not None,
+                caption=item.caption,
+                comment_count=comment_counts.get(item.id, 0),
+                latest_comment=latest.get(item.id),
                 added_at=item.added_at,
             )
         )
@@ -1219,6 +1343,21 @@ def add_items(
     _require_room(db, album)
     db.commit()
     return AddItemsResponse(added=added)
+
+
+@router.patch("/{album_id}/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def set_item_caption(
+    album_id: str, item_id: str, payload: ItemCaptionRequest, user: CurrentUser, db: DbSession
+) -> None:
+    """구성원에게 보일 글은 담은 사람만 쓴다 (관리자는 문제가 있으면 사진을 뺀다)."""
+    _membership(db, album_id, user.id)
+    item = db.get(SharedAlbumItem, item_id)
+    if item is None or item.album_id != album_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "item not found")
+    if item.author_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "only the uploader can write the caption")
+    item.caption = (payload.caption or "").strip() or None
+    db.commit()
 
 
 @router.post("/{album_id}/items/quality", status_code=status.HTTP_204_NO_CONTENT)
@@ -1349,3 +1488,158 @@ def download_item(
         size=obj.size_bytes,
         expires_at=datetime.now(UTC) + ttl,
     )
+
+
+# ---------------------------------------------------------------------------
+# 댓글
+
+
+def _visible_item(db: Session, album_id: str, item_id: str, user_id: str) -> SharedAlbumItem:
+    """이 앨범에 있고 나에게 보이는 항목 (차단한 사람이 담은 사진은 없는 것처럼 404)."""
+    item = db.get(SharedAlbumItem, item_id)
+    if (
+        item is None
+        or item.album_id != album_id
+        or db.get(UserBlock, (user_id, item.author_id)) is not None
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "item not found")
+    return item
+
+
+def _comment_out(
+    comment: SharedItemComment, name: str | None, user_id: str, me: SharedAlbumMember
+) -> CommentOut:
+    mine = comment.author_id == user_id
+    return CommentOut(
+        id=comment.id,
+        author_id=comment.author_id,
+        author_name=name or "나간 구성원",
+        is_mine=mine,
+        can_delete=mine or me.role == "admin",
+        body=comment.body,
+        created_at=comment.created_at,
+    )
+
+
+@router.get("/{album_id}/items/{item_id}/comments", response_model=CommentList)
+def list_comments(album_id: str, item_id: str, user: CurrentUser, db: DbSession) -> CommentList:
+    """오래된 댓글부터. 내가 차단한 사람의 댓글은 빼고 보낸다."""
+    me = _membership(db, album_id, user.id)
+    _visible_item(db, album_id, item_id, user.id)
+    rows = db.execute(
+        select(SharedItemComment, SharedAlbumMember.display_name)
+        .outerjoin(
+            SharedAlbumMember,
+            (SharedAlbumMember.album_id == SharedItemComment.album_id)
+            & (SharedAlbumMember.user_id == SharedItemComment.author_id),
+        )
+        .where(
+            SharedItemComment.item_id == item_id,
+            SharedItemComment.author_id.not_in(_blocked_ids(user.id)),
+        )
+        .order_by(SharedItemComment.created_at, SharedItemComment.id)
+    ).all()
+    return CommentList(
+        comments=[_comment_out(comment, name, user.id, me) for comment, name in rows]
+    )
+
+
+def _comment_push(name: str, body: str) -> dict[str, str]:
+    """언어별 알림 본문. 이름과 댓글은 사용자가 쓴 값이라 번역하지 않는다."""
+    preview = body if len(body) <= COMMENT_PREVIEW_LENGTH else body[:COMMENT_PREVIEW_LENGTH] + "…"
+    return {
+        "ko": f"{name}님이 내 사진에 댓글을 남겼어요: {preview}",
+        "en": f"{name} commented on your photo: {preview}",
+        "ja": f"{name}さんがあなたの写真にコメントしました：{preview}",
+    }
+
+
+def _should_notify(db: Session, item: SharedAlbumItem, user_id: str) -> bool:
+    """사진을 담은 사람에게 알릴지. 내 사진이거나, 담은 사람이 앨범을 나갔거나 나를 차단했거나,
+    방금 이 사진에 댓글을 남겨 이미 알렸으면 알리지 않는다 (새 댓글을 넣기 전에 본다)."""
+    if item.author_id == user_id:
+        return False
+    if db.get(SharedAlbumMember, (item.album_id, item.author_id)) is None:
+        return False
+    if db.get(UserBlock, (item.author_id, user_id)) is not None:
+        return False
+    recent = db.scalar(
+        select(SharedItemComment.id)
+        .where(
+            SharedItemComment.item_id == item.id,
+            SharedItemComment.author_id == user_id,
+            SharedItemComment.created_at > datetime.now(UTC) - COMMENT_NOTIFY_QUIET,
+        )
+        .limit(1)
+    )
+    return recent is None
+
+
+def send_comment_push(user_id: str, title: str, bodies: dict[str, str], url: str) -> None:
+    """응답을 보낸 뒤 따로 보낸다. 알림이 실패해도 댓글은 이미 남았다."""
+    with SessionLocal() as db:
+        try:
+            jobs.send_push(
+                db,
+                user_id,
+                title,
+                bodies["ko"],
+                url=url,
+                translations={language: (title, body) for language, body in bodies.items()},
+            )
+            db.commit()  # 앱을 지운 기기의 토큰 정리
+        except Exception:
+            log.warning("comment notification failed for %s", user_id, exc_info=True)
+
+
+@router.post(
+    "/{album_id}/items/{item_id}/comments",
+    response_model=CommentOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_comment(
+    album_id: str,
+    item_id: str,
+    payload: CreateCommentRequest,
+    user: CurrentUser,
+    db: DbSession,
+    background: BackgroundTasks,
+) -> CommentOut:
+    """구성원이면 누구나 남긴다 (구독은 묻지 않는다). 사진을 담은 사람에게 알린다."""
+    me = _membership(db, album_id, user.id)
+    item = _visible_item(db, album_id, item_id, user.id)
+    notify = _should_notify(db, item, user.id)
+    album = db.get(SharedAlbum, album_id)
+    assert album is not None
+    comment = SharedItemComment(
+        album_id=album_id, item_id=item_id, author_id=user.id, body=payload.body
+    )
+    db.add(comment)
+    db.commit()
+    if notify:
+        background.add_task(
+            send_comment_push,
+            item.author_id,
+            album.title,
+            _comment_push(me.display_name, payload.body),
+            # 앱이 그 사진을 크게 보고 댓글을 연다 (mobile/src/components/notification-links.tsx).
+            f"/shared-albums/{album_id}?item={item_id}&comments=1",
+        )
+    return _comment_out(comment, me.display_name, user.id, me)
+
+
+@router.delete(
+    "/{album_id}/items/{item_id}/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_comment(
+    album_id: str, item_id: str, comment_id: str, user: CurrentUser, db: DbSession
+) -> None:
+    """쓴 사람이나 관리자만 지운다."""
+    me = _membership(db, album_id, user.id)
+    comment = db.get(SharedItemComment, comment_id)
+    if comment is None or comment.album_id != album_id or comment.item_id != item_id:
+        return  # 이미 지웠다.
+    if comment.author_id != user.id and me.role != "admin":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "only the writer or an admin can delete")
+    db.delete(comment)
+    db.commit()
