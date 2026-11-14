@@ -4,6 +4,7 @@ from app.models.cloud import (
     AuthIdentity,
     BillingEvent,
     CloudObject,
+    ContentReport,
     Device,
     DeviceLink,
     Entitlement,
@@ -17,6 +18,7 @@ from app.models.cloud import (
     SyncRecord,
     Usage,
     User,
+    UserBlock,
 )
 
 __all__ = [
@@ -24,6 +26,7 @@ __all__ = [
     "AuthIdentity",
     "BillingEvent",
     "CloudObject",
+    "ContentReport",
     "Device",
     "DeviceLink",
     "Entitlement",
@@ -37,4 +40,5 @@ __all__ = [
     "SyncRecord",
     "Usage",
     "User",
+    "UserBlock",
 ]

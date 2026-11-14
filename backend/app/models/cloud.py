@@ -279,6 +279,55 @@ class SharedAlbumItem(Base):
     bytes: Mapped[int] = mapped_column(BigInteger, default=0)
 
 
+class UserBlock(Base):
+    """내가 차단한 사람. 그 사람이 공유 앨범에 담은 사진을 모든 앨범에서 나에게 보여 주지 않는다.
+
+    앨범에서 내보내지는 않으므로 다른 구성원에게는 그대로 보이고, 차단당한 사람은 알 수 없다.
+    """
+
+    __tablename__ = "user_blocks"
+    blocker_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    blocked_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    # 차단할 때 그 사람이 보이던 이름. 앨범을 나간 뒤에도 차단 목록에서 알아보게 한다.
+    display_name: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ContentReport(Base):
+    """공유 앨범의 사진이나 구성원 신고. 운영자가 관리자 화면에서 보고 처리한다.
+
+    앨범·항목이 지워져도 기록은 남아야 해서 FK를 두지 않고, 앨범 이름·구성원 이름은 신고할 때의 값을
+    옮겨 둔다.
+    """
+
+    __tablename__ = "content_reports"
+    __table_args__ = (Index("ix_content_reports_status_created", "status", "created_at"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    reporter_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    album_id: Mapped[str] = mapped_column(String(36))
+    album_title: Mapped[str] = mapped_column(String(80))
+    reported_user_id: Mapped[str] = mapped_column(String(36))
+    reported_name: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # 사진을 신고했을 때만 있다. moment_id는 항목이 빠진 뒤에도 운영자가 파일을 찾게 둔다.
+    item_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    moment_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # 'sexual' | 'violence' | 'harassment' | 'spam' | 'other'
+    reason: Mapped[str] = mapped_column(String(16))
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # open: 처리 전 / closed: 처리함 (action에 무엇을 했는지)
+    status: Mapped[str] = mapped_column(String(16), default="open")
+    # 'dismiss' | 'remove_item' | 'remove_member'
+    action: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class SharedMoment(Base):
     """내 기록 하나를 공유 앨범들이 함께 쓰는 파일 크기 (여러 앨범에 담아도 파일은 한 벌이라 한
     번 센다).

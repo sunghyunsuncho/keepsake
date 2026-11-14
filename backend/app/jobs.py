@@ -26,6 +26,7 @@ from app.db import SessionLocal, engine
 from app.models.cloud import (
     BillingEvent,
     CloudObject,
+    ContentReport,
     Device,
     Entitlement,
     Moment,
@@ -60,6 +61,8 @@ FINAL_NOTICE_WAIT = timedelta(hours=12)
 MAX_PURGE_DELAY = timedelta(days=7)
 # 대금결제 기록 보관 기간 (개인정보처리방침 §3)
 BILLING_EVENT_RETENTION = timedelta(days=365 * 5)
+# 처리한 신고 기록 보관 기간 (개인정보처리방침 §3). 같은 사람의 신고가 반복되는지 보는 데 쓴다.
+REPORT_RETENTION = timedelta(days=365)
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 
 # 유예 알림 단계 (docs/PLAN.md §2.4): 만료 즉시, 삭제 7일 전, 삭제 1일 전.
@@ -339,6 +342,16 @@ def prune_billing_events(db: Session, now: datetime) -> None:
     db.commit()
 
 
+def prune_reports(db: Session, now: datetime) -> None:
+    """처리하고 보관 기간이 지난 신고를 지운다. 처리 전인 신고는 남긴다."""
+    db.execute(
+        delete(ContentReport).where(
+            ContentReport.status == "closed", ContentReport.resolved_at < now - REPORT_RETENTION
+        )
+    )
+    db.commit()
+
+
 def clean_objects(db: Session, now: datetime) -> None:
     """지운 기록과 멈춘 업로드의 행을 지운다. R2 객체는 잠금 없이 다음 단계에서 지운다."""
     cutoff = now - UPLOAD_SETTLE_AFTER
@@ -504,6 +517,7 @@ def run(db: Session, now: datetime | None = None, notify: Notifier = send_push) 
         lambda: reconcile_shared_usage(db) if now.hour == 4 else None,
         lambda: sweep_storage_cleanups(db, now),
         lambda: prune_billing_events(db, now),
+        lambda: prune_reports(db, now),
     ):
         try:
             step()

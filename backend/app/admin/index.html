@@ -52,6 +52,15 @@
     padding: 10px 16px; border-radius: 10px; opacity: 0; transition: opacity .2s; pointer-events: none; }
   .toast.show { opacity: 1; }
   .error { color: var(--danger); }
+  h2 { font-size: 16px; margin: 28px 0 10px; display: flex; align-items: center; gap: 10px; }
+  .reports { display: grid; gap: 10px; margin-bottom: 8px; }
+  .report { display: flex; gap: 14px; background: var(--panel); border-radius: 12px; padding: 12px 14px; }
+  .report img, .report .noimg { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; flex: none; background: var(--line); }
+  .report .noimg { display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--muted); text-align: center; padding: 8px; }
+  .report .body { flex: 1; min-width: 0; display: grid; gap: 4px; align-content: start; }
+  .report .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  button.danger { background: var(--danger); color: #fff; font-weight: 600; }
+  @media (max-width: 560px) { .report { flex-direction: column; } .report img, .report .noimg { width: 100%; height: 220px; } }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -69,10 +78,16 @@
 
   <section id="app" hidden>
     <header>
-      <h1>회원 관리</h1>
+      <h1>Keepsake 관리</h1>
       <button id="refresh" type="button">새로고침</button>
       <button id="logout" type="button">나가기</button>
     </header>
+    <h2>신고 <span id="report-count" class="badge none"></span>
+      <select id="report-state" style="margin-left:auto"><option value="open">처리 전</option><option value="closed">처리함</option></select></h2>
+    <p class="muted small">공유 앨범 구성원이 사진이나 다른 구성원을 신고한 목록이에요. 사진은 10분 동안만 열리니 오래 띄워 뒀다면 새로고침해 주세요.</p>
+    <div id="reports" class="reports"></div>
+
+    <h2>회원</h2>
     <div id="billing" class="banner small"></div>
     <div class="stats" id="stats"></div>
     <div class="toolbar">
@@ -249,7 +264,88 @@ function render(data) {
     : '';
 }
 
+const REASON_LABEL = { sexual: '성적인 콘텐츠', violence: '폭력·위험', harassment: '괴롭힘·혐오', spam: '스팸', other: '기타' };
+const ACTION_LABEL = { dismiss: '문제없음으로 닫음', remove_item: '사진을 뺌', remove_member: '구성원을 내보내고 사진을 뺌' };
+
+async function resolveReport(report, action, button) {
+  const ask = {
+    remove_item: '이 사진을 공유 앨범에서 뺄까요? 올린 사람의 개인 기록은 남아요.',
+    remove_member: report.still_member
+      ? `${report.reported_name || '이 사람'}을(를) 앨범에서 내보내고 담은 사진도 모두 뺄까요?`
+      : `앨범을 나간 이 사람이 남긴 사진 ${report.reported_items}장을 모두 뺄까요?`,
+    dismiss: '문제없음으로 닫을까요?',
+  }[action];
+  if (!confirm(ask)) return;
+  button.disabled = true;
+  try {
+    await api(`/admin/api/reports/${encodeURIComponent(report.id)}/resolve`, { method: 'POST', body: JSON.stringify({ action }) });
+    toast(ACTION_LABEL[action]);
+    await loadReports();
+  } catch (error) {
+    if (error.message === 'HTTP 409') {
+      // 다른 화면에서 먼저 처리했다.
+      toast('이미 처리한 신고예요.');
+      await loadReports().catch(() => {});
+      return;
+    }
+    if (error.message !== 'unauthorized') toast('처리하지 못했어요. 다시 시도해 주세요.');
+    button.disabled = false;
+  }
+}
+
+function renderReports(data) {
+  $('report-count').textContent = `처리 전 ${data.open}`;
+  $('report-count').className = data.open ? 'badge grace' : 'badge none';
+  const cards = data.reports.map((report) => {
+    const card = document.createElement('div');
+    card.className = 'report';
+    if (report.photo_url) {
+      const img = document.createElement('img');
+      img.src = report.photo_url;
+      img.alt = '신고한 사진';
+      img.referrerPolicy = 'no-referrer';
+      card.append(img);
+    } else {
+      card.append(text('div', report.item_id ? '사진 파일이 없어요' : '구성원 신고', 'noimg'));
+    }
+    const body = document.createElement('div');
+    body.className = 'body';
+    body.append(text('div', `${REASON_LABEL[report.reason] || report.reason} · ${report.item_id ? '사진' : '구성원'}`, 'email'));
+    if (report.detail) body.append(text('div', `“${report.detail}”`));
+    body.append(text('div', `앨범: ${report.album_title}${report.album_exists ? '' : ' (지워짐)'}`, 'small'));
+    body.append(text('div', `신고당한 사람: ${report.reported_name || '(나간 구성원)'} · ${report.reported_email || '이메일 없음'}${report.still_member ? '' : ' · 앨범에 없음'}`, 'small'));
+    body.append(text('div', `신고한 사람: ${report.reporter_email || report.reporter_id || '(탈퇴)'} · ${formatDate(report.created_at)}`, 'small muted'));
+    body.append(text('div', `${report.album_id} · ${report.reported_user_id}`, 'id muted'));
+    if (report.status === 'closed') {
+      body.append(text('div', `${ACTION_LABEL[report.action] || report.action} · ${formatDate(report.resolved_at)}`, 'small muted'));
+    } else {
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      const add = (label, action, className) => {
+        const button = text('button', label, className);
+        button.type = 'button';
+        button.addEventListener('click', () => resolveReport(report, action, button));
+        actions.append(button);
+      };
+      if (report.item_id && report.item_in_album) add('사진 빼기', 'remove_item', 'danger');
+      if (report.still_member) add('구성원 내보내기', 'remove_member', 'danger');
+      else if (report.reported_items > 0) add(`남긴 사진 ${report.reported_items}장 빼기`, 'remove_member', 'danger');
+      add('문제없음', 'dismiss');
+      body.append(actions);
+    }
+    card.append(body);
+    return card;
+  });
+  if (cards.length === 0) cards.push(text('p', $('report-state').value === 'open' ? '처리할 신고가 없어요.' : '처리한 신고가 없어요.', 'muted small'));
+  $('reports').replaceChildren(...cards);
+}
+
+async function loadReports() {
+  renderReports(await api(`/admin/api/reports?state=${$('report-state').value}`));
+}
+
 async function load() {
+  loadReports().catch(() => {});
   const q = $('search').value.trim();
   const data = await api(`/admin/api/users${q ? `?q=${encodeURIComponent(q)}` : ''}`);
   render(data);
@@ -269,6 +365,7 @@ $('login-form').addEventListener('submit', async (event) => {
 });
 $('refresh').addEventListener('click', () => load().then(() => toast('새로 불러왔어요.')).catch(() => {}));
 $('logout').addEventListener('click', () => logout());
+$('report-state').addEventListener('change', () => loadReports().catch(() => {}));
 $('search').addEventListener('input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => load().catch(() => {}), 250);

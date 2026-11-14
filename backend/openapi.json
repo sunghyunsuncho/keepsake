@@ -724,6 +724,72 @@
         ]
       }
     },
+    "/shared-albums/blocks": {
+      "get": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "List Blocks",
+        "operationId": "shared_albums_list_blocks",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockList"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/shared-albums/blocks/{user_id}": {
+      "delete": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Unblock",
+        "operationId": "shared_albums_unblock",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/shared-albums/invites/{code}": {
       "get": {
         "tags": [
@@ -1274,6 +1340,108 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shared-albums/{album_id}/reports": {
+      "post": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Report",
+        "description": "사진이나 구성원을 신고한다. 운영자가 관리자 화면에서 보고 사진을 빼거나 구성원을 내보낸다.",
+        "operationId": "shared_albums_report",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shared-albums/{album_id}/blocks": {
+      "post": {
+        "tags": [
+          "shared_albums"
+        ],
+        "summary": "Block",
+        "description": "이 앨범에서 만난 사람을 차단한다. 그 사람이 담은 사진은 모든 공유 앨범에서 나에게 보이지\n않는다.",
+        "operationId": "shared_albums_block",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "album_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -1856,6 +2024,67 @@
         ],
         "title": "AlbumStorage"
       },
+      "BlockList": {
+        "properties": {
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/BlockedUserOut"
+            },
+            "type": "array",
+            "title": "Users"
+          }
+        },
+        "type": "object",
+        "required": [
+          "users"
+        ],
+        "title": "BlockList"
+      },
+      "BlockRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "maxLength": 36,
+            "title": "User Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "title": "BlockRequest"
+      },
+      "BlockedUserOut": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "blocked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Blocked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "display_name",
+          "blocked_at"
+        ],
+        "title": "BlockedUserOut"
+      },
       "ContributorOut": {
         "properties": {
           "author_id": {
@@ -2373,6 +2602,10 @@
           "is_me": {
             "type": "boolean",
             "title": "Is Me"
+          },
+          "blocked": {
+            "type": "boolean",
+            "title": "Blocked"
           }
         },
         "type": "object",
@@ -2384,7 +2617,8 @@
           "allocated_bytes",
           "allocation_counted",
           "joined_at",
-          "is_me"
+          "is_me",
+          "blocked"
         ],
         "title": "MemberOut"
       },
@@ -2608,6 +2842,62 @@
           "removed"
         ],
         "title": "RemoveMyItemsResponse"
+      },
+      "ReportRequest": {
+        "properties": {
+          "item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 36
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 36
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "sexual",
+              "violence",
+              "harassment",
+              "spam",
+              "other"
+            ],
+            "title": "Reason"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "ReportRequest"
       },
       "SessionResponse": {
         "properties": {

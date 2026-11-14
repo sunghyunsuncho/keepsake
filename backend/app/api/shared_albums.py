@@ -9,6 +9,8 @@ docs/PLAN.md §0 '공유 앨범', docs/PRICING.md.
 - 소유자(관리자 중 한 명)의 요금제가 공유 앨범 수를 정한다. 관리자는 여럿일 수 있다.
 - 앨범 공간이 남아 있으면 구독하지 않은 구성원도 사진을 담는다. 보기는 로그인만 하면 된다.
 - 사진은 올린 사람이나 관리자만 뺀다.
+- 구성원은 사진이나 다른 구성원을 신고하고(운영자가 관리자 화면에서 처리한다), 차단할 수 있다.
+  차단한 사람이 담은 사진은 모든 앨범에서 나에게만 보이지 않는다.
 - 메모와 장소 이름은 개인 기록이라 다른 구성원에게 보내지 않는다. 촬영 시각·좌표·파일 종류는
   공유 사진의 EXIF와 지도 표시에 필요해 구성원에게 보낸다.
 """
@@ -36,12 +38,15 @@ from app.cloud import can_write, lock_active_user
 from app.config import get_settings
 from app.models.cloud import (
     CloudObject,
+    ContentReport,
     Entitlement,
     Moment,
     SharedAlbum,
     SharedAlbumInvite,
     SharedAlbumItem,
     SharedAlbumMember,
+    User,
+    UserBlock,
 )
 from app.plans import default_plan, plan_limit
 from app.shared import (
@@ -87,6 +92,7 @@ Quality = Literal["original", "display"]
 CoverMode = Literal["latest", "photo", "design"]
 DisplayName = Annotated[str, Field(min_length=1, max_length=20)]
 Allocation = Annotated[int, Field(ge=0, le=10 * 1024 * GIB)]
+ReportReason = Literal["sexual", "violence", "harassment", "spam", "other"]
 
 
 def _non_blank(value: str) -> str:
@@ -177,6 +183,8 @@ class MemberOut(BaseModel):
     allocation_counted: bool
     joined_at: datetime
     is_me: bool
+    # 내가 차단한 사람 (그 사람이 담은 사진은 나에게 보이지 않는다)
+    blocked: bool
 
 
 class ContributorOut(BaseModel):
@@ -316,6 +324,28 @@ class TransferOwnerRequest(BaseModel):
     user_id: str = Field(max_length=36)
 
 
+class ReportRequest(BaseModel):
+    # 사진을 신고하면 item_id, 구성원을 신고하면 user_id를 보낸다.
+    item_id: str | None = Field(default=None, max_length=36)
+    user_id: str | None = Field(default=None, max_length=36)
+    reason: ReportReason
+    detail: str | None = Field(default=None, max_length=500)
+
+
+class BlockRequest(BaseModel):
+    user_id: str = Field(max_length=36)
+
+
+class BlockedUserOut(BaseModel):
+    user_id: str
+    display_name: str | None
+    blocked_at: datetime
+
+
+class BlockList(BaseModel):
+    users: list[BlockedUserOut]
+
+
 class LeavePreview(BaseModel):
     """구성원이 빠지면 그 사람의 할당만큼 용량이 준다. 사진을 남길지 고르기 전에 보여준다."""
 
@@ -338,6 +368,11 @@ def _membership(db: Session, album_id: str, user_id: str) -> SharedAlbumMember:
         # 구성원이 아니면 앨범이 있는지도 알리지 않는다.
         raise HTTPException(status.HTTP_404_NOT_FOUND, "shared album not found")
     return member
+
+
+def _blocked_ids(user_id: str):
+    """내가 차단한 사람들 (서브쿼리). 그 사람이 담은 항목은 목록·표지·내려받기에서 뺀다."""
+    return select(UserBlock.blocked_id).where(UserBlock.blocker_id == user_id)
 
 
 def _require_admin(member: SharedAlbumMember) -> None:
@@ -403,10 +438,11 @@ def _summaries(
     ids = [album.id for album, _ in rows]
     if not ids:
         return []
+    hidden = _blocked_ids(user_id)
     item_counts = dict(
         db.execute(
             select(SharedAlbumItem.album_id, func.count())
-            .where(SharedAlbumItem.album_id.in_(ids))
+            .where(SharedAlbumItem.album_id.in_(ids), SharedAlbumItem.author_id.not_in(hidden))
             .group_by(SharedAlbumItem.album_id)
         ).all()
     )
@@ -425,7 +461,7 @@ def _summaries(
             .label("rank"),
         )
         .join(CloudObject, has_display)
-        .where(SharedAlbumItem.album_id.in_(ids))
+        .where(SharedAlbumItem.album_id.in_(ids), SharedAlbumItem.author_id.not_in(hidden))
         .subquery()
     )
     covers = dict(
@@ -442,7 +478,11 @@ def _summaries(
             db.execute(
                 select(SharedAlbumItem.album_id, SharedAlbumItem.id)
                 .join(CloudObject, has_display)
-                .where(SharedAlbumItem.id.in_(chosen), SharedAlbumItem.album_id.in_(ids))
+                .where(
+                    SharedAlbumItem.id.in_(chosen),
+                    SharedAlbumItem.album_id.in_(ids),
+                    SharedAlbumItem.author_id.not_in(hidden),
+                )
             ).all()
         )
     result = []
@@ -485,6 +525,7 @@ def _detail(db: Session, album_id: str, user_id: str) -> SharedAlbumDetail:
         .order_by(SharedAlbumMember.joined_at, SharedAlbumMember.user_id)
     ).all()
     names = {member.user_id: member.display_name for member in members}
+    blocked = set(db.scalars(_blocked_ids(user_id)))
     detail.members = [
         MemberOut(
             user_id=member.user_id,
@@ -495,6 +536,7 @@ def _detail(db: Session, album_id: str, user_id: str) -> SharedAlbumDetail:
             allocation_counted=member.allocated_bytes > 0 and is_counted(db, member.user_id),
             joined_at=member.joined_at,
             is_me=member.user_id == user_id,
+            blocked=member.user_id in blocked,
         )
         for member in members
     ]
@@ -713,6 +755,31 @@ def remove_my_moments(
     removed = remove_my_items(db, user.id, list(dict.fromkeys(payload.moment_ids)))
     db.commit()
     return RemoveMyItemsResponse(removed=removed)
+
+
+@router.get("/blocks", response_model=BlockList)
+def list_blocks(user: CurrentUser, db: DbSession) -> BlockList:
+    rows = db.scalars(
+        select(UserBlock)
+        .where(UserBlock.blocker_id == user.id)
+        .order_by(UserBlock.created_at.desc())
+    ).all()
+    return BlockList(
+        users=[
+            BlockedUserOut(
+                user_id=row.blocked_id, display_name=row.display_name, blocked_at=row.created_at
+            )
+            for row in rows
+        ]
+    )
+
+
+@router.delete("/blocks/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def unblock(user_id: str, user: CurrentUser, db: DbSession) -> None:
+    db.execute(
+        delete(UserBlock).where(UserBlock.blocker_id == user.id, UserBlock.blocked_id == user_id)
+    )
+    db.commit()
 
 
 @router.get("/invites/{code}", response_model=InvitePreview)
@@ -967,6 +1034,82 @@ def remove_member(
 
 
 # ---------------------------------------------------------------------------
+# 신고·차단
+
+
+def _other_person(db: Session, album_id: str, user_id: str, target_id: str) -> str | None:
+    """이 앨범의 구성원이거나 사진을 남긴 다른 사람이면 그 사람의 이 앨범 이름을 준다 (나간 사람은
+    None). 아니면 404, 나 자신이면 422."""
+    if target_id == user_id:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "cannot target yourself")
+    member = db.get(SharedAlbumMember, (album_id, target_id))
+    if member is not None:
+        return member.display_name
+    if not items_of_author(db, album_id, target_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "member not found")
+    return None
+
+
+@router.post("/{album_id}/reports", status_code=status.HTTP_204_NO_CONTENT)
+def report(album_id: str, payload: ReportRequest, user: CurrentUser, db: DbSession) -> None:
+    """사진이나 구성원을 신고한다. 운영자가 관리자 화면에서 보고 사진을 빼거나 구성원을 내보낸다."""
+    _membership(db, album_id, user.id)
+    album = db.get(SharedAlbum, album_id)
+    assert album is not None
+    item = None
+    if payload.item_id is not None:
+        item = db.get(SharedAlbumItem, payload.item_id)
+        if item is None or item.album_id != album_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "item not found")
+        target_id = item.author_id
+    elif payload.user_id is not None:
+        target_id = payload.user_id
+    else:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "item_id or user_id is required")
+    name = _other_person(db, album_id, user.id, target_id)
+    # 같은 대상을 같은 이유로 처리 전에 또 신고하면 하나만 둔다 (반복 신고로 처리 목록이 늘지 않게).
+    pending = db.scalar(
+        select(ContentReport.id).where(
+            ContentReport.reporter_id == user.id,
+            ContentReport.album_id == album_id,
+            ContentReport.reported_user_id == target_id,
+            ContentReport.item_id.is_(None) if item is None else ContentReport.item_id == item.id,
+            ContentReport.reason == payload.reason,
+            ContentReport.status == "open",
+        )
+    )
+    if pending is not None:
+        return
+    db.add(
+        ContentReport(
+            reporter_id=user.id,
+            album_id=album_id,
+            album_title=album.title,
+            reported_user_id=target_id,
+            reported_name=name,
+            item_id=item.id if item else None,
+            moment_id=item.moment_id if item else None,
+            reason=payload.reason,
+            detail=(payload.detail or "").strip() or None,
+        )
+    )
+    db.commit()
+
+
+@router.post("/{album_id}/blocks", status_code=status.HTTP_204_NO_CONTENT)
+def block(album_id: str, payload: BlockRequest, user: CurrentUser, db: DbSession) -> None:
+    """이 앨범에서 만난 사람을 차단한다. 그 사람이 담은 사진은 모든 공유 앨범에서 나에게 보이지
+    않는다."""
+    _membership(db, album_id, user.id)
+    name = _other_person(db, album_id, user.id, payload.user_id)
+    if db.get(User, payload.user_id) is None:
+        return  # 계정을 지운 사람은 차단할 행이 없다 (user_blocks의 FK).
+    if db.get(UserBlock, (user.id, payload.user_id)) is None:
+        db.add(UserBlock(blocker_id=user.id, blocked_id=payload.user_id, display_name=name))
+        db.commit()
+
+
+# ---------------------------------------------------------------------------
 # 항목
 
 
@@ -987,7 +1130,11 @@ def list_items(
             (SharedAlbumMember.album_id == SharedAlbumItem.album_id)
             & (SharedAlbumMember.user_id == SharedAlbumItem.author_id),
         )
-        .where(SharedAlbumItem.album_id == album_id, SharedAlbumItem.seq > cursor)
+        .where(
+            SharedAlbumItem.album_id == album_id,
+            SharedAlbumItem.seq > cursor,
+            SharedAlbumItem.author_id.not_in(_blocked_ids(user.id)),
+        )
         .order_by(SharedAlbumItem.seq)
         .limit(ITEM_PAGE_LIMIT + 1)
     ).all()
@@ -1161,7 +1308,11 @@ def download_item(
     album = db.get(SharedAlbum, album_id)
     assert album is not None
     item = db.get(SharedAlbumItem, item_id)
-    if item is None or item.album_id != album_id:
+    if (
+        item is None
+        or item.album_id != album_id
+        or db.get(UserBlock, (user.id, item.author_id)) is not None
+    ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "item not found")
     stored = set(
         db.scalars(
