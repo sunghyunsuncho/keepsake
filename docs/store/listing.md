@@ -184,6 +184,11 @@ and lets people join shared albums by invite code.
 Keepsake Secure Storage is an optional auto-renewing subscription that keeps
 the photos and videos in secure albums and lets the subscriber create a
 shared album. Invited members can view and add photos without subscribing.
+Shared albums are invite-only. Members can report a photo (flag button in the
+full-screen viewer) or a member (Manage album > Members), and block people,
+which hides their photos for the blocker in every shared album.
+Blocked people can be managed in Settings > Account > Blocked people.
+Reports are reviewed by our team, who can remove the photo or the member.
 Account deletion: Settings > Cloud > Delete account.
 
 Demo account for Cloud: {{심사용 Apple 샌드박스 계정 또는 데모 로그인 방법}}
