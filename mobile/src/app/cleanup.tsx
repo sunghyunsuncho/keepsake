@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AdBanner } from '@/components/ad-banner';
 import { Button } from '@/components/button';
 import {
   BottomBar,
@@ -122,6 +123,7 @@ export default function CleanupScreen() {
             />
           )}
         </View>
+        <AdBanner maxHeight={250} />
       </Centered>
     );
   } else if (photos === null) {

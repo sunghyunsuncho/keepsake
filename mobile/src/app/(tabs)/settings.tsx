@@ -3,8 +3,9 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { CloudArrowUpIcon, FileTextIcon, FlagIcon, GlobeSimpleIcon, ProhibitIcon, ImageSquareIcon, LightbulbIcon, ListChecksIcon, ShieldCheckIcon, SignInIcon, UserIcon } from 'phosphor-react-native';
+import { CloudArrowUpIcon, FileTextIcon, FlagIcon, GlobeSimpleIcon, ProhibitIcon, ImageSquareIcon, LightbulbIcon, ListChecksIcon, ShieldCheckIcon, SignInIcon, SlidersHorizontalIcon, UserIcon } from 'phosphor-react-native';
 
+import { AdBanner } from '@/components/ad-banner';
 import { AccountRows, CloudLibraryRows, RecordBackupRows } from '@/components/cloud-section';
 import { showActionSheet } from '@/components/action-sheet';
 import { ReminderRows } from '@/components/reminder-section';
@@ -17,6 +18,7 @@ import { useDbQuery } from '@/db/changes';
 import { libraryStats } from '@/db/moments';
 import { APP_LANGUAGES, getSettings, setSetting } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
+import { showAdPrivacyOptions, useAds } from '@/lib/ads';
 import { useCloudState } from '@/lib/cloud/engine';
 import { type Account, useCloudSession } from '@/lib/cloud/session';
 import { formatFullDate } from '@/lib/dates';
@@ -37,6 +39,7 @@ export default function SettingsScreen() {
   const { language, setLanguage, t } = useTranslation();
   // 안전 사진첩 설정은 구독 중이거나 구독이 끝난 뒤 30일 유예 중(사진을 내려받아야 함)일 때만 보인다.
   const paid = Boolean(session && account?.subscription.can_download);
+  const ads = useAds();
 
   const scroll = useRef<ScrollView>(null);
   const [offsets, setOffsets] = useState<Partial<Record<SectionKey, number>>>({});
@@ -104,6 +107,10 @@ export default function SettingsScreen() {
 
         <SettingsSection title={t('settings')}>
           <SettingsRow label={t('language')} icon={GlobeSimpleIcon} value={LANGUAGE_LABELS[language]} onPress={chooseLanguage} />
+          {/* 광고 동의를 받은 지역(UMP)이면 언제든 동의를 바꿀 수 있어야 한다. */}
+          {ads.privacyOptions && (
+            <SettingsRow label={t('adPrivacy')} icon={SlidersHorizontalIcon} onPress={showAdPrivacyOptions} />
+          )}
         </SettingsSection>
 
         <SettingsSection title={t('helpAndInfo')}>
@@ -120,6 +127,8 @@ export default function SettingsScreen() {
             onPress={() => openLegalDocument('privacy')}
           />
         </SettingsSection>
+
+        <AdBanner maxHeight={100} style={styles.ad} />
 
         <AppFooter />
       </ScrollView>
@@ -223,6 +232,8 @@ function AppFooter() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: Spacing.three, gap: Spacing.four, paddingBottom: Spacing.six },
+  // 목록의 gap이 이미 위아래를 띄운다.
+  ad: { marginTop: 0 },
   // Vernissage 사용자 카드와 같은 크기: 원 56, 이름 17, 보조 줄 14.
   userRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three, padding: Spacing.three },
   avatar: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },

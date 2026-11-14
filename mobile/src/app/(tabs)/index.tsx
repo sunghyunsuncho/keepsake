@@ -6,6 +6,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { AdBanner } from '@/components/ad-banner';
 import { Button } from '@/components/button';
 import { AlbumNameSheet } from '@/components/album-name-sheet';
 import { DateSheet } from '@/components/date-sheet';
@@ -720,6 +721,7 @@ function AllCaughtUp({ cursor, cleanup }: { cursor: number; cleanup: React.React
         <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
       </Pressable>
       {cleanup}
+      <AdBanner maxHeight={120} />
     </Centered>
   );
 }

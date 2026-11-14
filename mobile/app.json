@@ -80,6 +80,9 @@
         {
           "ios": {
             "deploymentTarget": "15.5"
+          },
+          "android": {
+            "extraProguardRules": "-keep class com.google.android.gms.internal.consent_sdk.** { *; }"
           }
         }
       ]

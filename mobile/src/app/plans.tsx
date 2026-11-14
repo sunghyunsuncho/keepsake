@@ -16,7 +16,7 @@ import { useTranslation } from '@/lib/i18n';
 import { formatSize } from '@/lib/storage';
 
 // 이용 등급 안내: 이 기기에만 보관(비로그인) / 로그인(무료) / 안전 보관(유료 구독)에서 각각 무엇을 할 수 있는지.
-// 기준은 docs/PRICING.md §2. 등급 규칙을 바꾸면 이 화면도 함께 고친다.
+// 기준은 docs/PRICING.md §2. 등급 규칙을 바꾸면 이 화면도 함께 고친다. 광고는 구독 중일 때만 빠진다 (lib/ads.ts).
 // from=cloud: 안전 보관 화면에서 열었으면 아래 버튼은 그 화면으로 돌아간다 (같은 화면을 또 쌓지 않는다).
 
 type Level = 'local' | 'free' | 'paid';
@@ -77,9 +77,10 @@ const COPY: Record<AppLanguage, (size: string, albums: string) => Copy> = {
           '보관한 사진은 기기 사진첩에서 지워도 남아요. 휴대폰을 가볍게 비울 수 있어요.',
           '휴대폰을 잃어버려도, 사진첩 백업이 없어도 로그인하면 사진이 돌아와요',
           `가족·친구와 쓰는 공유 앨범을 ${albums}개까지 만들고 내 용량을 나눠 주기`,
+          '광고 없이 쓰기',
         ],
         cannot: [],
-        note: '구독이 끝나면 30일 동안 보관한 사진을 내려받을 수 있고, 그 뒤 사진은 삭제돼요. 기록 백업은 로그인한 동안 계속돼요.',
+        note: '구독이 끝나면 광고가 다시 보이고, 30일 동안 보관한 사진을 내려받을 수 있으며, 그 뒤 사진은 삭제돼요. 기록 백업은 로그인한 동안 계속돼요.',
       },
     },
     cta: { local: '로그인하고 기록 백업하기', free: '안전 보관 시작하기', grace: '다시 구독하기' },
@@ -128,9 +129,10 @@ const COPY: Record<AppLanguage, (size: string, albums: string) => Copy> = {
           'Stored photos stay even if you delete them from your library, so you can free up your phone',
           'Even if you lose your phone or have no library backup, your photos come back when you sign in',
           `Create up to ${albums} shared albums with family and friends, and share your storage with them`,
+          'No ads',
         ],
         cannot: [],
-        note: 'When a subscription ends, you can download stored photos for 30 days before they are deleted. Memory backup continues while you are signed in.',
+        note: 'When a subscription ends, ads return and you can download stored photos for 30 days before they are deleted. Memory backup continues while you are signed in.',
       },
     },
     cta: { local: 'Sign in and back up memories', free: 'Start Secure Storage', grace: 'Subscribe again' },
@@ -179,9 +181,10 @@ const COPY: Record<AppLanguage, (size: string, albums: string) => Copy> = {
           '保管した写真はライブラリから削除しても残ります。スマホを軽くできます。',
           'スマホをなくしても、ライブラリのバックアップがなくても、ログインすれば写真が戻ります',
           `家族や友だちと使う共有アルバムを${albums}個まで作成し、自分の容量を分けられます`,
+          '広告なしで使える',
         ],
         cannot: [],
-        note: 'サブスクリプションが終わると、30日間は保管した写真をダウンロードでき、その後削除されます。思い出のバックアップはログイン中ずっと続きます。',
+        note: 'サブスクリプションが終わると広告が表示されるようになり、30日間は保管した写真をダウンロードでき、その後削除されます。思い出のバックアップはログイン中ずっと続きます。',
       },
     },
     cta: { local: 'ログインして思い出をバックアップ', free: '安全保管を始める', grace: '再登録する' },

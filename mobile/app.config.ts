@@ -28,6 +28,29 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         ],
       ]
     : [];
+  // AdMob 앱 ID는 네이티브 설정에 들어가고, 없으면 SDK가 앱 시작 때 멈춘다.
+  // 개발·preview 빌드는 Google 예시 앱 ID로 빌드하고(개발·preview 빌드는 테스트 광고만 요청한다), 스토어 빌드는 실제 ID를 요구한다.
+  const admobAndroidAppId = process.env.ADMOB_ANDROID_APP_ID;
+  const admobIosAppId = process.env.ADMOB_IOS_APP_ID;
+  if (process.env.EAS_BUILD === 'true' && appEnv === 'production' && (!admobAndroidAppId || !admobIosAppId)) {
+    throw new Error('Production builds require ADMOB_ANDROID_APP_ID and ADMOB_IOS_APP_ID.');
+  }
+  const adsPlugins: [string, Record<string, unknown>][] = [
+    [
+      'react-native-google-mobile-ads',
+      {
+        androidAppId: admobAndroidAppId || 'ca-app-pub-3940256099942544~3347511713',
+        iosAppId: admobIosAppId || 'ca-app-pub-3940256099942544~1458002511',
+        // 동의를 받기 전에는 앱 측정 데이터를 보내지 않는다 (lib/ads.ts가 동의 뒤 SDK를 시작한다).
+        delayAppMeasurementInit: true,
+        skAdNetworkItems: ['cstr6suwn9.skadnetwork'],
+      },
+    ],
+    [
+      'expo-tracking-transparency',
+      { userTrackingPermission: '내 관심사에 맞는 광고를 보여 주는 데 사용됩니다. 허용하지 않아도 앱의 모든 기능을 쓸 수 있어요.' },
+    ],
+  ];
   // Sentry 플러그인은 빌드 중 소스맵을 올리는데, 토큰이 없으면 빌드가 실패한다.
   // SENTRY_AUTH_TOKEN은 EAS Secret이라 클라우드 빌드에만 들어오므로, 로컬 빌드는 업로드 없이 만든다.
   // 앱의 오류 수집은 DSN만 있으면 되므로 플러그인이 없어도 동작한다.
@@ -41,6 +64,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     android: mapsApiKey
       ? { ...config.android, config: { ...config.android?.config, googleMaps: { apiKey: mapsApiKey } } }
       : config.android,
-    plugins: [...plugins, ...googlePlugin],
+    plugins: [...plugins, ...googlePlugin, ...adsPlugins],
   };
 };
