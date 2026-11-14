@@ -5,6 +5,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { writeImageMetadata } from '@modules/photo-meta';
 
 import type { components } from '@/api/schema';
+import { PUBLIC_WEB_URL } from '@/constants/app-info';
 import { albumMomentIds, deleteAlbum } from '@/db/albums';
 import { notifyChange } from '@/db/changes';
 import { inTransaction } from '@/db/moments';
@@ -42,16 +43,20 @@ export const RELATIONS: Record<Relation, { label: string; icon: 'home-outline' |
 export const RELATION_ORDER: Relation[] = ['family', 'friends', 'partner', 'other'];
 export const DISPLAY_NAME_MAX = 20;
 
-/** 앱 밖에서 받은 초대 링크 (keepsake://shared-albums/join?code=…). 앱이 없으면 코드만 옮겨 적는다. */
+/**
+ * 앱 밖으로 보내는 초대 메시지. 링크는 https라 카카오톡·문자에서도 눌린다.
+ * 앱이 있으면 App Links·Universal Links가 참여 화면을 열고(app/+native-intent.tsx),
+ * 없으면 웹 페이지가 코드와 참여 방법을 보여준다. 링크가 안 열려도 코드를 옮겨 적으면 된다.
+ */
 export function inviteMessage(language: AppLanguage, title: string, code: string) {
-  const link = `keepsake://shared-albums/join?code=${code}`;
+  const link = `${PUBLIC_WEB_URL}${language === 'ko' ? '' : `/${language}`}/join?code=${code}`;
   if (language === 'en') {
-    return `You’re invited to the Keepsake shared album “${title}”.\nIn the app, go to Secure Library → Join with code and enter the code.\n\nInvite code: ${code}\n${link}`;
+    return `You’re invited to the Keepsake shared album “${title}”.\nTap the link to join.\n${link}\n\nIf the link doesn’t open, go to Secure Library → Join with code in the app and enter the code.\nInvite code: ${code}`;
   }
   if (language === 'ja') {
-    return `Keepsakeの共有アルバム「${title}」に招待します。\nアプリのセキュアライブラリ →［コードで参加］からコードを入力してください。\n\n招待コード：${code}\n${link}`;
+    return `Keepsakeの共有アルバム「${title}」に招待します。\nリンクをタップすると参加できます。\n${link}\n\nリンクが開かない場合は、アプリのセキュアライブラリ →［コードで参加］からコードを入力してください。\n招待コード：${code}`;
   }
-  return `Keepsake 공유 앨범 '${title}'에 초대해요.\n앱의 안전 사진첩 → [초대 코드로 참여]에서 코드를 입력해 주세요.\n\n초대 코드: ${code}\n${link}`;
+  return `Keepsake 공유 앨범 '${title}'에 초대해요.\n링크를 누르면 바로 참여할 수 있어요.\n${link}\n\n링크가 열리지 않으면 앱의 안전 사진첩 → [초대 코드로 참여]에서 코드를 입력해 주세요.\n초대 코드: ${code}`;
 }
 
 /** 서버의 내 항목 목록으로 shared_items를 바꾼다. pull 뒤, 필요 없는 파일을 지우기 전에 부른다. */

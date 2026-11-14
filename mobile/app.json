@@ -15,7 +15,10 @@
       "config": {
         "usesNonExemptEncryption": false
       },
-      "usesAppleSignIn": true
+      "usesAppleSignIn": true,
+      "associatedDomains": [
+        "applinks:keepsake.atelierlabs.co.kr"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -26,7 +29,34 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.atelierlabs.keepsake",
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "keepsake.atelierlabs.co.kr",
+              "path": "/join"
+            },
+            {
+              "scheme": "https",
+              "host": "keepsake.atelierlabs.co.kr",
+              "path": "/en/join"
+            },
+            {
+              "scheme": "https",
+              "host": "keepsake.atelierlabs.co.kr",
+              "path": "/ja/join"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "plugins": [
       "expo-router",

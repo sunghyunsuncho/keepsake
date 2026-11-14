@@ -24,7 +24,7 @@ import {
 
 type Preview = Awaited<ReturnType<typeof previewInvite>>;
 
-// 초대 코드로 공유 앨범에 참여한다. 링크(keepsake://shared-albums/join?code=…)로 열면 코드가 채워져 있다.
+// 초대 코드로 공유 앨범에 참여한다. 초대 링크(https://keepsake.atelierlabs.co.kr/join?code=…, app/+native-intent.tsx)로 열면 코드가 채워져 있다.
 // 보는 것은 로그인만 하면 되고, 사진을 담으려면 구독이 필요하다.
 export default function JoinSharedAlbumScreen() {
   const params = useLocalSearchParams<{ code?: string }>();
