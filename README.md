@@ -107,8 +107,9 @@ npx eas-cli@latest update:rollback --channel production   # 문제가 있으면 
 | 위치 | 내용 |
 |---|---|
 | `backend/app/cloud.py` | 구독 규칙 (사진·동영상 쓰기·읽기 허용, 만료 → 30일 유예, 파일 삭제) |
-| `backend/app/api/` | `auth`(Apple/Google 로그인), `account`(상태·기기 등록·계정 삭제), `sync`, `uploads`, `billing`(webhook) |
-| `backend/app/jobs.py` | 주기 작업: 유예 알림 3회, 30일 뒤 삭제, 계정 삭제 마무리, 미완료 업로드 정리 |
+| `backend/app/api/` | `auth`(Apple/Google 로그인), `account`(상태·기기 등록·계정 삭제), `sync`, `uploads`, `shared_albums`, `billing`(webhook), `events`(앱이 보내는 활동 기록) |
+| `backend/app/activity.py` | 로그인한 사용자의 활동 기록(`user_events`). 수와 종류만 남기고 글 내용은 남기지 않는다 (docs/PLAN.md §7.1) |
+| `backend/app/jobs.py` | 주기 작업: 유예 알림 3회, 30일 뒤 삭제, 계정 삭제 마무리, 미완료 업로드 정리, 보관 기간이 지난 결제 원본·처리한 신고·활동 기록 정리 |
 | `mobile/src/db/spaces.ts` | Local과 계정별 공간(DB 파일) 관리 |
 | `mobile/src/lib/cloud/` | 세션, 계정 공간, 기기 기록 백업, 사진 연결, 동기화, 사진·동영상 업로드·다운로드, RevenueCat, 로그인, 푸시 토큰 |
 | `mobile/src/app/cloud.tsx` | 소개·가격(로그인 없이) → 로그인(기록 백업) → 구매 / 구매 복원(사진·동영상 보관) |

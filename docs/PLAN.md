@@ -1,7 +1,7 @@
 # Keepsake 개발 계획
 
 > 기준 문서: [STARTING_POINT.md](../STARTING_POINT.md)
-> 최종 수정: 2026-11-14 (안전 보관 10GB·100GB 요금제와 가격, 첫 구독 30일 무료, 공유 앨범 신고·차단, 광고, 공유 앨범 사진 댓글)
+> 최종 수정: 2026-11-15 (안전 보관 10GB·100GB 요금제와 가격, 첫 구독 30일 무료, 공유 앨범 신고·차단, 광고, 공유 앨범 사진 댓글, 활동 기록, OTA 업데이트)
 
 ## 0. 확정된 결정
 
@@ -192,6 +192,8 @@ class CloudObject:    id, user_id, moment_id, variant ('display'|'thumb'|'origin
 class Usage:          user_id, bytes_total, object_count  # 집계 캐시
 class PlanLimit:      plan, max_bytes, allow_original, grace_days (=30)  # 설정값
 class BillingEvent:   id, raw_payload, received_at, processed_at  # 웹훅 원본 기록
+class UserEvent:      id, user_id, event_type, entity_ref, properties, platform,
+                      app_version, created_at  # 활동 기록 (§7)
 ```
 
 ## 5. 기술 스택
@@ -202,6 +204,7 @@ class BillingEvent:   id, raw_payload, received_at, processed_at  # 웹훅 원�
 - 로컬 네이티브 모듈 `mobile/modules/photo-meta`: 사진 좌표 → 주소(iOS Apple, Android OS Geocoder), 원본 EXIF의 촬영 시간대, 큰 파일의 MD5 계산과 동영상 효율 보관본 생성. 위치 권한 없이 동작
 - FlashList, TanStack Query(Phase 2 서버 API용. 로컬 DB 읽기는 자체 `useDbQuery`)
 - Expo Go 대신 **Development Build (EAS)** 로 개발
+- JS만 바뀐 수정은 `expo-updates`(EAS Update)로 스토어 심사 없이 보낸다. 빌드 프로필마다 같은 이름의 채널 (README 'OTA 업데이트')
 
 **백엔드 `/backend`**
 - Python 3.13, FastAPI, Pydantic v2, SQLAlchemy 2.0, Alembic, PostgreSQL
@@ -315,7 +318,7 @@ class BillingEvent:   id, raw_payload, received_at, processed_at  # 웹훅 원�
   - **현재 상태 (2026-10-30):** 폴라로이드·일회용 카메라·필름 밀착 세 시안을 비교해 폴라로이드로 정했다. 은은하게, 바탕색과 기기 글꼴은 그대로, 연도·월 그리드도 그대로 두고 앨범의 일·이야기 단계에만 적용했다 (`mobile/src/components/gallery.tsx`). 이야기는 정사각형 사진 + 흰 테두리 + 아래 여백에 메모·시각·장소·날짜, 카드는 ±0.5° 기울임. 일 단계는 작은 폴라로이드. 인화지는 다크 모드에서도 흰색이고 그 위 글자색은 고정이다
 - ~~Local 사용자 대상 내보내기 권유~~ → ZIP 내보내기를 없애면서 함께 뺐다 (2026-10-30, §0 'Local 범위')
 - 개인정보처리방침, 이용약관(구독 조건·만료 후 삭제 정책 명시), 스토어 메타데이터, Sentry, 최소 지표
-  - **현재 상태 (2026-11-13):** 원본은 atelierlabs 저장소의 정적 HTML 하나다 (`sites/keepsake/legal/*.html`, 영어는 `sites/keepsake/en/legal/*.html`). `keepsake.atelierlabs.co.kr/(en/)legal/{terms-of-service|privacy-policy}`로 보이고, 고치면 atelierlabs 홈페이지를 배포한다 (2026-11-13에 백엔드 원본·`/public-web/legal` 프록시에서 옮겼다). 앱 전용 화면은 두지 않고, 설정 탭과 구독 화면에서 웹 페이지를 외부 브라우저로 연다 (`mobile/src/lib/legal.ts`). 영어판은 편의 번역이며 한국어판이 우선한다. 스토어 메타데이터는 `docs/store/listing.md`. 법률 검토와 Play용 웹 삭제 요청 페이지가 남았다. Sentry는 코드를 연결했다 (DSN을 넣으면 켜진다). 지표는 아직 붙이지 않았다
+  - **현재 상태 (2026-11-13):** 원본은 atelierlabs 저장소의 정적 HTML 하나다 (`sites/keepsake/legal/*.html`, 영어는 `sites/keepsake/en/legal/*.html`). `keepsake.atelierlabs.co.kr/(en/)legal/{terms-of-service|privacy-policy}`로 보이고, 고치면 atelierlabs 홈페이지를 배포한다 (2026-11-13에 백엔드 원본·`/public-web/legal` 프록시에서 옮겼다). 앱 전용 화면은 두지 않고, 설정 탭과 구독 화면에서 웹 페이지를 외부 브라우저로 연다 (`mobile/src/lib/legal.ts`). 영어판은 편의 번역이며 한국어판이 우선한다. 스토어 메타데이터는 `docs/store/listing.md`. 법률 검토와 Play용 웹 삭제 요청 페이지가 남았다. Sentry는 코드를 연결했다 (DSN을 넣으면 켜진다). 지표는 로그인한 사용자의 활동 기록(§7.1)만 남기고, 집계 화면은 아직 없다
 - **결제 연결** (Phase 2에서 미룬 것. 코드는 이미 있고 설정과 확인만 남았다)
   - 2026-11-13: 요금제를 10GB·100GB × 월간·연간으로 나누고 첫 구독 30일 무료를 정했다 (PRICING.md §2.1). 서버·앱 코드와 약관(제6조 ⑥⑦)을 고쳤다. 설정 순서는 [store/billing-setup.md](store/billing-setup.md)
   - 사업자등록 전에는 개인 개발자 계정으로 테스트 결제(샌드박스·라이선스 테스터)까지만 연결한다. 실제 판매(유료 출시)는 사업자등록·통신판매업 신고 여부를 세무사와 확인한 뒤 한다. 그 전까지는 무료로 내고 구독 기능은 관리자 무상 제공으로 연다
@@ -364,7 +367,17 @@ class BillingEvent:   id, raw_payload, received_at, processed_at  # 웹훅 원�
 | 다시 보기가 기록을 부른다 | 다시 보기 직후 새 기록 비율 |
 | 보관에 돈을 낼 만하다 | Local→Cloud 전환율, 페이월 이탈률, 해지율, 유예 중 재구독률 |
 
-Local 사용자는 서버 계정이 없으므로 익명 이벤트만 수집한다. 사진과 메모 내용은 수집하지 않는다.
+Local 사용자는 서버 계정이 없어 지금은 아무것도 수집하지 않는다 (붙인다면 익명 이벤트만). 사진과 메모 내용은 수집하지 않는다.
+
+### 7.1 활동 기록 (2026-11-15)
+
+로그인한 사용자의 주요 액션을 `user_events`에 남긴다 (backend `app/activity.py`). 앱 동작은 이 기록을 보지 않는다.
+
+- 서버를 거치는 액션은 그 요청이 액션과 같은 트랜잭션에 남긴다: 로그인(`signed_in`, 새 계정 여부), 공유 앨범 만들기·참여·나가기·내보내기, 사진 담기(수), 캡션, 댓글, 신고, 차단.
+- 기기 안에서 끝나는 액션은 앱이 `POST /events`로 보낸다 (mobile `lib/activity.ts`): 앱 실행(`app_open`, 백그라운드 5분 이상 뒤 복귀 포함), 화면 진입(`screen_view`, 라우트 모양만), 사진 남기기(수), 넘기기, 메모 고침, 앨범 만들기(일반·안전), 사진 정리(수), Local 기록 가져오기(수), 구독 결제(요금제).
+- Local 사용자(로그인하지 않음)는 보내지 않는다. 메모·장소·앨범 이름·댓글·캡션 내용은 남기지 않고 수와 종류만 남긴다 (서버가 속성 값을 짧은 값으로 제한한다).
+- 앱이 보내는 이벤트는 사용자마다 1분에 60개까지 받고 넘으면 429로 버린다 (토큰을 꺼낸 스크립트나 앱 버그로 기록이 쌓이지 않게). 앱은 다시 보내지 않는다.
+- 180일이 지나면 주기 작업이 지우고, 계정을 지우면 함께 지운다.
 
 ## 8. 리스크
 
