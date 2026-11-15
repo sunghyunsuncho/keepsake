@@ -28,6 +28,7 @@ import { useDbQuery } from '@/db/changes';
 import { getMoment, updateMoment, type Moment, type MomentEdit } from '@/db/moments';
 import type { AppLanguage } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
+import { trackEvent } from '@/lib/activity';
 import { fillPlaceFromPhoto, removeMoment } from '@/lib/capture';
 import { useCloudState } from '@/lib/cloud/engine';
 import { removeFromSharedAlbums, sharedAlbumCount } from '@/lib/cloud/shared';
@@ -74,11 +75,14 @@ function MomentEditor({ moment }: { moment: Moment }) {
   // 입력하는 동안 잠깐 멈추면 저장하고, 화면을 떠날 때 남은 변경을 마저 저장한다.
   const pending = useRef<MomentEdit>({});
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // 메모를 고쳤는지. 입력 중 저장마다 세지 않고 화면을 떠날 때 한 번만 기록한다 (내용은 보내지 않는다).
+  const memoEdited = useRef(false);
   const flush = useRef(() => {
     clearTimeout(timer.current);
     const edit = pending.current;
     pending.current = {};
     if (Object.keys(edit).length > 0) updateMoment(db, moment.id, edit);
+    if ('memo' in edit) memoEdited.current = true;
   });
   const queue = (edit: MomentEdit) => {
     pending.current = { ...pending.current, ...edit };
@@ -87,7 +91,10 @@ function MomentEditor({ moment }: { moment: Moment }) {
   };
   useEffect(() => {
     const save = flush.current;
-    return () => save();
+    return () => {
+      save();
+      if (memoEdited.current) trackEvent('memo_edited');
+    };
   }, []);
 
   // 장소는 기록을 만든 뒤 따로 찾으므로, 화면을 연 뒤에 채워질 수 있다. 입력 중이 아니면 반영한다.

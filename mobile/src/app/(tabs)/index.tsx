@@ -28,6 +28,7 @@ import { useDbQuery } from '@/db/changes';
 import { momentIdsByAsset } from '@/db/moments';
 import { getSettings, setSetting, type AppLanguage, type Settings } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
+import { trackEvent } from '@/lib/activity';
 import { dayKeyOf, usePhotoSelection } from '@/hooks/use-photo-selection';
 import { formatDay, formatTime, toDateKey, todayKey } from '@/lib/dates';
 import {
@@ -442,6 +443,7 @@ function Inbox({
       await moveCursor(seen);
     }
     if (items.length > 0) {
+      trackEvent('photos_kept', { count: items.length, to_album: Boolean(targetAlbum) });
       if (targetAlbum) await updateAlbumMoments(db, targetAlbum.id, { add: items.map((item) => item.momentId) });
       await markReviewed(db);
       offerReminders(db);
@@ -452,6 +454,7 @@ function Inbox({
     await addLeftBehind(await withoutKeptPhotos(photosLeftBehind(shown, saved.keys(), Math.min(seenUntil, Date.now()))));
     await moveCursor(seenUntil);
     await markReviewed(db);
+    trackEvent('review_skipped', { through: 'all' });
   };
 
   // 날짜 묶음에서 바로 진행을 확정한다. 이 날짜보다 앞선 사진도 함께 본 것으로 처리된다.
@@ -470,6 +473,7 @@ function Inbox({
           setSeenUntil((previous) => Math.max(previous, through));
           await moveCursor(through);
           await markReviewed(db);
+          trackEvent('review_skipped', { through: 'day' });
         },
       },
     ]);

@@ -34,6 +34,7 @@ import {
   finishCleanup,
   loadCleanupPhotos,
 } from '@/lib/cleanup';
+import { trackEvent } from '@/lib/activity';
 import { useCloudSession } from '@/lib/cloud/session';
 import { localizeText, photoCount, useTranslation } from '@/lib/i18n';
 
@@ -90,7 +91,9 @@ export default function CleanupScreen() {
     setDeleting(true);
     setNotDeleted(false);
     try {
-      setDeletedCount(await deleteLeftBehindPhotos(targets));
+      const deleted = await deleteLeftBehindPhotos(targets);
+      setDeletedCount(deleted);
+      if (deleted > 0) trackEvent('photos_cleaned', { count: deleted });
     } catch {
       // OS 확인 창에서 취소해도 여기로 온다. 사용자가 다시 시도할 수 있게 화면을 그대로 둔다.
       setNotDeleted(true);

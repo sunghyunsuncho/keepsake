@@ -6,6 +6,7 @@ import { ActivityIndicator, StyleSheet, useColorScheme, View } from 'react-nativ
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { ActionSheetHost } from '@/components/action-sheet';
+import { ActivityTracker } from '@/components/activity-tracker';
 import { CloudSync } from '@/components/cloud-sync';
 import { LocalImportPrompt } from '@/components/local-import-prompt';
 import { NotificationInbox } from '@/components/notification-inbox';
@@ -42,6 +43,8 @@ function RootLayout() {
     // 앨범 화면의 두 손가락 확대·축소가 react-native-gesture-handler를 쓴다.
     <GestureHandlerRootView style={styles.flex}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        {/* 공간이 바뀔 때 다시 그려지지 않게 SQLiteProvider 밖에 둔다 (앱 실행을 두 번 세지 않게). */}
+        <ActivityTracker />
         {!databaseName || !localReady ? (
           <Loading />
         ) : (

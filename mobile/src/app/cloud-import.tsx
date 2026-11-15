@@ -15,6 +15,7 @@ import { VideoBadge } from '@/components/video-badge';
 import { Spacing } from '@/constants/theme';
 import type { Moment } from '@/db/moments';
 import { useTheme } from '@/hooks/use-theme';
+import { trackEvent } from '@/lib/activity';
 import { syncCloud, useCloudState } from '@/lib/cloud/engine';
 import { importMoments, listImportable } from '@/lib/cloud/imports';
 import { showAlert, useTranslation } from '@/lib/i18n';
@@ -63,6 +64,7 @@ function BackupPrompt() {
     setSaving(true);
     try {
       await importMoments(db, backup ? moments : [], backup ? [] : moments);
+      if (backup && moments.length > 0) trackEvent('local_imported', { count: moments.length });
       if (!backup) return close();
       syncCloud(db);
       setDone(true);
@@ -320,6 +322,7 @@ function ChooseRecords() {
     try {
       const chosenIds = new Set(chosen.map((moment) => moment.id));
       await importMoments(db, chosen, moments.filter((moment) => !chosenIds.has(moment.id)));
+      if (chosen.length > 0) trackEvent('local_imported', { count: chosen.length });
       if (chosen.length > 0) syncCloud(db);
       close();
     } catch {

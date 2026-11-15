@@ -9,6 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { ALL_ALBUM_TITLE, createAlbum, listCustomAlbums, momentAlbumIds, updateAlbumMoments } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
+import { trackEvent } from '@/lib/activity';
 import { useCloudState } from '@/lib/cloud/engine';
 import { useTheme } from '@/hooks/use-theme';
 import { localizeText, useTranslation } from '@/lib/i18n';
@@ -126,6 +127,7 @@ export function AlbumChooserRow({ momentId }: { momentId: string }) {
           onSubmit={async (title) => {
             setNaming(false);
             const albumId = await createAlbum(db, title);
+            trackEvent('album_created', { kind: 'custom' });
             await updateAlbumMoments(db, albumId, { add: [momentId] });
           }}
           onCancel={() => setNaming(false)}

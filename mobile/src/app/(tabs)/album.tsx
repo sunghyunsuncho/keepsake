@@ -21,6 +21,7 @@ import { useDbQuery } from '@/db/changes';
 import { listRecentlySavedMoments } from '@/db/moments';
 import { getSettings, setSetting } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
+import { trackEvent } from '@/lib/activity';
 import { todayKey } from '@/lib/dates';
 import { localizeText, photoCount, useTranslation } from '@/lib/i18n';
 
@@ -69,6 +70,7 @@ export default function AlbumsScreen() {
   const create = async (title: string) => {
     setNaming(false);
     const id = await createAlbum(db, title);
+    trackEvent('album_created', { kind: 'custom' });
     // 앨범은 이미 남긴 사진에서 골라 채우는 흐름으로 시작한다.
     router.push({ pathname: '/albums/[id]/add', params: { id } });
   };

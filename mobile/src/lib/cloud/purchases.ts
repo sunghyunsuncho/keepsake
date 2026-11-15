@@ -6,6 +6,8 @@ import Purchases, {
   type PurchasesPackage,
 } from 'react-native-purchases';
 
+import { trackEvent } from '@/lib/activity';
+
 // RevenueCat (docs/PLAN.md §2.3). 앱은 구매·복원만 하고, 구독 여부는 서버가 webhook·REST로 판단한다.
 // 상품·가격은 로그인 전에도 익명 사용자로 불러온다. 구매·복원은 로그인한 뒤에만 해서
 // app_user_id가 항상 서버의 user_id가 되게 한다 (익명 ID로 결제가 남지 않게).
@@ -124,6 +126,7 @@ export async function purchase(pkg: PurchasesPackage) {
   if (!currentUser) throw new Error('구매 전에 로그인해야 해요');
   try {
     await Purchases.purchasePackage(pkg, null, await playProductChange(pkg));
+    trackEvent('subscribed', { plan: planOfProduct(pkg.product.identifier) });
     return true;
   } catch (e) {
     if (isCancelled(e)) return false;

@@ -24,6 +24,7 @@ import {
 } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
 import { useTheme } from '@/hooks/use-theme';
+import { trackEvent } from '@/lib/activity';
 import { syncCloud, useCloudState } from '@/lib/cloud/engine';
 import { SHARED_ALBUM_LIMITS } from '@/lib/cloud/purchases';
 import { registerPushToken } from '@/lib/cloud/push';
@@ -129,10 +130,12 @@ export default function NewCloudAlbumScreen() {
         }
       } else if (start === 'new') {
         const id = await createAlbum(db, trimmed, { quality });
+        trackEvent('album_created', { kind: 'safe', quality });
         // 새 안전 앨범은 나의 순간들에서 올릴 사진을 고르며 시작한다.
         router.replace({ pathname: '/albums/[id]/add', params: { id } });
       } else {
         const id = await connectAlbumToCloud(db, sourceId!, quality);
+        trackEvent('album_created', { kind: 'safe', quality, from_album: true });
         router.replace({ pathname: '/albums/[id]', params: { id, source: 'cloud' } });
       }
     } catch (e) {

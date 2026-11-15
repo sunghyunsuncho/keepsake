@@ -733,6 +733,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log Event
+         * @description 기기 안에서 끝나는 액션과 앱 사용(app_open, screen_view)을 앱이 기록한다 (app/activity.py).
+         *
+         *     앱은 기다리지 않고 보내며 실패해도 다시 보내지 않는다.
+         */
+        post: operations["events_log_event"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -940,6 +962,24 @@ export interface components {
              * Format: date-time
              */
             expires_at: string;
+        };
+        /** EventRequest */
+        EventRequest: {
+            /**
+             * Event Type
+             * @enum {string}
+             */
+            event_type: "app_open" | "screen_view" | "photos_kept" | "review_skipped" | "memo_edited" | "album_created" | "photos_cleaned" | "local_imported" | "subscribed";
+            /** Entity Ref */
+            entity_ref?: string | null;
+            /** Properties */
+            properties?: {
+                [key: string]: number | boolean | string | null;
+            } | null;
+            /** Platform */
+            platform?: ("ios" | "android") | null;
+            /** App Version */
+            app_version?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2876,6 +2916,37 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    events_log_event: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {
