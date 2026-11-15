@@ -1,5 +1,5 @@
-import { chromium } from 'playwright';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chromium, type Page } from 'playwright';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { getSlides, STORE_LOCALES, type StoreLocale } from './slides.ts';
 import { FEATURE_GRAPHIC_SIZE, IOS_SIZE, PLAY_SIZE, renderFeatureGraphic, renderSlide, type FeatureGraphicContent } from './render.ts';
@@ -20,6 +20,17 @@ const webSiteDir = resolve(atelierlabsDir, 'sites/keepsake');
 const storeLocale = (locale: StoreLocale) => locale === 'en' ? 'en-US' : locale;
 const rawDir = (locale: StoreLocale) => resolve(root, 'raw', locale === 'ko' ? '' : locale);
 const outputDir = (locale: StoreLocale, kind: 'play' | 'ios') => resolve(root, 'output', kind === 'play' ? 'playstore' : 'appstore', locale === 'ko' ? '' : storeLocale(locale), kind === 'ios' ? '6.5-inch' : '');
+// 공개 웹에서 앱 화면을 보여주는 곳: Keepsake 홈페이지의 "앱을 미리 둘러보세요" 갤러리와 Atelier Labs 홈페이지의 앱 소개.
+// Play 스크린샷을 줄인 JPEG를 ko는 폴더 바로 아래, en·ja는 <언어>/ 아래에 둔다.
+const webScreensDirs = (locale: StoreLocale) => [resolve(webSiteDir, 'assets/screens'), resolve(atelierlabsDir, 'sites/atelierlabs/assets/apps/keepsake')]
+  .map((dir) => resolve(dir, locale === 'ko' ? '' : locale));
+const WEB_SCREEN_SIZE = { width: 675, height: 1200 }; // index.html의 <img width height>와 맞춘다
+
+async function syncWebScreen(page: Page, pngPath: string, jpgPath: string) {
+  await page.setViewportSize(WEB_SCREEN_SIZE);
+  await page.setContent(`<body style="margin:0"><img style="display:block;width:100%;height:100%" src="data:image/png;base64,${readFileSync(pngPath).toString('base64')}"></body>`, { waitUntil: 'load' });
+  await page.screenshot({ path: jpgPath, type: 'jpeg', quality: 86 });
+}
 
 // 그래픽 이미지는 같은 언어 Keepsake 홈페이지(ko는 index.html, en·ja는 <언어>/index.html) 상단 히어로를
 // 그대로 옮긴다. 첫 번째 배경 사진·아이콘·현지어 이름·워드마크·슬로건·설명 문구를 읽어, 웹 히어로가 바뀌면
@@ -66,6 +77,17 @@ try {
       const slides = getSlides(locale);
       for (const slide of slides) { const html = renderSlide(slide, resolve(rawDir(locale), slide.rawFile), slides.length, size, locale); const file = resolve(tmp, `${kind}-${locale}-${slide.no}.html`); writeFileSync(file, html); await page.setViewportSize(size); await page.goto(`file://${file}`); await page.screenshot({ path: resolve(out, `${slide.no}.png`) }); }
       console.log(`✓ ${kind}/${storeLocale(locale)}: ${out}`);
+      if (kind === 'play') {
+        // 두 사이트가 같은 이미지를 쓰므로 한 번만 줄이고 나머지 폴더에는 복사한다.
+        const [first, ...rest] = webScreensDirs(locale);
+        for (const dir of [first, ...rest]) mkdirSync(dir, { recursive: true });
+        for (const slide of slides) {
+          const jpg = resolve(first, `${slide.no}.jpg`);
+          await syncWebScreen(page, resolve(out, `${slide.no}.png`), jpg);
+          for (const dir of rest) copyFileSync(jpg, resolve(dir, `${slide.no}.jpg`));
+        }
+        for (const dir of [first, ...rest]) console.log(`✓ web/${locale}: ${dir}`);
+      }
     }
     if (kind === 'play') {
       // 한국어 기본 등록정보는 feature-graphic.png, 영어·일본어 번역 등록정보는 feature-graphic.<언어>.png.
