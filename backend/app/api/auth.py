@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.activity import record
 from app.api.deps import DbSession
 from app.config import get_settings
 from app.models.cloud import AuthIdentity, Entitlement, Usage, User
@@ -105,6 +106,7 @@ def sign_in(payload: SignInRequest, db: DbSession) -> SessionResponse:
     claims = verify_identity_token(payload.provider, payload.identity_token)
     subject = str(claims["sub"])
     user = _find_user(db, payload.provider, subject)
+    new_user = user is None
     if user is None:
         claim_email = claims.get("email")
         user = User(email=payload.email or (claim_email if isinstance(claim_email, str) else None))
@@ -121,6 +123,9 @@ def sign_in(payload: SignInRequest, db: DbSession) -> SessionResponse:
             user = _find_user(db, payload.provider, subject)
             if user is None:
                 raise
+            new_user = False
+    record(db, user.id, "signed_in", properties={"provider": payload.provider, "new": new_user})
+    db.commit()
     return SessionResponse(access_token=issue_access_token(user.id), user_id=user.id)
 
 

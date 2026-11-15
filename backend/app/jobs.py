@@ -38,6 +38,7 @@ from app.models.cloud import (
     StorageCleanup,
     Usage,
     User,
+    UserEvent,
 )
 from app.monitoring import init_sentry
 from app.shared import (
@@ -64,6 +65,8 @@ MAX_PURGE_DELAY = timedelta(days=7)
 BILLING_EVENT_RETENTION = timedelta(days=365 * 5)
 # 처리한 신고 기록 보관 기간 (개인정보처리방침 §3). 같은 사람의 신고가 반복되는지 보는 데 쓴다.
 REPORT_RETENTION = timedelta(days=365)
+# 활동 기록 보관 기간 (개인정보처리방침 §3)
+USER_EVENT_RETENTION = timedelta(days=180)
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 
 # 유예 알림 단계 (docs/PLAN.md §2.4): 만료 즉시, 삭제 7일 전, 삭제 1일 전.
@@ -438,6 +441,11 @@ def prune_billing_events(db: Session, now: datetime) -> None:
     db.commit()
 
 
+def prune_user_events(db: Session, now: datetime) -> None:
+    db.execute(delete(UserEvent).where(UserEvent.created_at < now - USER_EVENT_RETENTION))
+    db.commit()
+
+
 def prune_reports(db: Session, now: datetime) -> None:
     """처리하고 보관 기간이 지난 신고를 지운다. 처리 전인 신고는 남긴다."""
     db.execute(
@@ -625,6 +633,7 @@ def run(db: Session, now: datetime | None = None, notify: Notifier = send_push) 
         lambda: sweep_storage_cleanups(db, now),
         lambda: prune_billing_events(db, now),
         lambda: prune_reports(db, now),
+        lambda: prune_user_events(db, now),
     ):
         try:
             step()

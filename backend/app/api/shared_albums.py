@@ -31,6 +31,7 @@ from sqlalchemy import delete, func, select, tuple_
 from sqlalchemy.orm import Session
 
 from app import jobs
+from app.activity import record
 from app.api.deps import CurrentUser, DbSession
 from app.api.uploads import (
     DOWNLOAD_URL_TTL,
@@ -771,9 +772,16 @@ def create_album(
         )
     )
     db.flush()
-    _add_items(db, album, user.id, payload.moment_ids, dict(payload.photo_qualities))
+    added = _add_items(db, album, user.id, payload.moment_ids, dict(payload.photo_qualities))
     _require_room(db, album)
     _require_my_space(db, user.id)
+    record(
+        db,
+        user.id,
+        "shared_album_created",
+        f"shared_album:{album.id}",
+        {"relation": album.relation, "quality": album.photo_quality, "items": added},
+    )
     db.commit()
     return _detail(db, album.id, user.id)
 
@@ -880,6 +888,13 @@ def join_album(payload: JoinRequest, user: CurrentUser, db: DbSession) -> Shared
         if payload.allocated_bytes > 0:
             _require_my_space(db, user.id)
         refresh_funding(db, album)
+        record(
+            db,
+            user.id,
+            "shared_album_joined",
+            f"shared_album:{album.id}",
+            {"allocated": payload.allocated_bytes > 0},
+        )
         db.commit()
     return _detail(db, album.id, user.id)
 
@@ -1087,6 +1102,13 @@ def remove_member(
         if db.get(SharedAlbumMember, (album_id, member_id)) is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "member not found")
     remove_member_rows(db, album, member_id, keep_photos=photos == "keep")
+    record(
+        db,
+        user.id,
+        "shared_album_left" if member_id == user.id else "shared_member_removed",
+        f"shared_album:{album_id}",
+        {"photos": photos},
+    )
     db.commit()
 
 
@@ -1171,6 +1193,14 @@ def report(album_id: str, payload: ReportRequest, user: CurrentUser, db: DbSessi
             detail=(payload.detail or "").strip() or None,
         )
     )
+    target = "comment" if comment else "item" if item else "user"
+    record(
+        db,
+        user.id,
+        "content_reported",
+        f"shared_album:{album_id}",
+        {"target": target, "reason": payload.reason},
+    )
     db.commit()
 
 
@@ -1184,6 +1214,7 @@ def block(album_id: str, payload: BlockRequest, user: CurrentUser, db: DbSession
         return  # 계정을 지운 사람은 차단할 행이 없다 (user_blocks의 FK).
     if db.get(UserBlock, (user.id, payload.user_id)) is None:
         db.add(UserBlock(blocker_id=user.id, blocked_id=payload.user_id, display_name=name))
+        record(db, user.id, "user_blocked", f"shared_album:{album_id}")
         db.commit()
 
 
@@ -1341,6 +1372,8 @@ def add_items(
     qualities = dict.fromkeys(payload.moment_ids, quality) if quality else None
     added = _add_items(db, album, user.id, payload.moment_ids, qualities)
     _require_room(db, album)
+    if added:
+        record(db, user.id, "shared_items_added", f"shared_album:{album_id}", {"count": added})
     db.commit()
     return AddItemsResponse(added=added)
 
@@ -1357,6 +1390,13 @@ def set_item_caption(
     if item.author_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "only the uploader can write the caption")
     item.caption = (payload.caption or "").strip() or None
+    record(
+        db,
+        user.id,
+        "shared_caption_set",
+        f"shared_album:{album_id}",
+        {"cleared": item.caption is None},
+    )
     db.commit()
 
 
@@ -1615,6 +1655,7 @@ def create_comment(
         album_id=album_id, item_id=item_id, author_id=user.id, body=payload.body
     )
     db.add(comment)
+    record(db, user.id, "shared_comment_created", f"shared_album:{album_id}")
     db.commit()
     if notify:
         background.add_task(

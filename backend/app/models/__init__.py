@@ -20,6 +20,7 @@ from app.models.cloud import (
     Usage,
     User,
     UserBlock,
+    UserEvent,
 )
 
 __all__ = [
@@ -43,4 +44,5 @@ __all__ = [
     "Usage",
     "User",
     "UserBlock",
+    "UserEvent",
 ]

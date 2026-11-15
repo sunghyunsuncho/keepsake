@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     DateTime,
     Float,
@@ -392,6 +393,38 @@ class Device(Base):
     language: Mapped[str] = mapped_column(String(8), default="ko", server_default="ko")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class UserEvent(Base):
+    """로그인한 사용자의 주요 행동. 전체 요청 로그가 아니라 활동 분석에 쓸 액션만 남긴다
+    (app/activity.py).
+
+    메모·장소·앨범 이름·댓글처럼 사용자가 쓴 글은 담지 않는다. 계정을 지우면 함께 지운다.
+    """
+
+    __tablename__ = "user_events"
+    __table_args__ = (
+        # 사용자별 활동 흐름: WHERE user_id = ? ORDER BY created_at
+        Index("ix_user_events_user_created", "user_id", "created_at"),
+        # 이벤트별 기간 집계: WHERE event_type = ? AND created_at >= ?
+        # (종류가 스무 가지 남짓이라 event_type만으로는 거의 좁혀지지 않는다)
+        Index("ix_user_events_type_created", "event_type", "created_at"),
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    # app/activity.py의 ServerEvent·ClientEvent
+    event_type: Mapped[str] = mapped_column(String(48))
+    # 관련 대상: "shared_album:<id>", "screen:moment/[id]" 등
+    entity_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # 이벤트별 추가 정보 (사진 수, 화질 등). 글은 넣지 않는다.
+    properties: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # 앱이 보낸 이벤트만 있다 ('ios' | 'android', 앱 버전)
+    platform: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    app_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # 기간별 집계(DAU 등)와 보관 기간 정리가 시각만으로 찾는다.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
     )
 
 

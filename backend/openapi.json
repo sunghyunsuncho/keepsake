@@ -2165,6 +2165,46 @@
           }
         }
       }
+    },
+    "/events": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Log Event",
+        "description": "기기 안에서 끝나는 액션과 앱 사용(app_open, screen_view)을 앱이 기록한다 (app/activity.py).\n\n앱은 기다리지 않고 보내며 실패해도 다시 보내지 않는다.",
+        "operationId": "events_log_event",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -2724,6 +2764,99 @@
           "expires_at"
         ],
         "title": "DownloadResponse"
+      },
+      "EventRequest": {
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "enum": [
+              "app_open",
+              "screen_view",
+              "photos_kept",
+              "review_skipped",
+              "memo_edited",
+              "album_created",
+              "photos_cleaned",
+              "local_imported",
+              "subscribed"
+            ],
+            "title": "Event Type"
+          },
+          "entity_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Ref"
+          },
+          "properties": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Properties"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "ios",
+                  "android"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform"
+          },
+          "app_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_type"
+        ],
+        "title": "EventRequest"
       },
       "HTTPValidationError": {
         "properties": {

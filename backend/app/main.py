@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
-from app.api import account, admin, auth, billing, health, shared_albums, sync, uploads
+from app.api import account, admin, auth, billing, events, health, shared_albums, sync, uploads
 from app.cloud import UserGone
 from app.monitoring import init_sentry
 
@@ -30,5 +30,6 @@ app.include_router(sync.router)
 app.include_router(uploads.router)
 app.include_router(shared_albums.router)
 app.include_router(billing.router)
+app.include_router(events.router)
 app.include_router(admin.page_router)
 app.include_router(admin.router)
