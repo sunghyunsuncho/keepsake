@@ -3,14 +3,16 @@ import { pathToFileURL } from 'node:url';
 
 export const PLAY_SIZE = { width: 1620, height: 2880 };
 export const IOS_SIZE = { width: 1242, height: 2688 };
+// Vernissage 스토어 스크린샷과 같은 거의 흰 단색 배경. 공개 웹 갤러리에서도 두 앱이 같은 톤으로 보인다.
+const SLIDE_BACKGROUND = '#F7F7F8';
 const escape = (text: string) => text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 
 export function renderSlide(slide: Slide, rawPath: string, total: number, size: { width: number; height: number }, lang: string) {
   const scale = Math.min(size.width / PLAY_SIZE.width, size.height / PLAY_SIZE.height);
   const px = (n: number) => Math.round(n * scale);
   return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><style>
-    *{box-sizing:border-box} body{margin:0;background:#F4F1EC;font-family:-apple-system,BlinkMacSystemFont,${lang === 'ja' ? '"Hiragino Sans","Noto Sans JP",' : ''}"Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:#171A1E}
-    .canvas{width:${size.width}px;height:${size.height}px;padding:${px(120)}px ${px(90)}px ${px(90)}px;display:flex;flex-direction:column;background:linear-gradient(160deg,#F8F6F2,#EEE9E1)}
+    *{box-sizing:border-box} body{margin:0;background:${SLIDE_BACKGROUND};font-family:-apple-system,BlinkMacSystemFont,${lang === 'ja' ? '"Hiragino Sans","Noto Sans JP",' : ''}"Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:#171A1E}
+    .canvas{width:${size.width}px;height:${size.height}px;padding:${px(120)}px ${px(90)}px ${px(90)}px;display:flex;flex-direction:column;background:${SLIDE_BACKGROUND}}
     .number{font-size:${px(34)}px;letter-spacing:.16em;color:#CD5837;font-weight:700}.title{font-size:${px(74)}px;line-height:1.22;font-weight:600;margin-top:${px(36)}px}.accent{font-size:${px(104)}px;line-height:1.14;font-weight:800;margin-top:${px(12)}px;color:#16212B;letter-spacing:-.035em}.desc{font-size:${px(44)}px;line-height:1.42;color:#5F6A75;margin-top:${px(30)}px}
     :lang(ko) :is(.title,.accent,.desc){word-break:keep-all} :lang(ja) :is(.title,.accent,.desc){word-break:auto-phrase}
     /* 휴대폰은 문구 아래 남은 높이를 모두 쓴다. 폭은 화면 비율로 정해지고 가운데 둔다. */
