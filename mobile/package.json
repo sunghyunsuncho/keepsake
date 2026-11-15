@@ -67,8 +67,8 @@
     "update:prod": "node scripts/eas-update.js production",
     "api:types": "openapi-typescript ../backend/openapi.json -o src/api/schema.d.ts",
     "metadata:lint": "node scripts/check-store-metadata.js && eas metadata:lint",
-    "metadata:pull": "eas metadata:pull",
-    "metadata:push": "node scripts/check-store-metadata.js && eas metadata:push"
+    "metadata:pull": "EXPO_APPLE_TEAM_TYPE=INDIVIDUAL eas metadata:pull",
+    "metadata:push": "node scripts/check-store-metadata.js && EXPO_APPLE_TEAM_TYPE=INDIVIDUAL eas metadata:push"
   },
   "private": true,
   "expo": {
