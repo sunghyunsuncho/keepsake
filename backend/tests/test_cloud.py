@@ -1430,10 +1430,11 @@ def test_lookup_uses_the_larger_active_subscription(client, db, monkeypatch):
     assert entitlement.plan == "cloud_10gb"
 
 
-def test_complimentary_access_uses_the_top_plan(client, db):
+def test_complimentary_access_uses_the_granted_plan_over_the_store_plan(client, db):
     user_id, headers = sign_in(client)
     entitlement = db.get(Entitlement, user_id)
-    entitlement.access_override = "cloud"
+    entitlement.plan = "cloud_10gb"
+    entitlement.access_override = "cloud_100gb"
     db.commit()
     body = client.get("/account", headers=headers).json()
     assert body["subscription"]["plan"] == "cloud_100gb"

@@ -1,7 +1,7 @@
 import secrets
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, get_args
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from fastapi.responses import FileResponse
@@ -42,8 +42,8 @@ from app.storage import r2_client
 _PAGE = Path(__file__).resolve().parents[1] / "admin" / "index.html"
 LIST_LIMIT = 200
 
-# default: 결제 상태를 따른다 (가입하면 무료 회원) / cloud: 결제 없이 구독 회원
-Access = Literal["default", "cloud"]
+# default: 결제 상태를 따른다 (가입하면 무료 회원) / 요금제 이름: 결제 없이 그 요금제를 무상 제공한다
+Access = Literal["default", "cloud_10gb", "cloud_100gb"]
 
 
 def _enabled() -> str:
@@ -111,7 +111,9 @@ def _count(model, column=None):
 
 
 def _access(entitlement: Entitlement | None) -> Access:
-    return "cloud" if entitlement and entitlement.access_override == "cloud" else "default"
+    if entitlement is None or entitlement.access_override not in get_args(Access):
+        return "default"
+    return entitlement.access_override
 
 
 @router.get("/users")

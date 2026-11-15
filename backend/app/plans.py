@@ -72,19 +72,16 @@ def larger_plan(*names: str | None) -> str | None:
 def plan_limit(entitlement: Entitlement | None) -> PlanLimit | None:
     """구독 중(active)이거나 유예 중인 요금제. 구독하지 않았으면 None.
 
-    관리자가 무상 제공한 계정은 가장 큰 요금제를 쓴다.
+    관리자가 무상 제공한 계정은 관리자가 고른 요금제를 쓴다.
     """
     if subscription_status(entitlement) not in {"active", "grace"}:
         return None
     assert entitlement is not None
-    if entitlement.access_override == "cloud":
-        return top_plan()
-    return plans().get(entitlement.plan, default_plan())
+    available = plans()
+    if entitlement.access_override in available:
+        return available[entitlement.access_override]
+    return available.get(entitlement.plan, default_plan())
 
 
 def default_plan() -> PlanLimit:
     return plans()["cloud_10gb"]
-
-
-def top_plan() -> PlanLimit:
-    return plans()["cloud_100gb"]

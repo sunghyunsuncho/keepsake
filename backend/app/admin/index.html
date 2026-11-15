@@ -118,7 +118,8 @@
 const STATUS_LABEL = { active: '구독 회원', none: '무료 회원', grace: '만료 · 유예 중', expired: '만료 · 사진 삭제됨' };
 const ACCESS_OPTIONS = [
   ['default', '결제 상태 따르기'],
-  ['cloud', '구독 회원 (무상 제공)'],
+  ['cloud_10gb', '구독 회원 10GB (무상 제공)'],
+  ['cloud_100gb', '구독 회원 100GB (무상 제공)'],
 ];
 const $ = (id) => document.getElementById(id);
 let token = '';
@@ -182,7 +183,7 @@ function badge(user) {
 }
 
 function statusDetail(user) {
-  if (user.access === 'cloud') return '관리자가 구독 회원으로 지정 (무상 제공)';
+  if (user.access !== 'default') return `관리자가 구독 회원 ${user.access === 'cloud_10gb' ? '10GB' : '100GB'}로 지정 (무상 제공)`;
   if (user.stored_status === 'none') return '결제한 적 없음';
   if (user.stored_status === 'active' && user.expires_at) return `결제 · ${formatDate(user.expires_at)}까지`;
   if (user.stored_status === 'grace' && user.grace_until) return `${formatDate(user.grace_until)}에 사진 삭제`;
@@ -209,7 +210,7 @@ async function changeAccess(user, select) {
 
 function render(data) {
   $('billing').textContent =
-    '가입하면 무료 회원이고, 구독 상태는 스토어 결제(RevenueCat)가 정해요. "구독 회원 (무상 제공)"으로 지정하면 결제 없이 사진 보관까지 쓸 수 있어요. 결제 연결 전 시험이나 무상 제공에 써요.';
+    '가입하면 무료 회원이고, 구독 상태는 스토어 결제(RevenueCat)가 정해요. "구독 회원 10GB/100GB (무상 제공)"으로 지정하면 결제 없이 고른 용량만큼 사진 보관까지 쓸 수 있어요. 결제 연결 전 시험이나 무상 제공에 써요.';
 
   const counts = { all: data.total, active: 0, none: 0, grace: 0 };
   data.users.forEach((user) => { if (user.effective_status in counts) counts[user.effective_status]++; });

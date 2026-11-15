@@ -56,14 +56,18 @@ def subscription_status(entitlement: Entitlement | None) -> str:
     """앱에 보여주고 권한을 판단하는 상태.
 
     가입하면 무료 회원(none)이고, RevenueCat 결제로 구독 상태가 바뀐다.
-    관리자가 구독 회원(cloud)으로 정한 계정은 결제와 관계없이 구독 중으로 본다
-    (결제 연결 전 시험, 무상 제공).
+    관리자가 구독 회원으로 정한 계정(access_override에 요금제를 적는다)은 결제와 관계없이
+    구독 중으로 본다 (결제 연결 전 시험, 무상 제공).
     """
     if entitlement is None:
         return "none"
-    if entitlement.access_override == "cloud":
+    if is_complimentary(entitlement):
         return "active"
     return entitlement.status
+
+
+def is_complimentary(entitlement: Entitlement | None) -> bool:
+    return entitlement is not None and entitlement.access_override is not None
 
 
 def can_write(entitlement: Entitlement | None) -> bool:

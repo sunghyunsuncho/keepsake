@@ -4,6 +4,7 @@ from uuid import uuid4
 from app import jobs
 from app.config import get_settings
 from app.models.cloud import Entitlement
+from app.plans import GB
 from tests.test_cloud import moment, prefix_keys, sign_in, status_of, upload, webhook
 
 ADMIN_TOKEN = "test-admin-token"
@@ -34,11 +35,11 @@ def test_admin_grants_and_returns_complimentary_access(client, monkeypatch):
     user_id, headers = sign_in(client)
     assert status_of(client, headers) == "none"
 
-    assert set_access(client, user_id, "cloud").json()["effective_status"] == "active"
+    assert set_access(client, user_id, "cloud_100gb").json()["effective_status"] == "active"
     assert client.get("/account", headers=headers).json()["subscription"]["can_upload"] is True
     listed = client.get("/admin/api/users", headers=ADMIN, params={"q": user_id}).json()
     assert [(u["id"], u["access"], u["effective_status"]) for u in listed["users"]] == [
-        (user_id, "cloud", "active")
+        (user_id, "cloud_100gb", "active")
     ]
 
     # 되돌리면 결제 상태(무료 회원)를 따른다. 결제한 구독은 그대로 남는다.
@@ -51,7 +52,7 @@ def test_complimentary_access_survives_an_expired_store_subscription(client, db,
     monkeypatch.setattr(get_settings(), "admin_token", ADMIN_TOKEN)
     user_id, headers = sign_in(client)
     assert status_of(client, headers) == "none"
-    set_access(client, user_id, "cloud")
+    set_access(client, user_id, "cloud_10gb")
     assert status_of(client, headers) == "active"
 
     moment_id = str(uuid4())
@@ -85,4 +86,20 @@ def test_unknown_access_and_user_are_rejected(client, monkeypatch):
     monkeypatch.setattr(get_settings(), "admin_token", ADMIN_TOKEN)
     user_id, _ = sign_in(client)
     assert set_access(client, user_id, "free").status_code == 422
-    assert set_access(client, "missing-user", "cloud").status_code == 404
+    assert set_access(client, user_id, "cloud").status_code == 422
+    assert set_access(client, "missing-user", "cloud_10gb").status_code == 404
+
+
+def test_admin_chooses_the_complimentary_plan(client, monkeypatch):
+    monkeypatch.setattr(get_settings(), "admin_token", ADMIN_TOKEN)
+    user_id, headers = sign_in(client)
+
+    set_access(client, user_id, "cloud_10gb")
+    body = client.get("/account", headers=headers).json()
+    assert body["subscription"]["plan"] == "cloud_10gb"
+    assert body["usage"]["max_bytes"] == 10 * GB
+
+    set_access(client, user_id, "cloud_100gb")
+    body = client.get("/account", headers=headers).json()
+    assert body["subscription"]["plan"] == "cloud_100gb"
+    assert body["usage"]["max_bytes"] == 100 * GB

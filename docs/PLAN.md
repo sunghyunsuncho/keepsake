@@ -256,7 +256,7 @@ class UserEvent:      id, user_id, event_type, entity_ref, properties, platform,
 - **현재 상태:** 서버·앱 코드 구현 (구독·만료 코드도 포함). 서버 쪽 흐름은 `backend/tests/test_cloud.py`가 로컬 Postgres·S3로 확인한다 (시간 조작은 `jobs.run(now=...)`). iOS 시뮬레이터 두 대와 로컬 서버로 완료 기준 흐름 확인 (2026-10-29): Apple·Google 로그인 → 백업 → 새 기기 복원(기록·표시용 사진) → 메모 수정이 다른 기기에 반영, 같은 기기에서 계정을 바꿔도 계정별로 따로 백업, 다시 로그인하면 사진을 다시 올리지 않음, 계정 삭제 후 서버·R2 데이터 삭제와 기기 데이터 유지. 2026-11-02에 계정 공간과 선택 올리기(§2.4)로 바꿨고 이 흐름의 기기 확인은 아직 하지 않았다. 남은 것: Android 빌드·확인, 실기기 확인, 푸시 자격 증명(APNs·FCM), 서버 배포와 cron
 - **구현 메모:**
   - Cloud 화면은 가격까지 로그인 없이 보여준다 (RevenueCat 익명 사용자로 상품만 불러온다). 구매·복원은 로그인한 뒤에만 해서 결제가 항상 서버 `user_id`에 묶인다. RevenueCat 키가 없으면(결제 연결 전) 로그인 버튼만 보여준다.
-  - 가입하면 무료 회원(`none`)이다. 관리자가 `entitlements.access_override = 'cloud'`(관리자 화면의 '구독 회원 (무상 제공)')로 정한 계정만 결제와 관계없이 `active`로 본다 (`app/cloud.py`의 `subscription_status`). 무상 제공 계정은 스토어 구독이 끝나도 유예 알림·사진 삭제를 하지 않는다. 앱은 RevenueCat 키가 없으면 구독 관리 버튼과 해지 안내를 숨긴다.
+  - 가입하면 무료 회원(`none`)이다. 관리자가 `entitlements.access_override`에 요금제(`cloud_10gb`·`cloud_100gb`, 관리자 화면의 '구독 회원 10GB/100GB (무상 제공)')를 정한 계정만 결제와 관계없이 `active`로 본다 (`app/cloud.py`의 `subscription_status`). 무상 제공 계정은 스토어 구독이 끝나도 유예 알림·사진 삭제를 하지 않는다. 앱은 RevenueCat 키가 없으면 구독 관리 버튼과 해지 안내를 숨긴다.
   - 구독 상태 `none → active → grace(30일 읽기 전용) → expired(삭제됨)`. `BILLING_ISSUE`·`CANCELLATION`은 상태를 바꾸지 않는다 (스토어 결제 유예 중이거나 만료 전이므로). `REVENUECAT_API_KEY`가 있으면 webhook마다·구매 직후(`POST /account/refresh-subscription`)·삭제 직전에 RevenueCat REST로 다시 확인한다.
   - 사용량·사진·변경 번호를 바꾸는 요청(push, 업로드 시작·완료)은 모두 사용자 행을 먼저 잠근다. 같은 사용자의 요청이 차례로 처리되어 사용량이 어긋나거나 교착이 생기지 않는다.
   - 기기는 기록을 고칠 때 updated_at을 이전 값보다 항상 뒤로 잡는다. 기기 시계가 조금 늦어도 방금 받은 값을 고친 수정이 서버에서 '옛 값'으로 버려지지 않는다. 서버 시각(마이크로초)은 받을 때 기기 형식(밀리초, `toISOString`)으로 바꿔서 문자열 비교가 맞게 한다.
