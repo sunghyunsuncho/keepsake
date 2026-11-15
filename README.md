@@ -76,6 +76,24 @@ npx eas-cli@latest build --profile development --platform ios      # 또는 andr
 
 `.env`는 git에 올라가지 않으므로 EAS 클라우드 빌드에는 포함되지 않는다. preview·production 빌드의 API 주소는 EAS 환경 변수 `EXPO_PUBLIC_API_URL`로 지정한다.
 
+## OTA 업데이트 (EAS Update)
+
+JS·이미지만 바뀐 수정은 스토어 심사 없이 이미 설치된 앱에 보낸다. 빌드 프로필마다 같은 이름의 채널(`development`·`preview`·`production`)에 묶여 있다 (`mobile/eas.json`).
+
+```bash
+cd mobile
+npm run update:preview -- "고친 내용"   # preview 빌드(내부 배포)에 먼저 보내 확인
+npm run update:prod -- "고친 내용"      # 스토어 빌드
+npx eas-cli@latest update:rollback --channel production   # 문제가 있으면 되돌린다
+```
+
+- 반드시 위 스크립트(`mobile/scripts/eas-update.js`)로 보낸다. 맨 `eas update`는 eas.json 빌드 프로필의 `EXPO_PUBLIC_APP_ENV`를 읽지 않아, 운영 앱이 테스트 광고를 띄우고 Sentry 환경이 development로 잡힌다. 스크립트는 EAS 환경 변수(`--environment`)와 Metro 캐시 비우기(`--clear-cache`)도 함께 넣는다. EAS 환경에 없는 변수는 `mobile/.env.local`·`.env` 값이 들어가므로, 새 `EXPO_PUBLIC_` 변수는 EAS 환경에도 넣는다.
+- `SENTRY_AUTH_TOKEN`이 있으면 업데이트 번들의 소스맵도 Sentry에 올린다.
+- 앱을 새로 켜면 스플래시에 이어 업데이트 화면을 띄우고, 새 업데이트를 다 받으면 바로 다시 시작해 **그 실행부터** 적용한다 (`mobile/src/components/update-gate.tsx`). 확인이 4초, 내려받기가 20초를 넘으면 기다리지 않고 들어가고, 받던 업데이트는 다음 실행에 적용한다. 개발 빌드에서는 뜨지 않는다.
+- 한 시간 넘게 백그라운드에 있다 돌아오면 다시 확인해 받아 두고 다음에 켤 때 적용한다. 쓰는 중에는 다시 시작하지 않는다 (`mobile/src/components/app-updates.tsx`). 설정 탭 하단 버전 옆에 실행 중인 업데이트 ID 앞자리가 보인다.
+- `runtimeVersion`은 `appVersion` 정책이라 같은 `version`(app.json)의 빌드가 모두 같은 업데이트를 받는다. **네이티브가 바뀌는 변경은 OTA로 보낼 수 없다**: 네이티브 패키지 추가·제거·버전 변경, config plugin·`app.json`·`app.config.ts`의 네이티브 설정, `mobile/modules`, `patches`의 네이티브 코드. 이런 변경은 `version`을 올려 새로 빌드한다 (올리지 않으면 옛 빌드가 맞지 않는 번들을 받는다).
+- `expo-updates`가 들어간 빌드부터 OTA를 받는다. 그 전에 설치된 빌드는 스토어 업데이트로만 바뀐다.
+
 ## Cloud 백업 (Phase 2)
 
 로그인한 사용자는 무료로 기록(메모·장소·앨범)을 서버에 백업한다. 새 기기 사진첩에 같은 사진이 있으면 기록과 다시 연결해 보여 주며, 사진 파일 자체를 보관하려면 유료 구독으로 안전 앨범에 담아야 한다.

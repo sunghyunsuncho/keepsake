@@ -7,11 +7,13 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { ActionSheetHost } from '@/components/action-sheet';
 import { ActivityTracker } from '@/components/activity-tracker';
+import { AppUpdates } from '@/components/app-updates';
 import { CloudSync } from '@/components/cloud-sync';
 import { LocalImportPrompt } from '@/components/local-import-prompt';
 import { NotificationInbox } from '@/components/notification-inbox';
 import { NotificationLinks } from '@/components/notification-links';
 import { ModalHeader, StackHeader } from '@/components/stack-header';
+import { UpdateGate, shouldShowUpdateGate } from '@/components/update-gate';
 import { ReviewReminders } from '@/components/review-reminders';
 import { WelcomeGate } from '@/components/welcome-gate';
 import { StoreDemoSeed } from '@/components/store-demo-seed';
@@ -27,6 +29,8 @@ function RootLayout() {
   const colorScheme = useColorScheme();
   const databaseName = useActiveDatabaseName();
   const [localReady, setLocalReady] = useState(false);
+  // 앱을 새로 켤 때만 뜬다 (RootLayout은 실행마다 한 번 마운트되고, 백그라운드에서 돌아올 때는 다시 마운트되지 않는다).
+  const [updateGateOpen, setUpdateGateOpen] = useState(shouldShowUpdateGate);
   useEffect(() => {
     getLocalDb().then(
       () => setLocalReady(true),
@@ -39,12 +43,16 @@ function RootLayout() {
     );
   }, []);
 
+  // 새 업데이트를 받는 동안 앱을 그리지 않는다. 곧 다시 시작할 번들로 로그인 확인·동기화를 시작하지 않게.
+  if (updateGateOpen) return <UpdateGate onDone={() => setUpdateGateOpen(false)} />;
+
   return (
     // 앨범 화면의 두 손가락 확대·축소가 react-native-gesture-handler를 쓴다.
     <GestureHandlerRootView style={styles.flex}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         {/* 공간이 바뀔 때 다시 그려지지 않게 SQLiteProvider 밖에 둔다 (앱 실행을 두 번 세지 않게). */}
         <ActivityTracker />
+        <AppUpdates />
         {!databaseName || !localReady ? (
           <Loading />
         ) : (

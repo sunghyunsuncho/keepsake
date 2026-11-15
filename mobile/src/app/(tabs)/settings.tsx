@@ -1,6 +1,7 @@
 import * as Application from 'expo-application';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
+import * as Updates from 'expo-updates';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { CloudArrowUpIcon, FileTextIcon, FlagIcon, GlobeSimpleIcon, ProhibitIcon, ImageSquareIcon, LightbulbIcon, ListChecksIcon, ShieldCheckIcon, SignInIcon, SlidersHorizontalIcon, UserIcon } from 'phosphor-react-native';
@@ -207,6 +208,8 @@ function AppFooter() {
   const { t } = useTranslation();
   const version = Application.nativeApplicationVersion ?? '—';
   const build = Application.nativeBuildVersion;
+  // OTA로 받은 번들로 실행 중이면 업데이트 ID 앞자리를 붙인다 (문의받을 때 어느 업데이트인지 알 수 있게).
+  const update = Updates.isEmbeddedLaunch ? null : Updates.updateId?.slice(0, 8);
   return (
     <View style={styles.footer}>
       <ThemedText themeColor="textMid" style={styles.footerName}>
@@ -214,7 +217,8 @@ function AppFooter() {
       </ThemedText>
       <ThemedText themeColor="textSecondary" style={styles.footerLine}>
         {t('version')} {version}
-        {build ? ` (${build})` : ''} · {COMPANY}
+        {build ? ` (${build})` : ''}
+        {update ? ` · ${update}` : ''} · {COMPANY}
       </ThemedText>
       <ThemedText themeColor="textSecondary" style={styles.footerLine}>
         {t('contact')} {CONTACT_EMAIL}

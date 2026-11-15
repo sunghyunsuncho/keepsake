@@ -533,6 +533,7 @@ const legacyText: Record<string, { en: string; ja: string }> = {
   '글 지우기': { en: 'Remove caption', ja: '文章を削除' },
   '글을 올리지 못했어요': { en: 'Couldn’t post the caption', ja: '文章を投稿できませんでした' },
   '눌러서 구성원에게 이야기를 들려주세요': { en: 'Tap to tell everyone the story', ja: 'タップしてみんなに思い出を伝えましょう' },
+  '새 버전을 준비하고 있어요': { en: 'Getting the latest version ready', ja: '最新バージョンを準備しています' },
   '차단한 사람 목록을 불러오지 못했어요.': { en: 'Couldn’t load the people you’ve blocked.', ja: 'ブロックした人の一覧を読み込めませんでした。' },
 };
 
