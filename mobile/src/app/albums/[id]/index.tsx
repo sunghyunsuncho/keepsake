@@ -41,6 +41,7 @@ import { useZoomedGallery } from '@/hooks/use-zoomed-gallery';
 import { syncCloud, useCloudState } from '@/lib/cloud/engine';
 import { PhotoSaveError, saveOriginalsToLibrary } from '@/lib/cloud/photos';
 import { localizeText, photoCount, selectionSummary, showAlert, useTranslation } from '@/lib/i18n';
+import { mapsAvailable } from '@/lib/maps';
 
 // 앨범 하나: 해 → 달 → 날 → 이야기 순으로 당겨 보고(두 손가락 또는 위의 단계 버튼), 사진을 누르면 크게 본다.
 export default function AlbumScreen() {
@@ -277,11 +278,13 @@ export default function AlbumScreen() {
         headerLeft: () => <BackButton label={parentAlbumLabel} onPress={() => router.navigate(parentAlbumRoute)} />,
         headerRight: () => (
           <View style={styles.headerButtons}>
-            <HeaderButton
-              icon="map-outline"
-              label="앨범 지도"
-              onPress={() => router.push({ pathname: '/album-map', params: { id, kind: 'album' } })}
-            />
+            {mapsAvailable && (
+              <HeaderButton
+                icon="map-outline"
+                label="앨범 지도"
+                onPress={() => router.push({ pathname: '/album-map', params: { id, kind: 'album' } })}
+              />
+            )}
             {isCustom && <HeaderButton icon="ellipsis-horizontal" label="앨범 메뉴" onPress={showAlbumMenu} />}
           </View>
         ),

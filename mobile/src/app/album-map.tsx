@@ -15,6 +15,7 @@ import type { Moment } from '@/db/moments';
 import { listSharedItems, type SharedItem } from '@/lib/cloud/shared';
 import { formatFullDate } from '@/lib/dates';
 import { photoCount, useTranslation } from '@/lib/i18n';
+import { mapsAvailable } from '@/lib/maps';
 
 type Point = { id: string; lat: number; lng: number; takenAt: string; placeName?: string | null };
 type MarkerPoint = Point & { count: number };
@@ -82,7 +83,7 @@ function AlbumMap({
   return (
     <ThemedView style={styles.flex}>
       <Stack.Screen options={{ title }} />
-      {region ? (
+      {region && mapsAvailable ? (
         <MapView style={styles.flex} initialRegion={region} showsUserLocation={false}>
           {markers.map((point) => (
             <Marker key={point.id} coordinate={{ latitude: point.lat, longitude: point.lng }}>

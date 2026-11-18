@@ -59,6 +59,7 @@ import {
 } from '@/lib/cloud/shared';
 import { formatFullDate } from '@/lib/dates';
 import { sortForGallery } from '@/lib/gallery';
+import { mapsAvailable } from '@/lib/maps';
 import { formatBytes, formatSize } from '@/lib/storage';
 import {
   addedBy,
@@ -362,11 +363,13 @@ export default function SharedAlbumScreen() {
           title: album.title,
           headerRight: () => (
             <View style={styles.headerButtons}>
-              <HeaderButton
-                icon="map-outline"
-                label="앨범 지도"
-                onPress={() => router.push({ pathname: '/album-map', params: { id, kind: 'shared' } })}
-              />
+              {mapsAvailable && (
+                <HeaderButton
+                  icon="map-outline"
+                  label="앨범 지도"
+                  onPress={() => router.push({ pathname: '/album-map', params: { id, kind: 'shared' } })}
+                />
+              )}
               <HeaderButton icon="ellipsis-horizontal" label="앨범 메뉴" onPress={showAlbumMenu} />
             </View>
           ),
