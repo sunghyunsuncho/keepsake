@@ -48,10 +48,15 @@ export default function PickScreen() {
   const { access, canAskAgain, request } = usePhotoAccess();
   const { data: settings } = useDbQuery(() => getSettings(db), [db]);
   const targetAlbumId = settings?.picking_album_id ?? null;
-  const { data: targetAlbumTitle } = useDbQuery(
-    () => (targetAlbumId ? getAlbumTitle(db, targetAlbumId) : Promise.resolve(null)),
+  // useDbQuery는 대상이 바뀌어도 새 결과가 올 때까지 이전 결과를 들고 있다. 앨범 담기를 막 시작했을 때
+  // 이전 결과(대상 없음 = null)를 '앨범이 지워졌다'로 읽고 대상을 지워 버리지 않도록, 어느 앨범의 결과인지 함께 둔다.
+  const { data: targetLookup } = useDbQuery(
+    async () => (targetAlbumId ? { id: targetAlbumId, title: await getAlbumTitle(db, targetAlbumId) } : null),
     [db, targetAlbumId],
   );
+  // undefined = 아직 확인 중, null = 대상 없음(또는 지워진 앨범), 문자열 = 담을 앨범 이름
+  const targetAlbumTitle =
+    targetAlbumId === null ? null : targetLookup?.id === targetAlbumId ? targetLookup.title : undefined;
 
   // 앨범을 지운 뒤 고르기 화면이 남아 있으면 기기에 저장한 대상 ID가 오래된 값일 수 있다.
   // 그 상태에서 다음 사진을 엉뚱하게 기본 보관함에만 남기지 않도록 먼저 대상 확인을 끝낸다.
