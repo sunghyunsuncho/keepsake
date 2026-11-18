@@ -14,13 +14,21 @@ import { useCloudSession } from '@/lib/cloud/session';
 
 // 실제 광고는 스토어 빌드(production 프로필)에서만 요청한다. 개발·preview 빌드는 Google 테스트 광고를 써서
 // 내 기기에서 실제 광고가 노출·클릭되어 무효 트래픽으로 잡히지 않게 한다. 스토어 빌드에 단위 ID가 없으면 광고를 띄우지 않는다.
+//
+// 비공개 테스트 기간에는 스토어 빌드에서도 광고를 띄우지 않는다. 테스터가 적어 몇 번의 노출·클릭만으로 무효 트래픽으로
+// 잡히고, 정지는 같은 게시자 계정을 쓰는 다른 앱(베르니사주)까지 막는다. 광고를 끄면 동의(UMP)·추적 허용(ATT) 창도 뜨지
+// 않는다. 정식 출시 때 true로 바꾼다.
+const LIVE_ADS_ENABLED = false;
+
 const BANNER_UNIT_ID =
   process.env.EXPO_PUBLIC_APP_ENV !== 'production'
     ? TestIds.ADAPTIVE_BANNER
-    : Platform.select({
-      ios: process.env.EXPO_PUBLIC_ADMOB_IOS_BANNER_ID,
-      android: process.env.EXPO_PUBLIC_ADMOB_ANDROID_BANNER_ID,
-    });
+    : !LIVE_ADS_ENABLED
+      ? undefined
+      : Platform.select({
+        ios: process.env.EXPO_PUBLIC_ADMOB_IOS_BANNER_ID,
+        android: process.env.EXPO_PUBLIC_ADMOB_ANDROID_BANNER_ID,
+      });
 
 export const bannerUnitId = BANNER_UNIT_ID || null;
 
