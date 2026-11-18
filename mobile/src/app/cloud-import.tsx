@@ -18,6 +18,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { trackEvent } from '@/lib/activity';
 import { syncCloud, useCloudState } from '@/lib/cloud/engine';
 import { importMoments, listImportable } from '@/lib/cloud/imports';
+import { formatFullDate } from '@/lib/dates';
 import { showAlert, useTranslation } from '@/lib/i18n';
 import { openSubscription } from '@/lib/cloud/subscribe';
 
@@ -368,6 +369,7 @@ function ChooseRecords() {
               onPress={() => toggle(item.id)}
               accessibilityRole="checkbox"
               accessibilityState={{ checked }}
+              accessibilityLabel={formatFullDate(item.taken_at, item.taken_tz_offset)}
               style={{ width: tileWidth, height: tileWidth, margin: GRID_GAP / 2 }}>
               <Image
                 source={{ uri: item.source_uri ?? undefined }}

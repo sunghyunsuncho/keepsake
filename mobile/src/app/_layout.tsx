@@ -22,6 +22,7 @@ import { getLocalDb } from '@/db/spaces';
 import { useActiveDatabaseName } from '@/lib/cloud/space';
 import { LocalizationProvider, ROUTE_TITLES, useTranslation } from '@/lib/i18n';
 import { initMonitoring, wrapRoot } from '@/lib/monitoring';
+import '@/lib/icon-accessibility';
 
 initMonitoring();
 

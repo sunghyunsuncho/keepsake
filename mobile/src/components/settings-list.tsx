@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Switch, View } from 'react-na
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { localizeText, useTranslation } from '@/lib/i18n';
 
 // 설정 탭의 목록 (Vernissage 마이 탭과 같은 모양): 작은 회색 제목 + 흰 카드(옅은 테두리·그림자) 안에
 // 아이콘·이름·값·'>'이 한 줄씩. 설명 대신 행 이름과 오른쪽 값으로 뜻을 전한다.
@@ -45,6 +46,7 @@ export function SettingsRow({
   loading = false,
   chevron,
   children,
+  switchValue,
 }: {
   label: string;
   value?: string | null;
@@ -57,8 +59,11 @@ export function SettingsRow({
   chevron?: boolean;
   /** 오른쪽에 둘 요소 (스위치 등) */
   children?: ReactNode;
+  /** 스위치 행처럼 행 전체를 하나의 조작으로 읽게 할 때 (TalkBack·VoiceOver) */
+  switchValue?: boolean;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   const showChevron = chevron ?? (!!onPress && !children && !destructive);
   const tint = destructive ? theme.danger : theme.text;
   // 오른쪽에 Switch 같은 조작 요소만 둔 행은 부모 Pressable을 비활성화하지 않는다.
@@ -68,7 +73,9 @@ export function SettingsRow({
     <Pressable
       onPress={onPress}
       disabled={rowDisabled}
-      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityRole={switchValue !== undefined ? 'switch' : onPress ? 'button' : undefined}
+      accessibilityLabel={switchValue !== undefined ? localizeText(language, label) : undefined}
+      accessibilityState={switchValue !== undefined ? { checked: switchValue } : undefined}
       style={({ pressed }) => [styles.row, { opacity: rowDisabled ? 0.4 : pressed ? 0.6 : 1 }]}>
       <View style={[styles.divider, { backgroundColor: theme.border }]} />
       {Icon && <Icon size={18} color={destructive ? theme.danger : theme.textSecondary} weight="regular" />}
@@ -103,8 +110,15 @@ export function SettingsSwitchRow({
   onValueChange: (value: boolean) => void;
 }) {
   return (
-    <SettingsRow label={label} icon={icon}>
-      <Switch value={value} onValueChange={onValueChange} />
+    // 스위치만이 아니라 행 어디를 눌러도 바뀐다. 접근성에서는 행 하나를 스위치로 읽고, 안의 Switch는 따로 읽지 않는다.
+    // 터치도 행이 받는다: Switch가 따로 받으면 Switch와 행이 한 번씩 onValueChange를 불러 알림 권한 요청 같은 동작이 겹친다.
+    <SettingsRow label={label} icon={icon} onPress={() => onValueChange(!value)} chevron={false} switchValue={value}>
+      <Switch
+        value={value}
+        pointerEvents="none"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      />
     </SettingsRow>
   );
 }
