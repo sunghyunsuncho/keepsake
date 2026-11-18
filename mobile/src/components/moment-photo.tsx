@@ -153,6 +153,10 @@ function MomentImage({ moment, variant = 'display', style, contentFit = 'cover',
       style={style}
       contentFit={contentFit}
       recyclingKey={moment.id}
+      // 사진첩 원본은 기기에 이미 있는 파일이라 디스크에 사본을 두지 않는다. 디스크 캐시가 있으면 사진첩에서
+      // 지운 사진도 계속 그려져 '지워진 사진'을 알아채지 못한다. 지워진 것으로 표시된 사진을 다시 확인할 때는
+      // 메모리 캐시도 건너뛰어 실제로 사진첩에 있는지 본다. Cloud 사진은 내려받은 것을 디스크에 둔다.
+      cachePolicy={uri === libraryUri ? (moment.source_missing ? 'none' : 'memory') : undefined}
       transition={transition}
       onLoad={() => {
         if (uri === libraryUri && moment.source_missing) {
