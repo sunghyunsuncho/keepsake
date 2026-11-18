@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AllocationPicker } from '@/components/allocation-picker';
 import { Button } from '@/components/button';
@@ -28,6 +29,7 @@ type Preview = Awaited<ReturnType<typeof previewInvite>>;
 // 초대 코드로 공유 앨범에 참여한다. 초대 링크(https://keepsake.atelierlabs.co.kr/join?code=…, app/+native-intent.tsx)로 열면 코드가 채워져 있다.
 // 보는 것은 로그인만 하면 되고, 사진을 담으려면 구독이 필요하다.
 export default function JoinSharedAlbumScreen() {
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ code?: string }>();
   const theme = useTheme();
   const { language } = useTranslation();
@@ -112,7 +114,7 @@ export default function JoinSharedAlbumScreen() {
   return (
     <ThemedView style={styles.flex}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Spacing.six + insets.bottom }]} keyboardShouldPersistTaps="handled">
           {!preview ? (
             <View style={styles.section}>
               <ThemedText type="smallBold">초대 코드</ThemedText>

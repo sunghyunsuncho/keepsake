@@ -4,6 +4,7 @@ import { router, Stack } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BottomBar, Centered, ColumnToggle, GRID_GAP, LimitedAccessBanner, PhotoTile, tileHeightFor, useTileWidth } from '@/components/pick';
 import { BackButton } from '@/components/stack-header';
@@ -112,6 +113,7 @@ export default function DayScreen() {
 
   const complete = async () => selection.complete(assets);
 
+  // 탭 바가 없는 화면이라 아래 막대가 시스템 내비게이션 바(3버튼)에 가려지지 않게 아래 안전 영역을 둔다.
   return (
     <ThemedView style={styles.flex}>
       <Stack.Screen
@@ -119,36 +121,38 @@ export default function DayScreen() {
           headerLeft: () => <BackButton label="고르기로 돌아가기" onPress={() => router.navigate('/')} />,
         }}
       />
-      <View style={styles.header}>
-        <View style={styles.flex}>
-          <ThemedText style={styles.title}>지난 사진</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">최근 사진부터 시간 순서대로</ThemedText>
+      <SafeAreaView style={styles.flex} edges={['bottom']}>
+        <View style={styles.header}>
+          <View style={styles.flex}>
+            <ThemedText style={styles.title}>지난 사진</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">최근 사진부터 시간 순서대로</ThemedText>
+          </View>
+          <ColumnToggle value={columns} onChange={(next) => setSetting(db, 'pick_grid_columns', next)} />
         </View>
-        <ColumnToggle value={columns} onChange={(next) => setSetting(db, 'pick_grid_columns', next)} />
-      </View>
-      <PastZoomBar value={zoom} onChange={setZoom} />
-      <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>아래로 내려가며 계속 볼 수 있어요.</ThemedText>
-      {access === 'limited' && <LimitedAccessBanner onChanged={() => setLibraryVersion((value) => value + 1)} />}
-      {!roll ? <Centered><ActivityIndicator /></Centered> : assets.length === 0 ? (
-        <Centered><ThemedText themeColor="textSecondary">사진 보관함에 사진이 없어요.</ThemedText></Centered>
-      ) : (
-        <FlashList
-          key={columns} data={rows} numColumns={columns} keyExtractor={(item) => item.key} getItemType={(item) => item.type}
-          overrideItemLayout={(layout, item) => { if (item.type !== 'photo') layout.span = columns; }}
-          extraData={{ saved, draft: selection.draft }} contentContainerStyle={{ padding: GRID_GAP / 2, paddingBottom: Spacing.four }}
-          onEndReached={loadMore} onEndReachedThreshold={1}
-          renderItem={({ item }) => {
-            if (item.type === 'year') return <ThemedText style={styles.yearHeader}>{language === 'en' ? item.dateKey.slice(0, 4) : `${item.dateKey.slice(0, 4)}${language === 'ja' ? '年' : '년'}`}</ThemedText>;
-            if (item.type === 'month') return <ThemedText style={styles.monthHeader}>{formatMonth(item.dateKey)}</ThemedText>;
-            if (item.type === 'day') return <ThemedText type="smallBold" themeColor="textSecondary" style={styles.dayHeader}>{`${formatDay(item.dateKey)} · ${photoCount(language, item.count)}`}</ThemedText>;
-            return <PhotoTile asset={item.asset} width={tileWidth} height={tileHeightFor(item.asset, tileWidth, columns)} state={saved.has(item.asset.id) ? 'saved' : selection.draft.includes(item.asset.id) ? 'picked' : 'none'} order={selection.draft.indexOf(item.asset.id) + 1} onPress={() => selection.toggle(item.asset)} />;
-          }}
-          ListFooterComponent={roll.hasNextPage ? <ActivityIndicator style={styles.more} /> : null}
-        />
-      )}
-      {selection.draft.length > 0 || selection.saving ? (
-        <BottomBar title={selection.saving ? `${localizeText(language, '남기는 중…')} ${selection.saving.done}/${selection.saving.total}` : selectionSummary(language, selection.draft.length)} subtitle="남기면 사진첩에서 다시 볼 수 있어요" secondary={{ label: '선택 해제', onPress: selection.clear }} action={{ label: '남기기', onPress: complete, loading: !!selection.saving }} />
-      ) : null}
+        <PastZoomBar value={zoom} onChange={setZoom} />
+        <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>아래로 내려가며 계속 볼 수 있어요.</ThemedText>
+        {access === 'limited' && <LimitedAccessBanner onChanged={() => setLibraryVersion((value) => value + 1)} />}
+        {!roll ? <Centered><ActivityIndicator /></Centered> : assets.length === 0 ? (
+          <Centered><ThemedText themeColor="textSecondary">사진 보관함에 사진이 없어요.</ThemedText></Centered>
+        ) : (
+          <FlashList
+            key={columns} data={rows} numColumns={columns} keyExtractor={(item) => item.key} getItemType={(item) => item.type}
+            overrideItemLayout={(layout, item) => { if (item.type !== 'photo') layout.span = columns; }}
+            extraData={{ saved, draft: selection.draft }} contentContainerStyle={{ padding: GRID_GAP / 2, paddingBottom: Spacing.four }}
+            onEndReached={loadMore} onEndReachedThreshold={1}
+            renderItem={({ item }) => {
+              if (item.type === 'year') return <ThemedText style={styles.yearHeader}>{language === 'en' ? item.dateKey.slice(0, 4) : `${item.dateKey.slice(0, 4)}${language === 'ja' ? '年' : '년'}`}</ThemedText>;
+              if (item.type === 'month') return <ThemedText style={styles.monthHeader}>{formatMonth(item.dateKey)}</ThemedText>;
+              if (item.type === 'day') return <ThemedText type="smallBold" themeColor="textSecondary" style={styles.dayHeader}>{`${formatDay(item.dateKey)} · ${photoCount(language, item.count)}`}</ThemedText>;
+              return <PhotoTile asset={item.asset} width={tileWidth} height={tileHeightFor(item.asset, tileWidth, columns)} state={saved.has(item.asset.id) ? 'saved' : selection.draft.includes(item.asset.id) ? 'picked' : 'none'} order={selection.draft.indexOf(item.asset.id) + 1} onPress={() => selection.toggle(item.asset)} />;
+            }}
+            ListFooterComponent={roll.hasNextPage ? <ActivityIndicator style={styles.more} /> : null}
+          />
+        )}
+        {selection.draft.length > 0 || selection.saving ? (
+          <BottomBar title={selection.saving ? `${localizeText(language, '남기는 중…')} ${selection.saving.done}/${selection.saving.total}` : selectionSummary(language, selection.draft.length)} subtitle="남기면 사진첩에서 다시 볼 수 있어요" secondary={{ label: '선택 해제', onPress: selection.clear }} action={{ label: '남기기', onPress: complete, loading: !!selection.saving }} />
+        ) : null}
+      </SafeAreaView>
     </ThemedView>
   );
 }

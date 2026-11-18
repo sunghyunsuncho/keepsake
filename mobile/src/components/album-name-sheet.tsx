@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Dimensions, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/button';
 import { ThemedText } from '@/components/themed-text';
@@ -40,6 +41,7 @@ export function AlbumNameSheet({
   const trimmed = title.trim();
   const submit = () => trimmed && onSubmit(trimmed);
   const keyboard = useAndroidKeyboardHeight(visible);
+  const bottomInset = useSheetBottomInset(visible);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
@@ -47,7 +49,7 @@ export function AlbumNameSheet({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={[styles.flex, { paddingBottom: keyboard }]}>
         <Pressable style={styles.backdrop} onPress={onCancel} accessibilityLabel={localizeText(language, '닫기')} />
-        <View style={[styles.sheet, { backgroundColor: theme.background }]}>
+        <View style={[styles.sheet, { backgroundColor: theme.background, paddingBottom: Spacing.five + bottomInset }]}>
           <ThemedText type="smallBold">{heading}</ThemedText>
           <TextInput
             value={title}
@@ -77,6 +79,28 @@ export function AlbumNameSheet({
       </KeyboardAvoidingView>
     </Modal>
   );
+}
+
+/**
+ * 입력창이 있는 아래 시트의 아래 여백. 키보드가 닫혀 있으면 시스템 내비게이션 바·홈 인디케이터만큼 띄우고
+ * (Android edge-to-edge에서 버튼이 가려지지 않게), 키보드가 열려 있으면 키보드가 그 자리를 덮으므로 더하지 않는다.
+ * iOS의 KeyboardAvoidingView도 홈 인디케이터를 포함한 키보드 높이만큼 띄우므로, 더하면 키보드 위에 빈 틈이 생긴다.
+ */
+export function useSheetBottomInset(active: boolean) {
+  const insets = useSafeAreaInsets();
+  const [keyboardShown, setKeyboardShown] = useState(() => Keyboard.isVisible());
+  useEffect(() => {
+    if (!active) return;
+    setKeyboardShown(Keyboard.isVisible());
+    const ios = Platform.OS === 'ios';
+    const shown = Keyboard.addListener(ios ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardShown(true));
+    const hidden = Keyboard.addListener(ios ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardShown(false));
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, [active]);
+  return keyboardShown ? 0 : insets.bottom;
 }
 
 /**

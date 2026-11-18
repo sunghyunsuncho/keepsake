@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View, type ImageStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
@@ -30,11 +31,12 @@ export function AlbumCoverSheet<T extends { id: string }>({
   onCancel: () => void;
 }) {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { language } = useTranslation();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
       <Pressable style={styles.backdrop} onPress={onCancel} accessibilityLabel={localizeText(language, '닫기')} />
-      <View style={[styles.sheet, { backgroundColor: theme.background }]}>
+      <View style={[styles.sheet, { backgroundColor: theme.background, paddingBottom: Spacing.five + insets.bottom }]}>
         <ThemedText type="smallBold">앨범 표지</ThemedText>
         <Pressable onPress={() => onChoose({ mode: 'latest' })} style={[styles.option, { backgroundColor: theme.backgroundElement }]}>
           <View style={styles.flex}>

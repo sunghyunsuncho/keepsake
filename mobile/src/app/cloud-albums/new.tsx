@@ -3,6 +3,7 @@ import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/button';
 import { MomentPhoto } from '@/components/moment-photo';
@@ -50,6 +51,7 @@ type Start = 'link' | 'new';
 // source: 기기 앨범 화면의 [안전 보관에 연결]로 들어오면 그 앨범을 골라 둔다.
 // audience=shared: 공유 앨범 쪽을 골라 둔다. convert: 이미 있는 안전 앨범을 공유 앨범으로 바꾼다.
 export default function NewCloudAlbumScreen() {
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ source?: string; audience?: string; convert?: string }>();
   const db = useSQLiteContext();
   const theme = useTheme();
@@ -160,7 +162,7 @@ export default function NewCloudAlbumScreen() {
   return (
     <ThemedView style={styles.flex}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Spacing.six + insets.bottom }]} keyboardShouldPersistTaps="handled">
           {convert ? (
             <View style={[styles.rules, { backgroundColor: theme.backgroundElement }]}>
               <ThemedText type="small" themeColor="textSecondary">

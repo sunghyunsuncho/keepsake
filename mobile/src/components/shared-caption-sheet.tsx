@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 
-import { useAndroidKeyboardHeight } from '@/components/album-name-sheet';
+import { useAndroidKeyboardHeight, useSheetBottomInset } from '@/components/album-name-sheet';
 import { Button } from '@/components/button';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
@@ -20,6 +20,7 @@ export function SharedCaptionSheet({ albumId, item, onClose }: { albumId: string
   const theme = useTheme();
   const { language } = useTranslation();
   const keyboard = useAndroidKeyboardHeight(true);
+  const bottomInset = useSheetBottomInset(true);
   const [text, setText] = useState(item.caption ?? '');
   const [memo, setMemo] = useState('');
   const [saving, setSaving] = useState(false);
@@ -46,7 +47,7 @@ export function SharedCaptionSheet({ albumId, item, onClose }: { albumId: string
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={[styles.flex, { paddingBottom: keyboard }]}>
         <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={localizeText(language, '닫기')} />
-        <View style={[styles.sheet, { backgroundColor: theme.background }]}>
+        <View style={[styles.sheet, { backgroundColor: theme.background, paddingBottom: Spacing.five + bottomInset }]}>
           <ThemedText type="smallBold">구성원에게 보일 글</ThemedText>
           <TextInput
             value={text}

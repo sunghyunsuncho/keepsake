@@ -3,6 +3,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View, type ImageStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 
@@ -46,6 +47,7 @@ function cloudGuide(language: AppLanguage, quality: PhotoQuality) {
 }
 
 export default function AlbumAddScreen() {
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const db = useSQLiteContext();
   const theme = useTheme();
@@ -171,7 +173,7 @@ export default function AlbumAddScreen() {
                 keyExtractor={(row) => row.key}
                 getItemType={(row) => (row.type === 'tiles' ? `tiles-${row.columns}` : row.type)}
                 extraData={[checked, quality, originalElsewhere]}
-                contentContainerStyle={{ paddingBottom: Spacing.five }}
+                contentContainerStyle={{ paddingBottom: Spacing.five + insets.bottom }}
                 renderItem={({ item }) =>
                   item.type === 'header' ? (
                     <GalleryHeader title={item.title} subtitle={item.subtitle} sticky={item.sticky} />
