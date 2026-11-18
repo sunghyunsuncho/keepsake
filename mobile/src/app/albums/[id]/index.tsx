@@ -117,8 +117,9 @@ export default function AlbumScreen() {
 
   // 꾹 누르기: 기록을 연다. 앨범에서 빼기는 여러 장을 고르는 편집 모드에서만 한다.
   const showActions = (moment: Moment) => {
-    showAlert('', undefined, [
-      { text: '기록 열기', onPress: () => openMoment(moment) },
+    // 제목 없는 Alert는 Android에서 빈 영역이 큰 창으로 뜬다. 다른 메뉴와 같은 아래 시트로 연다.
+    showActionSheet(undefined, undefined, [
+      { text: '기록 열기', icon: 'create-outline', onPress: () => openMoment(moment) },
       { text: '취소', style: 'cancel' },
     ]);
   };
