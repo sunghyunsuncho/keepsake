@@ -19,6 +19,7 @@ import { trackEvent } from '@/lib/activity';
 import { syncCloud, useCloudState } from '@/lib/cloud/engine';
 import { importMoments, listImportable } from '@/lib/cloud/imports';
 import { showAlert, useTranslation } from '@/lib/i18n';
+import { openSubscription } from '@/lib/cloud/subscribe';
 
 const COLUMNS = 3;
 const PREVIEW_COUNT = 4;
@@ -226,7 +227,7 @@ function PhotoBackupNote() {
   const theme = useTheme();
   return (
     <Pressable
-      onPress={() => router.push('/cloud')}
+      onPress={() => openSubscription(() => router.push('/cloud'))}
       accessibilityRole="link"
       hitSlop={8}
       style={({ pressed }) => [styles.note, pressed && styles.pressed]}>
@@ -254,7 +255,7 @@ function SecureStoragePitch({ grace }: { grace: boolean }) {
           지금 다시 구독하면 보관하던 사진을 다시 올리지 않고 이어서 써요.
         </ThemedText>
       )}
-      <Button label={grace ? '다시 구독하기' : '안전 보관 알아보기'} onPress={() => router.replace('/cloud')} />
+      <Button label={grace ? '다시 구독하기' : '안전 보관 알아보기'} onPress={() => openSubscription(() => router.replace('/cloud'))} />
       <Button label={t('comparePlans')} variant="secondary" onPress={() => router.push('/plans')} />
     </View>
   );

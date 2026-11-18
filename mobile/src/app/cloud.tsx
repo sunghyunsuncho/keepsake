@@ -156,7 +156,12 @@ export default function CloudScreen() {
         if (await purchase(next.pkg)) await afterPurchase();
         return;
       }
-      showAlert('로그인했어요', '이제 메모·장소·앨범을 이 계정에 백업해요. 사진까지 안전 보관하려면 구독해 주세요.');
+      showAlert(
+        '로그인했어요',
+        purchasesAvailable
+          ? '이제 메모·장소·앨범을 이 계정에 백업해요. 사진까지 안전 보관하려면 구독해 주세요.'
+          : '이제 메모·장소·앨범을 이 계정에 백업해요.',
+      );
     });
 
   const subscribed = Boolean(session) && (account?.subscription.can_upload ?? false);
@@ -219,19 +224,25 @@ export default function CloudScreen() {
             <Button label="닫기" variant="secondary" onPress={closeScreen} />
           </View>
         ) : !session && intent ? (
-          <SignInButtons
-            busy={busy}
-            reason={
-              intent.kind === 'purchase'
-                ? '백업한 사진을 다른 기기에서도 찾을 수 있도록, 구독 전에 로그인해 주세요.'
-                : purchasesAvailable
-                  ? '이미 구독 중이라면 같은 계정으로 로그인하면 백업한 기록을 받아와요.'
-                  : '로그인하면 기록을 무료로 백업해요. 다른 기기에서 같은 계정으로 로그인하면 기록을 받아와요.'
-            }
-            onApple={() => signIn(signInWithApple)}
-            onGoogle={() => signIn(signInWithGoogle)}
-            onCancel={purchasesAvailable ? () => setIntent(null) : undefined}
-          />
+          <View style={styles.section}>
+            {!purchasesAvailable && (
+              // 결제를 열기 전: 구독은 준비 중이고 지금은 로그인(무료 백업)만 된다고 먼저 알린다.
+              <Notice icon="time-outline" title="안전 보관 구독은 준비하고 있어요" />
+            )}
+            <SignInButtons
+              busy={busy}
+              reason={
+                intent.kind === 'purchase'
+                  ? '백업한 사진을 다른 기기에서도 찾을 수 있도록, 구독 전에 로그인해 주세요.'
+                  : purchasesAvailable
+                    ? '이미 구독 중이라면 같은 계정으로 로그인하면 백업한 기록을 받아와요.'
+                    : '로그인하면 기록을 무료로 백업해요. 다른 기기에서 같은 계정으로 로그인하면 기록을 받아와요.'
+              }
+              onApple={() => signIn(signInWithApple)}
+              onGoogle={() => signIn(signInWithGoogle)}
+              onCancel={purchasesAvailable ? () => setIntent(null) : undefined}
+            />
+          </View>
         ) : (
           <Paywall
             busy={busy}

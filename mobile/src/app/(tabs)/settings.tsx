@@ -26,6 +26,7 @@ import { registerPushToken } from '@/lib/cloud/push';
 import { formatFullDate } from '@/lib/dates';
 import { openLegalDocument } from '@/lib/legal';
 import { LANGUAGE_LABELS, useTranslation } from '@/lib/i18n';
+import { openSubscription } from '@/lib/cloud/subscribe';
 
 type SectionKey = 'device' | 'cloud';
 
@@ -178,7 +179,7 @@ function ProfileCard({ signedIn, account }: { signedIn: boolean; account: Accoun
         </View>
       </View>
       {action && (
-        <SettingsRow label={action.label} icon={action.icon} onPress={() => router.push(signedIn ? '/cloud' : '/sign-in')} />
+        <SettingsRow label={action.label} icon={action.icon} onPress={() => (signedIn ? openSubscription(() => router.push('/cloud')) : router.push('/sign-in'))} />
       )}
     </SettingsCard>
   );

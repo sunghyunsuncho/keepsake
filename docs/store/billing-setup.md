@@ -99,7 +99,15 @@ EXPO_PUBLIC_REVENUECAT_IOS_KEY=appl_...
 EXPO_PUBLIC_REVENUECAT_ANDROID_KEY=goog_...
 ```
 
-`npx eas-cli@latest env:create --environment production --name EXPO_PUBLIC_REVENUECAT_IOS_KEY --value appl_... --visibility plaintext`처럼 넣고, **다시 빌드**한다 (JS에 들어가는 값이라 OTA 업데이트로도 바뀌지만, 처음은 빌드로 확인한다). 키가 없으면 구독 화면은 '준비하고 있어요'만 보여 준다.
+`npx eas-cli@latest env:create --environment production --name EXPO_PUBLIC_REVENUECAT_IOS_KEY --value appl_... --visibility plaintext`처럼 넣고, **다시 빌드**한다 (JS에 들어가는 값이라 OTA 업데이트로도 바뀌지만, 처음은 빌드로 확인한다).
+
+**결제 스위치** `EXPO_PUBLIC_PURCHASES_ENABLED=1` (2026-11-18 추가): 키가 있어도 이 값이 `1`인 빌드에서만 결제가 열린다. 없으면 구독으로 이어지는 버튼(설정의 [안전 보관 시작하기]·[다시 구독하기], 안전 사진첩의 [안전 보관 시작하기], 백업 화면의 구독 안내, 이용 등급 안내의 구독 버튼)이 '안전 보관 구독은 준비하고 있어요'만 띄우고, RevenueCat SDK도 설정하지 않는다. 결제를 시험할 때는 `preview` 환경에만 넣고, 실제 판매를 열 때 `production`에 넣는다.
+
+```
+npx eas-cli@latest env:create --environment preview --name EXPO_PUBLIC_PURCHASES_ENABLED --value 1 --visibility plaintext
+```
+
+이 스위치는 `mobile/.env`에 두지 않는다. `eas update`는 EAS 환경에 없는 변수를 로컬 `.env`에서 채우므로, 로컬에 둔 값이 운영 OTA 업데이트로 나갈 수 있다. 로컬 개발(Metro)에서는 대신 `mobile/.env`의 `EXPO_PUBLIC_DEV_PURCHASES`로 켜고 끈다 (`1` 켬, 빈 값 끔, `.env.local`의 `test_` 키 사용, 바꾼 뒤 `npx expo start --clear`). 이 값은 개발 번들에서만 읽으므로 출시 빌드와 OTA 업데이트에는 적용되지 않는다.
 
 ## 6. 확인
 
@@ -120,3 +128,4 @@ EXPO_PUBLIC_REVENUECAT_ANDROID_KEY=goog_...
 - [ ] 사업자등록 (필요하면 통신판매업 신고). App Store·Play의 판매자 정보와 정산 계좌를 사업자 명의에 맞출지 확인한다.
 - [ ] 스토어 설명의 구독 안내([listing.md](listing.md) §4)와 약관 제6조가 최종 가격과 같은지 확인한다.
 - [ ] App Store 심사 메모에 샌드박스 테스트 방법을 적는다 ([listing.md](listing.md) §8).
+- [ ] EAS `production` 환경에 `EXPO_PUBLIC_PURCHASES_ENABLED=1`을 넣고 다시 빌드한다 (§5. 없으면 스토어 빌드의 구독 버튼이 '준비하고 있어요'만 띄운다).

@@ -25,6 +25,7 @@ import { useCloudState } from '@/lib/cloud/engine';
 import { useCloudSession } from '@/lib/cloud/session';
 import { formatBytes } from '@/lib/storage';
 import { photoCount, useTranslation } from '@/lib/i18n';
+import { openSubscription } from '@/lib/cloud/subscribe';
 
 /** 계정의 안전 보관 공간: 안전 앨범 목록. 구독 중이거나 유예 기간에만 연다. */
 export default function CloudLibraryScreen() {
@@ -124,7 +125,11 @@ function SecureStorageIntro({ signedIn }: { signedIn: boolean }) {
             </View>
           ))}
         </View>
-        <Button label={signedIn ? '안전 보관 시작하기' : '안전 보관 알아보기'} onPress={() => router.push('/cloud')} />
+        <Button
+          label={signedIn ? '안전 보관 시작하기' : '안전 보관 알아보기'}
+          // 로그인하지 않았으면 안전 보관 화면에서 로그인한다. 로그인했으면 구독으로 이어지므로 결제를 열기 전에는 준비 중이라고 알린다.
+          onPress={() => (signedIn ? openSubscription(() => router.push('/cloud')) : router.push('/cloud'))}
+        />
         <Pressable onPress={() => router.push('/plans')} accessibilityRole="button" hitSlop={8}>
           <ThemedText type="smallBold" themeColor="textSecondary" style={[styles.center, styles.link]}>
             {t('comparePlans')}

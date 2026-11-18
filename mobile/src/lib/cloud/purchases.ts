@@ -12,10 +12,20 @@ import { trackEvent } from '@/lib/activity';
 // 상품·가격은 로그인 전에도 익명 사용자로 불러온다. 구매·복원은 로그인한 뒤에만 해서
 // app_user_id가 항상 서버의 user_id가 되게 한다 (익명 ID로 결제가 남지 않게).
 
-const API_KEY = Platform.select({
-  ios: process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY,
-  android: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY,
-});
+// 결제는 키가 있어도 EXPO_PUBLIC_PURCHASES_ENABLED=1일 때만 연다 (2026-11-18: 결제 연결 전이라 막아 둔다).
+// 키를 넣고 비공개 테스트에서 시험할 때도 이 값을 넣은 빌드에서만 결제가 열려, 출시 빌드에 실수로 열리지 않는다.
+// 꺼져 있으면 RevenueCat SDK도 설정하지 않는다 (release 빌드에 test_ 키가 들어가면 SDK가 앱을 닫는다).
+// 로컬 개발(Metro, __DEV__)에서는 mobile/.env의 EXPO_PUBLIC_DEV_PURCHASES로 켜고 끈다(1 켬, 빈 값 끔, 없으면 위 값).
+// 출시 빌드와 OTA 업데이트 번들은 __DEV__가 false라, .env 값이 번들에 들어가도 결제를 열지 않는다.
+const DEV_PURCHASES = __DEV__ ? process.env.EXPO_PUBLIC_DEV_PURCHASES : undefined;
+const PURCHASES_ENABLED = (DEV_PURCHASES ?? process.env.EXPO_PUBLIC_PURCHASES_ENABLED) === '1';
+
+const API_KEY = PURCHASES_ENABLED
+  ? Platform.select({
+      ios: process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY,
+      android: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY,
+    })
+  : undefined;
 
 export const purchasesAvailable = Boolean(API_KEY);
 

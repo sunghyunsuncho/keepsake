@@ -35,7 +35,9 @@ import {
   loadCleanupPhotos,
 } from '@/lib/cleanup';
 import { trackEvent } from '@/lib/activity';
+import { useCloudState } from '@/lib/cloud/engine';
 import { useCloudSession } from '@/lib/cloud/session';
+import { openSubscription } from '@/lib/cloud/subscribe';
 import { localizeText, photoCount, useTranslation } from '@/lib/i18n';
 
 /** 고르기를 마친 뒤 남기지 않은 사진을 살펴보고 지운다. 누른 사진은 지우지 않는다. */
@@ -44,6 +46,10 @@ export default function CleanupScreen() {
   const theme = useTheme();
   const { language } = useTranslation();
   const session = useCloudSession();
+  const { account } = useCloudState();
+  // 안전 보관을 쓰지 않는 사람(로그인 전, 로그인했지만 구독하지 않음)에게만 안내한다.
+  // 로그인 상태나 계정을 아직 모르면 구독자에게 잠깐 비치지 않도록 감춘다.
+  const pitchSecureStorage = session === null || (!!session && !!account && !account.subscription.can_upload);
   const { data: settings } = useDbQuery(() => getSettings(db), [db]);
   const [photos, setPhotos] = useState<Asset[] | null>(null);
   const [keptIds, setKeptIds] = useState<ReadonlySet<string>>(new Set());
@@ -110,19 +116,20 @@ export default function CleanupScreen() {
         <ThemedText style={styles.center}>
           {{ ko: `사진 ${deletedCount}장을 비웠어요`, en: `Cleared ${photoCount(language, deletedCount)}`, ja: `写真${deletedCount}枚を削除しました` }[language]}
         </ThemedText>
-        {!session && (
+        {pitchSecureStorage && (
           <ThemedText type="small" themeColor="textSecondary" style={styles.center}>
             남긴 사진의 원본은 기기 사진첩에 그대로 있어요.{'\n'}
-            Cloud를 쓰면 남긴 사진은 기기에서 지워도 지켜져요.
+            안전 보관을 쓰면 안전 앨범에 담은 사진은 기기에서 지워도 지켜져요.
           </ThemedText>
         )}
         <View style={styles.doneButtons}>
           <Button label="닫기" onPress={() => router.back()} />
-          {!session && (
+          {pitchSecureStorage && (
             <Button
               label="안전 보관 알아보기"
               variant="secondary"
-              onPress={() => router.replace('/cloud')}
+              // 로그인하지 않았으면 안전 보관 화면에서 로그인한다. 로그인했으면 구독으로 이어지므로 결제를 열기 전에는 준비 중이라고 알린다.
+              onPress={() => (session ? openSubscription(() => router.replace('/cloud')) : router.replace('/cloud'))}
             />
           )}
         </View>

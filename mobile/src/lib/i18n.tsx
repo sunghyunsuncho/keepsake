@@ -232,7 +232,7 @@ const legacyText: Record<string, { en: string; ja: string }> = {
   '담은 사진을 모두 안전 보관했어요': { en: 'All photos in this album are stored safely', ja: '追加した写真はすべて安全保管しました' },
   // 사진 정리
   '남긴 사진의 원본은 기기 사진첩에 그대로 있어요.': { en: 'The originals of the photos you kept are still in your device library.', ja: '残した写真のオリジナルは、デバイスのライブラリにそのまま残っています。' },
-  'Cloud를 쓰면 남긴 사진은 기기에서 지워도 지켜져요.': { en: 'With secure storage, kept photos stay safe even after you delete them from your device.', ja: '安全保管を使えば、残した写真はデバイスから削除しても守られます。' },
+  '안전 보관을 쓰면 안전 앨범에 담은 사진은 기기에서 지워도 지켜져요.': { en: 'With Secure Storage, photos in your secure albums stay safe even after you delete them from your device.', ja: '安全保管を使えば、セキュアアルバムの写真はデバイスから削除しても守られます。' },
   '지울 사진이 없어요': { en: 'No photos to delete', ja: '削除する写真はありません' },
   '지우지 않았어요. 다시 시도할 수 있어요.': { en: 'Nothing was deleted. You can try again.', ja: '削除されていません。もう一度お試しいただけます。' },
   '한 번 더 확인한 뒤에 지워요': { en: 'You’ll confirm once more before deleting', ja: 'もう一度確認してから削除します' },
@@ -290,6 +290,7 @@ const legacyText: Record<string, { en: string; ja: string }> = {
   '안전 보관에 연결했어요': { en: 'Connected to secure storage', ja: '安全保管に接続しました' },
   '이 계정의 기록을 받아올게요. 이 기기의 기록은 백업하기로 고른 것만 들어가요.': { en: 'We’ll bring in this account’s memories. Only the memories on this device that you choose to back up will be added.', ja: 'このアカウントの思い出を読み込みます。このデバイスの思い出は、バックアップを選んだものだけが追加されます。' },
   '로그인했어요': { en: 'You’re signed in', ja: 'ログインしました' },
+  '이제 메모·장소·앨범을 이 계정에 백업해요.': { en: 'Your notes, places, and albums will now be backed up to this account.', ja: 'これからはメモ・場所・アルバムをこのアカウントにバックアップします。' },
   '이제 메모·장소·앨범을 이 계정에 백업해요. 사진까지 안전 보관하려면 구독해 주세요.': { en: 'Your notes, places, and albums will now be backed up to this account. Subscribe to keep your photos safe too.', ja: 'これからはメモ・場所・アルバムをこのアカウントにバックアップします。写真まで安全保管するには、サブスクリプションに登録してください。' },
   '백업한 사진을 다른 기기에서도 찾을 수 있도록, 구독 전에 로그인해 주세요.': { en: 'Sign in before subscribing so you can find your backed-up photos on other devices too.', ja: 'バックアップした写真をほかのデバイスでも見られるよう、購読の前にログインしてください。' },
   '이미 구독 중이라면 같은 계정으로 로그인하면 백업한 기록을 받아와요.': { en: 'Already subscribed? Sign in with the same account to bring back your backed-up memories.', ja: 'すでに購読中なら、同じアカウントでログインするとバックアップした思い出を受け取れます。' },

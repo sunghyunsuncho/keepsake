@@ -14,6 +14,7 @@ import { PLAN_ORDER, SHARED_ALBUM_LIMITS } from '@/lib/cloud/purchases';
 import { useCloudSession } from '@/lib/cloud/session';
 import { useTranslation } from '@/lib/i18n';
 import { formatSize } from '@/lib/storage';
+import { openSubscription } from '@/lib/cloud/subscribe';
 
 // 이용 등급 안내: 이 기기에만 보관(비로그인) / 로그인(무료) / 안전 보관(유료 구독)에서 각각 무엇을 할 수 있는지.
 // 기준은 docs/PRICING.md §2. 등급 규칙을 바꾸면 이 화면도 함께 고친다. 광고는 구독 중일 때만 빠진다 (lib/ads.ts).
@@ -213,8 +214,11 @@ export default function PlansScreen() {
 
   const openCloud = () => {
     if (current === 'local') router.push('/sign-in');
-    else if (from === 'cloud' && router.canGoBack()) router.back();
-    else router.push('/cloud');
+    else
+      openSubscription(() => {
+        if (from === 'cloud' && router.canGoBack()) router.back();
+        else router.push('/cloud');
+      });
   };
 
   return (
