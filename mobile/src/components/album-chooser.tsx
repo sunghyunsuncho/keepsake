@@ -34,7 +34,15 @@ export function AlbumChooserRow({ momentId }: { momentId: string }) {
 
   return (
     <>
-      <Pressable onPress={() => setOpen(true)} style={[styles.row, { borderColor: theme.border }]}>
+      <Pressable
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={
+          names.length
+            ? `${names.join(', ')}, ${localizeText(language, '바꾸기')}`
+            : localizeText(language, '앨범에 넣기')
+        }
+        style={[styles.row, { borderColor: theme.border }]}>
         <Ionicons name="albums-outline" size={20} color={theme.textSecondary} />
         <ThemedText style={styles.flex} themeColor={names.length ? 'text' : 'textSecondary'} numberOfLines={1}>
           {names.length ? names.join(', ') : '앨범에 넣기'}
@@ -74,6 +82,7 @@ export function AlbumChooserRow({ momentId }: { momentId: string }) {
                   onPress={() => toggle(album.id)}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked }}
+                  accessibilityLabel={album.title}
                   style={[styles.option, { borderColor: theme.border }]}>
                   <ThemedText style={styles.flex} numberOfLines={1} localize={false}>
                     {album.title}
@@ -99,6 +108,7 @@ export function AlbumChooserRow({ momentId }: { momentId: string }) {
                       onPress={() => toggle(album.id)}
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked }}
+                      accessibilityLabel={album.title}
                       style={[styles.option, { borderColor: theme.border }]}>
                       <Ionicons name="cloud-outline" size={18} color={theme.textSecondary} />
                       <ThemedText style={styles.flex} numberOfLines={1} localize={false}>
@@ -114,7 +124,11 @@ export function AlbumChooserRow({ momentId }: { momentId: string }) {
                 })}
               </>
             )}
-            <Pressable onPress={() => setNaming(true)} style={styles.option}>
+            <Pressable
+              onPress={() => setNaming(true)}
+              accessibilityRole="button"
+              accessibilityLabel={localizeText(language, '새 앨범 만들기')}
+              style={styles.option}>
               <Ionicons name="add" size={22} color={theme.accent} />
               <ThemedText style={{ color: theme.accent, fontWeight: 700 }}>새 앨범 만들기</ThemedText>
             </Pressable>

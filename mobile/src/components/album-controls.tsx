@@ -92,10 +92,13 @@ export function AlbumActionButton({
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
+      // 아이콘 글꼴 글자가 이름에 섞이지 않게 글만으로 이름을 준다.
+      accessibilityLabel={localizeText(language, label)}
       style={({ pressed }) => [
         styles.albumActionButton,
         { backgroundColor: active ? theme.accent : theme.backgroundElement, opacity: pressed ? 0.72 : 1 },

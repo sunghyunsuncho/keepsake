@@ -16,12 +16,15 @@ export function CreatedAlbumCard({
   album,
   source,
   children,
+  accessibilityDetail,
 }: {
   album: AlbumSummary;
   /** 'cloud'면 앨범 화면에서 안전 사진첩으로 돌아간다. */
   source?: 'cloud';
   /** 사진 수·기간 아래에 붙일 표시 (안전 앨범의 화질 등) */
   children?: ReactNode;
+  /** children의 내용을 글로 (카드의 접근성 이름에 붙인다. 카드는 이름을 직접 주므로 children을 읽지 않는다) */
+  accessibilityDetail?: string;
 }) {
   const theme = useTheme();
   const { language } = useTranslation();
@@ -29,6 +32,15 @@ export function CreatedAlbumCard({
     <Pressable
       onPress={() => router.push({ pathname: '/albums/[id]', params: source ? { id: album.id, source } : { id: album.id } })}
       accessibilityRole="button"
+      // 아이콘 글꼴 글자가 이름에 섞이지 않게 글만으로 이름을 준다.
+      accessibilityLabel={[
+        album.title,
+        photoCount(language, album.count),
+        album.startAt && album.endAt ? formatAlbumPeriod(album.startAt, album.endAt) : null,
+        accessibilityDetail,
+      ]
+        .filter(Boolean)
+        .join(', ')}
       style={({ pressed }) => [
         styles.createdAlbumCard,
         { backgroundColor: theme.background, borderColor: theme.border, opacity: pressed ? 0.8 : 1 },

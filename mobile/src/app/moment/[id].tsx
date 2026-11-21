@@ -176,6 +176,8 @@ function MomentEditor({ moment }: { moment: Moment }) {
         <View style={styles.fields}>
           <Pressable
             onPress={() => setEditingDate(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`${formatFullDate(moment.taken_at, offset)} ${formatTime(moment.taken_at, offset)}, ${localizeText(language, '바꾸기')}`}
             style={[styles.row, { borderColor: theme.border }]}>
             <Ionicons name="calendar-outline" size={20} color={theme.textSecondary} />
             <ThemedText style={styles.flex}>

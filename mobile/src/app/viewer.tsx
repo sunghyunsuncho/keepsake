@@ -94,6 +94,8 @@ export default function ViewerScreen() {
           </View>
           <Pressable
             onPress={() => router.push({ pathname: '/moment/[id]', params: { id: current.id } })}
+            accessibilityRole="button"
+            accessibilityLabel={localizeText(language, '기록 보기')}
             style={({ pressed }) => [styles.open, { opacity: pressed ? 0.7 : 1 }]}>
             <Ionicons name="document-text-outline" size={18} color="#fff" />
             <Text style={styles.openText}>{localizeText(language, '기록 보기')}</Text>

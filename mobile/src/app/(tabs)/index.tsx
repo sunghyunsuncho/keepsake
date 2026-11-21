@@ -238,11 +238,17 @@ function StartOption({
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   return (
     <Pressable
       onPress={onPress}
       disabled={loading}
       accessibilityRole="button"
+      // 아이콘 글꼴 글자가 이름에 섞이지 않게 글만으로 이름을 준다.
+      accessibilityLabel={[label, recommended ? '추천' : null, detail]
+        .filter((part): part is string => !!part)
+        .map((part) => localizeText(language, part))
+        .join(', ')}
       style={({ pressed }) => [
         styles.startOption,
         { backgroundColor: pressed ? theme.backgroundSelected : theme.backgroundElement },
@@ -723,6 +729,7 @@ function AllCaughtUp({ cursor, cleanup }: { cursor: number; cleanup: React.React
       <Pressable
         onPress={() => router.push('/day')}
         accessibilityRole="button"
+        accessibilityLabel={`${localizeText(language, '지난 사진 다시 보기')}, ${localizeText(language, '예전 사진도 다시 골라 남겨요')}`}
         style={[styles.pastPhotosCard, { backgroundColor: theme.backgroundElement }]}>
         <View style={[styles.pastPhotosIcon, { backgroundColor: theme.accent + '18' }]}>
           <Ionicons name="time-outline" size={20} color={theme.accent} />

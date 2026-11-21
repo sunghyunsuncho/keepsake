@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useTranslation } from '@/lib/i18n';
+import { localizeText, useTranslation } from '@/lib/i18n';
 
 // 선택지가 많은 메뉴. 안드로이드의 Alert는 버튼을 3개까지만 보여 줘서(나머지는 사라진다) 메뉴는 이 시트로 연다.
 // Alert.alert와 같은 모양으로 부른다: showActionSheet(제목, 설명, [{ text, style, onPress }]).
@@ -30,7 +30,7 @@ export function showActionSheet(title: string | undefined, message: string | und
 
 export function ActionSheetHost() {
   const theme = useTheme();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<Sheet | null>(null);
 
@@ -74,6 +74,8 @@ export function ActionSheetHost() {
             key={action.text}
             onPress={() => run(action)}
             accessibilityRole="button"
+            // 아이콘 글꼴 글자가 이름에 섞이지 않게 글만으로 이름을 준다.
+            accessibilityLabel={localizeText(language, action.text)}
             style={({ pressed }) => [
               styles.action,
               withIcons && styles.iconAction,
