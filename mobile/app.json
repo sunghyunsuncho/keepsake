@@ -18,7 +18,10 @@
       "usesAppleSignIn": true,
       "associatedDomains": [
         "applinks:keepsake.atelierlabs.co.kr"
-      ]
+      ],
+      "infoPlist": {
+        "CFBundleAllowMixedLocalizations": true
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -135,6 +138,11 @@
       "eas": {
         "projectId": "12930956-1eea-4867-a793-d68ee6cf87e8"
       }
+    },
+    "locales": {
+      "ko": "./locales/ko.json",
+      "en": "./locales/en.json",
+      "ja": "./locales/ja.json"
     }
   }
 }

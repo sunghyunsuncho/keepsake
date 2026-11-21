@@ -1,0 +1,6 @@
+{
+  "ios": {
+    "NSPhotoLibraryUsageDescription": "Keepsake uses your photo library so you can choose the photos and videos you want to keep, clear out the ones you didn’t keep when you’re ready, and save photos and videos from secure storage back to your library.",
+    "NSUserTrackingUsageDescription": "Used to show ads that match your interests. You can use every feature of the app even if you don’t allow this."
+  }
+}
