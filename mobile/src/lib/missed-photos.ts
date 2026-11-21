@@ -86,6 +86,19 @@ export async function loadMissedPhotos(ids: string[]) {
     .sort((a, b) => a.creationTime - b.creationTime);
 }
 
+/**
+ * 고르기 시작 시점을 초기화한다. 놓친 사진은 이전 지점을 기준으로 찾은 것이라 함께 비운다.
+ * 남겨 두면 새로 고른 시작 시점 이후의 사진이 '놓친 사진'과 날짜 묶음에 두 번 나온다.
+ */
+export async function resetReviewStart(db: SQLiteDatabase) {
+  // 지점을 먼저 지워 새 확인이 시작되지 않게 하고, 이전 지점으로 돌던 확인이 끝난 뒤에 비운다.
+  // 순서가 바뀌면 그 확인이 이전 지점 기준의 놓친 사진을 다시 써 넣는다.
+  await setSetting(db, 'review_cursor', null);
+  await running;
+  await setSetting(db, 'missed_photo_ids', []);
+  await setSetting(db, 'missed_baseline', null);
+}
+
 /** [남기기]·[여기까지 봤어요]를 누르면 놓친 사진도 본 것으로 친다. */
 export function clearMissedPhotos(db: SQLiteDatabase) {
   return setSetting(db, 'missed_photo_ids', []);

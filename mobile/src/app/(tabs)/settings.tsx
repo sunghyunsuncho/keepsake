@@ -17,7 +17,7 @@ import { APP_NAME, COMPANY, CONTACT_EMAIL } from '@/constants/app-info';
 import { Spacing } from '@/constants/theme';
 import { useDbQuery } from '@/db/changes';
 import { libraryStats } from '@/db/moments';
-import { APP_LANGUAGES, getSettings, setSetting } from '@/db/settings';
+import { APP_LANGUAGES, getSettings } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 import { showAdPrivacyOptions, useAds } from '@/lib/ads';
 import { useCloudState } from '@/lib/cloud/engine';
@@ -25,6 +25,7 @@ import { type Account, useCloudSession } from '@/lib/cloud/session';
 import { registerPushToken } from '@/lib/cloud/push';
 import { formatFullDate } from '@/lib/dates';
 import { openLegalDocument } from '@/lib/legal';
+import { resetReviewStart } from '@/lib/missed-photos';
 import { LANGUAGE_LABELS, useTranslation } from '@/lib/i18n';
 import { openSubscription } from '@/lib/cloud/subscribe';
 
@@ -58,7 +59,7 @@ export default function SettingsScreen() {
   const resetCursor = () =>
     Alert.alert(t('resetStartTitle'), t('resetStartMessage'), [
       { text: t('cancel'), style: 'cancel' },
-      { text: t('reset'), style: 'destructive', onPress: () => setSetting(db, 'review_cursor', null) },
+      { text: t('reset'), style: 'destructive', onPress: () => resetReviewStart(db) },
     ]);
 
   const chooseLanguage = () =>
