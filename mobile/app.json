@@ -11,7 +11,7 @@
     "ios": {
       "bundleIdentifier": "com.atelierlabs.keepsake",
       "appleTeamId": "3BQ7Y687R9",
-      "supportsTablet": false,
+      "supportsTablet": true,
       "config": {
         "usesNonExemptEncryption": false
       },
