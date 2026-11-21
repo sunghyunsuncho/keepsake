@@ -11,6 +11,7 @@ import { BackButton } from '@/components/stack-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { getAlbumTitle, updateAlbumMoments } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
 import { momentIdsByAsset } from '@/db/moments';
 import { DEFAULT_SETTINGS, getSettings, setSetting } from '@/db/settings';
@@ -111,7 +112,32 @@ export default function DayScreen() {
     return result;
   }, [assets, zoom]);
 
-  const complete = async () => selection.complete(assets);
+  // 앨범 메뉴의 [새 사진에서 고르기]로 담기를 시작했으면, 새 사진이 없어 여기로 온 경우에도 그 앨범에 함께 담는다.
+  // (고르기 화면이 '모두 살펴봤어요'에서 이 화면을 권한다.) 지워진 앨범이면 담지 않는다.
+  const targetAlbumId = settings?.picking_album_id ?? null;
+  const { data: targetLookup } = useDbQuery(
+    async () => (targetAlbumId ? { id: targetAlbumId, title: await getAlbumTitle(db, targetAlbumId) } : null),
+    [db, targetAlbumId],
+  );
+  const targetAlbum =
+    targetAlbumId && targetLookup?.id === targetAlbumId && targetLookup.title
+      ? { id: targetAlbumId, title: targetLookup.title }
+      : null;
+
+  const complete = async () => {
+    const items = await selection.complete(assets);
+    // 위 조회가 끝나기 전에 눌러도 빠지지 않게, 담을 앨범이 아직 있는지 남길 때 다시 확인한다.
+    if (items.length > 0 && targetAlbumId && (await getAlbumTitle(db, targetAlbumId))) {
+      await updateAlbumMoments(db, targetAlbumId, { add: items.map((item) => item.momentId) });
+    }
+  };
+  const savedHint = targetAlbum
+    ? {
+        ko: `남긴 사진은 ${targetAlbum.title}에도 담겨요`,
+        en: `Kept photos also go into ${targetAlbum.title}`,
+        ja: `残した写真は${targetAlbum.title}にも追加されます`,
+      }[language]
+    : '남기면 사진첩에서 다시 볼 수 있어요';
 
   // 탭 바가 없는 화면이라 아래 막대가 시스템 내비게이션 바(3버튼)에 가려지지 않게 아래 안전 영역을 둔다.
   return (
@@ -150,7 +176,7 @@ export default function DayScreen() {
           />
         )}
         {selection.draft.length > 0 || selection.saving ? (
-          <BottomBar title={selection.saving ? `${localizeText(language, '남기는 중…')} ${selection.saving.done}/${selection.saving.total}` : selectionSummary(language, selection.draft.length)} subtitle="남기면 사진첩에서 다시 볼 수 있어요" secondary={{ label: '선택 해제', onPress: selection.clear }} action={{ label: '남기기', onPress: complete, loading: !!selection.saving }} />
+          <BottomBar title={selection.saving ? `${localizeText(language, '남기는 중…')} ${selection.saving.done}/${selection.saving.total}` : selectionSummary(language, selection.draft.length)} subtitle={savedHint} secondary={{ label: '선택 해제', onPress: selection.clear }} action={{ label: '남기기', onPress: complete, loading: !!selection.saving }} />
         ) : null}
       </SafeAreaView>
     </ThemedView>

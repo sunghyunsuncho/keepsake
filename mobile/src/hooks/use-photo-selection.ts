@@ -78,7 +78,9 @@ export function usePhotoSelection(db: SQLiteDatabase, saved: Map<string, string>
     }
     setDraft(failed);
     if (savedItems.length > 0) {
-      removeKeptCleanupCandidates(savedItems.map((item) => item.assetId)).catch(() => {});
+      // 정리 후보는 기기 기록 DB를 따로 연 연결로 고친다. 기다리지 않으면 호출한 쪽이 바로 이어서 여는
+      // 트랜잭션(앨범에 담기)과 겹쳐 그쪽이 "database is locked"로 실패한다. 끝날 때까지 기다린다.
+      await removeKeptCleanupCandidates(savedItems.map((item) => item.assetId)).catch(() => {});
     }
 
     if (failed.length > 0) {
