@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { CloudArrowUpIcon } from 'phosphor-react-native';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -17,6 +17,9 @@ import { showAlert } from '@/lib/i18n';
 // 로그인하면 계정 공간으로 바뀌고, 이 기기에 남긴 기록이 있으면 LocalImportPrompt가 백업할지 묻는다.
 export default function SignInScreen() {
   const theme = useTheme();
+  // 공유 앨범 참여 화면에서 왔으면(초대받은 사람) 백업 대신 참여를 위한 로그인이라고 알린다.
+  const { reason } = useLocalSearchParams<{ reason?: 'shared' }>();
+  const shared = reason === 'shared';
   const [busy, setBusy] = useState(false);
 
   const signIn = async (method: () => Promise<string>) => {
@@ -41,10 +44,12 @@ export default function SignInScreen() {
             <CloudArrowUpIcon size={28} color={theme.accent} />
           </View>
           <ThemedText type="subtitle" style={styles.center}>
-            기록을 계정에 백업해요
+            {shared ? '공유 앨범에 참여하려면 로그인해 주세요' : '기록을 계정에 백업해요'}
           </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.center}>
-            메모·장소·날짜·앨범을 무료로 백업해요. 휴대폰을 바꿔도 사진첩에 같은 사진이 있으면 기록과 다시 이어져요.
+            {shared
+              ? '로그인은 무료예요. 로그인한 뒤 안전 사진첩의 [코드로 참여]에서 받은 초대 코드를 입력해 주세요.'
+              : '메모·장소·날짜·앨범을 무료로 백업해요. 휴대폰을 바꿔도 사진첩에 같은 사진이 있으면 기록과 다시 이어져요.'}
           </ThemedText>
         </View>
         <SignInButtons busy={busy} onApple={() => signIn(signInWithApple)} onGoogle={() => signIn(signInWithGoogle)} />

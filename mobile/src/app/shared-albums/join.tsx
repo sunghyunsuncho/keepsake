@@ -105,7 +105,8 @@ export default function JoinSharedAlbumScreen() {
         <ThemedText themeColor="textSecondary" style={styles.center}>
           공유 앨범에 참여하려면 먼저 로그인해 주세요.{'\n'}로그인은 무료예요.
         </ThemedText>
-        <Button label="로그인하러 가기" onPress={() => router.replace('/cloud')} />
+        {/* 구독 소개(/cloud)가 아니라 로그인만 하는 화면으로 보낸다. 참여에는 구독이 필요 없다. */}
+        <Button label="로그인하러 가기" onPress={() => router.replace({ pathname: '/sign-in', params: { reason: 'shared' } })} />
       </ThemedView>
     );
   }

@@ -12,7 +12,7 @@ import { CreatedAlbumCard } from '@/components/created-album-card';
 import { CloudAlbumGuide } from '@/components/library-guide';
 import { NotificationBell } from '@/components/notification-bell';
 import { PHOTO_QUALITY, PhotoQualityBadge } from '@/components/photo-quality';
-import { SharedAlbumSection } from '@/components/shared-album-section';
+import { SharedAlbumJoinPrompt, SharedAlbumSection } from '@/components/shared-album-section';
 import { ThemedText } from '@/components/themed-text';
 import { HeaderButton } from '@/components/stack-header';
 import { TabTitle } from '@/components/tab-title';
@@ -72,7 +72,8 @@ export default function CloudLibraryScreen() {
           <>
             <SecureStorageIntro signedIn={Boolean(session)} />
             {/* 초대받은 공유 앨범은 구독하지 않아도 본다. */}
-            {session && <SharedAlbumSection canCreate={false} />}
+            {/* 로그인 전에도 초대 코드로 참여를 시작할 수 있게 입구를 둔다. */}
+            {session ? <SharedAlbumSection canCreate={false} /> : <SharedAlbumJoinPrompt />}
           </>
         )}
       </ScrollView>

@@ -63,6 +63,27 @@ export function SharedAlbumSection({ canCreate }: { canCreate: boolean }) {
   );
 }
 
+/**
+ * 로그인하기 전에 보이는 공유 앨범 입구. 초대받은 사람은 구독 없이 로그인만 하면 함께 보므로,
+ * 초대 링크 없이 코드만 받은 사람도 여기서 참여를 시작한다 (참여 화면이 로그인을 먼저 안내한다).
+ */
+export function SharedAlbumJoinPrompt() {
+  const theme = useTheme();
+  return (
+    <View style={styles.section}>
+      <AlbumSectionHeader
+        title="함께 쓰는 공유 앨범"
+        actions={[
+          { icon: 'enter-outline', label: '코드로 참여', color: theme.navy, onPress: () => router.push('/shared-albums/join') },
+        ]}
+      />
+      <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
+        공유 앨범에 초대받았다면 구독하지 않아도 로그인만 하면 함께 보고 담을 수 있어요.
+      </ThemedText>
+    </View>
+  );
+}
+
 /** 나만 보는 안전 앨범과 같은 스프링 표지에, 책등만 네이비로 구분한다. */
 function SharedAlbumCard({ album }: { album: SharedAlbumSummary }) {
   const theme = useTheme();
