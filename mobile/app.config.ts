@@ -1,4 +1,21 @@
 import type { ConfigContext, ExpoConfig } from 'expo/config';
+import { withAndroidManifest, type ConfigPlugin } from 'expo/config-plugins';
+
+// Play는 세로 고정(screenOrientation)과 ACCESS_WIFI_STATE(expo-network)를 보고
+// screen.portrait·wifi 하드웨어를 필수로 추론해, 그 기능이 없는 기기에서 설치를 막는다.
+// 둘 다 없어도 앱은 동작하므로 선택사항으로 명시한다.
+const OPTIONAL_FEATURES = ['android.hardware.screen.portrait', 'android.hardware.wifi'];
+const withOptionalHardwareFeatures: ConfigPlugin = (config) =>
+  withAndroidManifest(config, (mod) => {
+    const manifest = mod.modResults.manifest;
+    const features = (manifest['uses-feature'] ??= []);
+    for (const name of OPTIONAL_FEATURES) {
+      const existing = features.find((f) => f.$['android:name'] === name);
+      if (existing) existing.$['android:required'] = 'false';
+      else features.push({ $: { 'android:name': name, 'android:required': 'false' } });
+    }
+    return mod;
+  });
 
 // app.json을 기본으로 쓰고, 환경 변수가 있어야 하는 설정만 여기서 더한다.
 // Google 로그인 iOS URL scheme은 iOS OAuth 클라이언트 ID를 뒤집은 값이다
@@ -59,11 +76,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     : (config.plugins ?? []).filter(
         (plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) !== '@sentry/react-native/expo',
       );
-  return {
+  return withOptionalHardwareFeatures({
     ...(config as ExpoConfig),
     android: mapsApiKey
       ? { ...config.android, config: { ...config.android?.config, googleMaps: { apiKey: mapsApiKey } } }
       : config.android,
     plugins: [...plugins, ...googlePlugin, ...adsPlugins],
-  };
+  });
 };
