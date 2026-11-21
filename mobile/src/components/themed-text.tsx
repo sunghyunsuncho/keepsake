@@ -18,7 +18,16 @@ export function ThemedText({ style, type = 'default', themeColor, children, loca
   // 기존 JSX 본문은 이 공통 지점에서 번역한다. 동적 React 노드는 원래대로 둔다.
   const localizedChildren = localize ? localizeChildren(children, language) : children;
 
-  return <Text style={[{ color: theme[themeColor ?? 'text'] }, styles[type], style]} {...rest}>{localizedChildren}</Text>;
+  // iOS는 기본으로 한글을 글자 단위로 줄바꿈해 '보여/줘요'처럼 단어가 갈린다. 띄어쓰기에서 끊게 한다
+  // (Android는 원래 단어 단위). 한글이 아닌 글자에는 영향이 없고, 화면에서 따로 주면 그 값을 쓴다.
+  return (
+    <Text
+      lineBreakStrategyIOS="hangul-word"
+      style={[{ color: theme[themeColor ?? 'text'] }, styles[type], style]}
+      {...rest}>
+      {localizedChildren}
+    </Text>
+  );
 }
 
 function localizeChildren(children: ReactNode, language: 'ko' | 'en' | 'ja'): ReactNode {
