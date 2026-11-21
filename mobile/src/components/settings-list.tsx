@@ -1,6 +1,6 @@
 import { CaretRightIcon, type Icon } from 'phosphor-react-native';
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
@@ -109,12 +109,19 @@ export function SettingsSwitchRow({
   value: boolean;
   onValueChange: (value: boolean) => void;
 }) {
+  const theme = useTheme();
+  // Android 테마에는 강조색이 없어 기본 청록색 스위치가 된다. 앱의 강조색으로 맞춘다 (iOS는 시스템 스위치 그대로).
+  const androidColors =
+    Platform.OS === 'android'
+      ? { trackColor: { false: theme.backgroundSelected, true: theme.accent + '80' }, thumbColor: value ? theme.accent : '#f4f3f4' }
+      : null;
   return (
     // 스위치만이 아니라 행 어디를 눌러도 바뀐다. 접근성에서는 행 하나를 스위치로 읽고, 안의 Switch는 따로 읽지 않는다.
     // 터치도 행이 받는다: Switch가 따로 받으면 Switch와 행이 한 번씩 onValueChange를 불러 알림 권한 요청 같은 동작이 겹친다.
     <SettingsRow label={label} icon={icon} onPress={() => onValueChange(!value)} chevron={false} switchValue={value}>
       <Switch
         value={value}
+        {...androidColors}
         pointerEvents="none"
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"

@@ -1,5 +1,12 @@
 import type { ConfigContext, ExpoConfig } from 'expo/config';
-import { withAndroidManifest, type ConfigPlugin } from 'expo/config-plugins';
+import {
+  AndroidConfig,
+  withAndroidColors,
+  withAndroidColorsNight,
+  withAndroidManifest,
+  withAndroidStyles,
+  type ConfigPlugin,
+} from 'expo/config-plugins';
 
 // Play는 세로 고정(screenOrientation)과 ACCESS_WIFI_STATE(expo-network)를 보고
 // screen.portrait·wifi 하드웨어를 필수로 추론해, 그 기능이 없는 기기에서 설치를 막는다.
@@ -16,6 +23,29 @@ const withOptionalHardwareFeatures: ConfigPlugin = (config) =>
     }
     return mod;
   });
+
+// Android 테마에 강조색이 없으면 시스템 대화상자(Alert)의 버튼, 시각·날짜 선택 창이 기본 청록색으로 나온다.
+// 앱의 포인트 색(constants/theme.ts의 accent)을 테마의 colorAccent로 준다. 다크 모드는 values-night에 따로 둔다.
+const ACCENT = { light: '#CD5837', dark: '#E57A5A' };
+const withAndroidAccentColor: ConfigPlugin = (config) => {
+  config = withAndroidColors(config, (mod) => {
+    mod.modResults = AndroidConfig.Colors.assignColorValue(mod.modResults, { name: 'colorAccent', value: ACCENT.light });
+    return mod;
+  });
+  config = withAndroidColorsNight(config, (mod) => {
+    mod.modResults = AndroidConfig.Colors.assignColorValue(mod.modResults, { name: 'colorAccent', value: ACCENT.dark });
+    return mod;
+  });
+  return withAndroidStyles(config, (mod) => {
+    mod.modResults = AndroidConfig.Styles.assignStylesValue(mod.modResults, {
+      add: true,
+      parent: AndroidConfig.Styles.getAppThemeGroup(),
+      name: 'colorAccent',
+      value: '@color/colorAccent',
+    });
+    return mod;
+  });
+};
 
 // app.json을 기본으로 쓰고, 환경 변수가 있어야 하는 설정만 여기서 더한다.
 // Google 로그인 iOS URL scheme은 iOS OAuth 클라이언트 ID를 뒤집은 값이다
@@ -76,11 +106,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     : (config.plugins ?? []).filter(
         (plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) !== '@sentry/react-native/expo',
       );
-  return withOptionalHardwareFeatures({
-    ...(config as ExpoConfig),
-    android: mapsApiKey
-      ? { ...config.android, config: { ...config.android?.config, googleMaps: { apiKey: mapsApiKey } } }
-      : config.android,
-    plugins: [...plugins, ...googlePlugin, ...adsPlugins],
-  });
+  return withAndroidAccentColor(
+    withOptionalHardwareFeatures({
+      ...(config as ExpoConfig),
+      android: mapsApiKey
+        ? { ...config.android, config: { ...config.android?.config, googleMaps: { apiKey: mapsApiKey } } }
+        : config.android,
+      plugins: [...plugins, ...googlePlugin, ...adsPlugins],
+    }),
+  );
 };
