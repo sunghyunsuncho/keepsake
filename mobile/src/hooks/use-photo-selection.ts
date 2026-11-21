@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { useRef, useState } from 'react';
 
 import { captureAsset, CaptureError, removeMoment } from '@/lib/capture';
+import { removeKeptCleanupCandidates } from '@/lib/cleanup';
 import { toDateKey } from '@/lib/dates';
 import { getCurrentLanguage, photoCount, showAlert } from '@/lib/i18n';
 
@@ -76,6 +77,9 @@ export function usePhotoSelection(db: SQLiteDatabase, saved: Map<string, string>
       setSaving(null);
     }
     setDraft(failed);
+    if (savedItems.length > 0) {
+      removeKeptCleanupCandidates(savedItems.map((item) => item.assetId)).catch(() => {});
+    }
 
     if (failed.length > 0) {
       const language = getCurrentLanguage();

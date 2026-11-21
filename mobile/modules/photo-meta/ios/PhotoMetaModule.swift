@@ -3,6 +3,7 @@ import CoreLocation
 import CryptoKit
 import ExpoModulesCore
 import ImageIO
+import Photos
 import UniformTypeIdentifiers
 
 // 사진에 들어 있는 좌표·촬영 시간대를 읽는다.
@@ -36,6 +37,24 @@ public class PhotoMetaModule: Module {
         result["timeZoneOffsetMinutes"] = timeZone.secondsFromGMT(for: date) / 60
       }
       return result
+    }
+
+    // 주어진 사진 중 즐겨찾기로 표시된 것의 id. 정리 후보에서 즐겨찾기를 빼 정리 화면과 수를 맞춘다.
+    AsyncFunction("favoriteIds") { (ids: [String]) -> [String] in
+      var favorites: [String] = []
+      PHAsset.fetchAssets(withLocalIdentifiers: ids, options: assetLookupOptions()).enumerateObjects { asset, _, _ in
+        if asset.isFavorite { favorites.append(asset.localIdentifier) }
+      }
+      return favorites
+    }
+
+    // 주어진 사진 중 사진첩에 아직 있는 것의 id. 파일을 열지 않고 한 번에 확인한다 (iCloud에만 있는 사진도 있음으로 센다).
+    AsyncFunction("existingIds") { (ids: [String]) -> [String] in
+      var existing: [String] = []
+      PHAsset.fetchAssets(withLocalIdentifiers: ids, options: assetLookupOptions()).enumerateObjects { asset, _, _ in
+        existing.append(asset.localIdentifier)
+      }
+      return existing
     }
 
     // 원본 파일의 EXIF OffsetTimeOriginal("+09:00") → 분 단위 오프셋. 없으면 nil.
@@ -185,4 +204,13 @@ private func offsetText(_ minutes: Int) -> String {
   let sign = minutes < 0 ? "-" : "+"
   let value = abs(minutes)
   return String(format: "%@%02d:%02d", sign, value / 60, value % 60)
+}
+
+// id로 사진을 찾을 때의 조건. expo-media-library(getAssetInfoAsync)와 같게 가린 사진·연사 사진도 찾는다.
+// 빠뜨리면 사진 앱에서 가린 사진을 지워진 사진으로 잘못 본다.
+private func assetLookupOptions() -> PHFetchOptions {
+  let options = PHFetchOptions()
+  options.includeHiddenAssets = true
+  options.includeAllBurstAssets = true
+  return options
 }

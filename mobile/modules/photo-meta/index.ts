@@ -36,6 +36,8 @@ type PhotoMetaNative = {
   ): Promise<GeocodedPlace | null>;
   readCaptureOffset(uri: string): number | null;
   trashPhotos(photoIds: string[], videoIds: string[]): Promise<boolean>;
+  favoriteIds?(ids: string[]): Promise<string[]>;
+  existingIds?(ids: string[]): Promise<string[]>;
   md5File(uri: string): Promise<string>;
   transcodeVideo(inputUri: string, outputUri: string): Promise<void>;
   writeImageMetadata(uri: string, metadata: ImageMetadata): Promise<void>;
@@ -55,6 +57,22 @@ export function readCaptureOffset(fileUri: string) {
 /** 사진·동영상을 기기 휴지통으로 옮긴다 (Android 11+ 전용). 확인 창에서 취소하면 false. */
 export function trashPhotos(photoIds: string[], videoIds: string[]) {
   return PhotoMeta.trashPhotos(photoIds, videoIds);
+}
+
+/** 주어진 사진 중 즐겨찾기인 것의 id (iOS 전용. Android는 즐겨찾기 여부를 알 수 없다). */
+export async function favoriteIds(ids: string[]): Promise<string[]> {
+  // 이 함수가 없는 이전 네이티브 빌드에 OTA로 내려가도 정리 흐름이 멈추지 않게 한다.
+  if (typeof PhotoMeta.favoriteIds !== 'function') return [];
+  return PhotoMeta.favoriteIds(ids);
+}
+
+/**
+ * 주어진 사진 중 사진첩에 아직 있는 것의 id (iOS 전용). 함수가 없는 이전 네이티브 빌드(OTA)면 null이라
+ * 부르는 쪽이 다른 방법으로 확인한다.
+ */
+export async function existingIds(ids: string[]): Promise<string[] | null> {
+  if (typeof PhotoMeta.existingIds !== 'function') return null;
+  return PhotoMeta.existingIds(ids);
 }
 
 /** 파일의 MD5(hex). 파일을 메모리에 올리지 않고 조금씩 읽는다 (몇 GB짜리 동영상). */

@@ -35,6 +35,7 @@ import {
   addCleanupCandidates,
   keepCleanupCandidates,
   photosLeftBehind,
+  removeGoneCleanupCandidates,
   setCleanupPhotos,
   withoutKeptPhotos,
 } from '@/lib/cleanup';
@@ -338,6 +339,10 @@ function Inbox({
   useEffect(() => {
     checkMissedPhotos(db, { limited });
   }, [db, cursor, libraryVersion, limited]);
+  // 그 사이 사진첩에서 지운 사진은 정리 후보 카드의 수에서도 뺀다.
+  useEffect(() => {
+    removeGoneCleanupCandidates(db).catch(() => {});
+  }, [db, libraryVersion]);
   const missedKey = settings.missed_photo_ids.join(',');
   const [missed, setMissed] = useState<Asset[]>([]);
   useEffect(() => {
