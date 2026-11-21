@@ -1,6 +1,7 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { SQLiteProvider } from 'expo-sqlite';
+import { StatusBar } from 'expo-status-bar';
 import { Suspense, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, useColorScheme, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -51,6 +52,9 @@ function RootLayout() {
     // 앨범 화면의 두 손가락 확대·축소가 react-native-gesture-handler를 쓴다.
     <GestureHandlerRootView style={styles.flex}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        {/* Android 테마는 상태 표시줄 아이콘 색을 정하지 않아 라이트 모드에서 흰 배경에 흰 아이콘이 된다.
+            모드에 맞춰 앱 전체의 기본 색을 둔다 (크게 보기 화면은 자기 StatusBar로 덮어쓴다). */}
+        <StatusBar style="auto" />
         {/* 공간이 바뀔 때 다시 그려지지 않게 SQLiteProvider 밖에 둔다 (앱 실행을 두 번 세지 않게). */}
         <ActivityTracker />
         <AppUpdates />
