@@ -561,10 +561,11 @@ export function getCurrentLanguage() {
 /** Alert.alert와 같은 모양. 제목·설명·버튼 문구를 위의 표로 지금 언어에 맞춰 띄운다. */
 export function showAlert(title: string, message?: string, buttons?: AlertButton[], options?: AlertOptions) {
   const localize = (value: string) => localizeText(currentLanguage, value);
+  // 버튼을 주지 않으면 Android는 시스템 언어와 관계없이 영어 'OK'를 띄운다. 앱 언어의 '확인'을 둔다.
   Alert.alert(
     localize(title),
     message === undefined ? undefined : localize(message),
-    buttons?.map((button) => (button.text ? { ...button, text: localize(button.text) } : button)),
+    (buttons ?? [{ text: '확인' }]).map((button) => (button.text ? { ...button, text: localize(button.text) } : button)),
     options,
   );
 }

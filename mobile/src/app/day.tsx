@@ -148,9 +148,9 @@ export default function DayScreen() {
         }}
       />
       <SafeAreaView style={styles.flex} edges={['bottom']}>
+        {/* 제목 '지난 사진'은 머리글에 있으므로 여기서는 설명만 둔다. */}
         <View style={styles.header}>
           <View style={styles.flex}>
-            <ThemedText style={styles.title}>지난 사진</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">최근 사진부터 시간 순서대로</ThemedText>
           </View>
           <ColumnToggle value={columns} onChange={(next) => setSetting(db, 'pick_grid_columns', next)} />
@@ -202,10 +202,9 @@ function PastZoomBar({ value, onChange }: { value: PastZoom; onChange: (value: P
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingHorizontal: Spacing.three, paddingTop: Spacing.two },
-  title: { fontSize: 20, lineHeight: 28, fontWeight: 700 },
   zoomBar: { flexDirection: 'row', marginHorizontal: Spacing.three, marginTop: Spacing.two, padding: 2, borderRadius: Spacing.two },
   zoomItem: { flex: 1, minHeight: 32, borderRadius: Spacing.two - 2, alignItems: 'center', justifyContent: 'center' },
-  hint: { paddingHorizontal: Spacing.three, paddingBottom: Spacing.two },
+  hint: { paddingHorizontal: Spacing.three, paddingTop: Spacing.two, paddingBottom: Spacing.two },
   yearHeader: { fontSize: 24, lineHeight: 32, fontWeight: 700, paddingHorizontal: Spacing.three, paddingTop: Spacing.four, paddingBottom: Spacing.one },
   monthHeader: { fontSize: 20, lineHeight: 28, fontWeight: 700, paddingHorizontal: Spacing.three, paddingTop: Spacing.four, paddingBottom: Spacing.one },
   dayHeader: { paddingHorizontal: Spacing.three, paddingTop: Spacing.two, paddingBottom: Spacing.one },

@@ -7,7 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { appleSignInAvailable, googleSignInAvailable } from '@/lib/cloud/sign-in';
-import { useTranslation } from '@/lib/i18n';
+import { localizeText, useTranslation } from '@/lib/i18n';
 import { openLegalDocument } from '@/lib/legal';
 
 type Provider = 'google' | 'apple';
@@ -102,6 +102,7 @@ function ProviderButton({
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const { language } = useTranslation();
   const dark = useColorScheme() === 'dark';
   const colors =
     provider === 'google'
@@ -113,7 +114,8 @@ function ProviderButton({
       onPress={onPress}
       disabled={busy}
       accessibilityRole="button"
-      accessibilityLabel={label}
+      // 화면의 글자(ThemedText)는 번역되지만 접근성 이름은 그대로 두면 한국어로 읽힌다.
+      accessibilityLabel={localizeText(language, label)}
       style={({ pressed }) => [
         styles.button,
         { backgroundColor: colors.background, borderColor: colors.border },

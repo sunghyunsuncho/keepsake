@@ -26,7 +26,7 @@ import { registerPushToken } from '@/lib/cloud/push';
 import { formatFullDate } from '@/lib/dates';
 import { openLegalDocument } from '@/lib/legal';
 import { resetReviewStart } from '@/lib/missed-photos';
-import { LANGUAGE_LABELS, useTranslation } from '@/lib/i18n';
+import { LANGUAGE_LABELS, photoCount, useTranslation } from '@/lib/i18n';
 import { openSubscription } from '@/lib/cloud/subscribe';
 
 type SectionKey = 'device' | 'cloud';
@@ -200,7 +200,7 @@ function planText(account: Account | null, t: ReturnType<typeof useTranslation>[
 }
 
 function statsLabel(count: number, days: number, language: 'ko' | 'en' | 'ja') {
-  if (language === 'en') return `${count} photos · ${days} days`;
+  if (language === 'en') return `${photoCount(language, count)} · ${days === 1 ? '1 day' : `${days} days`}`;
   if (language === 'ja') return `${count}枚 · ${days}日`;
   return `${count}장 · ${days}일`;
 }
