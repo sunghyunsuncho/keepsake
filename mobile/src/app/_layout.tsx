@@ -93,7 +93,8 @@ function AppStack() {
       <Stack.Screen name="albums/[id]/index" options={{ title: '', header: StackHeader }} />
       <Stack.Screen name="album-map" options={{ title: title.map, header: StackHeader }} />
       <Stack.Screen name="albums/[id]/add" options={{ title: '', presentation: 'modal', header: ModalHeader }} />
-      <Stack.Screen name="viewer" options={{ headerShown: false, animation: 'fade' }} />
+      {/* 옆으로 넘기는 사진과 겹치지 않게 밀어서 닫기를 끈다. 첫 사진에서 더 당기면 iOS 26의 전체 화면 뒤로 가기로 닫혀 버렸다. 닫기 버튼으로 닫는다. */}
+      <Stack.Screen name="viewer" options={{ headerShown: false, animation: 'fade', gestureEnabled: false }} />
       <Stack.Screen name="welcome" options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }} />
       <Stack.Screen name="cleanup" options={{ title: title.cleanup, presentation: 'modal', header: ModalHeader }} />
       <Stack.Screen name="cloud" options={{ title: title.cloud, presentation: 'modal', header: ModalHeader }} />
