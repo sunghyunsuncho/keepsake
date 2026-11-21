@@ -1,9 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { existingIds } from '@modules/photo-meta';
 import { Image, type ImageContentFit } from 'expo-image';
 import * as MediaLibrary from 'expo-media-library';
 import { useSQLiteContext, type SQLiteDatabase } from 'expo-sqlite';
-import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, View, type ImageStyle, type StyleProp, type ViewStyle } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Platform, StyleSheet, View, type ImageStyle, type StyleProp, type ViewStyle } from 'react-native';
 
 import { MomentVideo } from '@/components/moment-video';
 import { ThemedText } from '@/components/themed-text';
@@ -13,7 +14,7 @@ import { setMomentSource, type Moment } from '@/db/moments';
 import { useTheme } from '@/hooks/use-theme';
 import { cloudImageUri, cloudOriginalUrl } from '@/lib/cloud/photos';
 import { useCloudSession } from '@/lib/cloud/session';
-import { hasLimitedPhotoAccess } from '@/lib/photos';
+import { hasLimitedPhotoAccess, subscribeLibraryChanges } from '@/lib/photos';
 
 export type PhotoMoment = Pick<
   Moment,
@@ -109,6 +110,17 @@ function MomentImage({ moment, variant = 'display', style, contentFit = 'cover',
   }, [db, moment.id, moment.source_asset_id, moment.source_uri]);
 
   const libraryUri = !libraryFailed ? moment.source_uri : null;
+
+  // 이미 그린 사진첩 원본은 메모리 캐시로 계속 그려지므로, 사진첩이 바뀌거나 앱으로 돌아오면
+  // 원본이 아직 있는지 다시 확인한다. 지워졌으면 표시가 바뀌어 다시 그리면서 '지워진 사진'이 된다.
+  const drawn = useRef<DrawnPhoto>({ db, moment });
+  useEffect(() => {
+    drawn.current.db = db;
+    drawn.current.moment = moment;
+  });
+  const drawsLibrary = CAN_RECHECK_LIBRARY && !!libraryUri && !!moment.source_asset_id && !moment.source_missing;
+  useEffect(() => (drawsLibrary ? watchDrawnPhoto(drawn.current) : undefined), [drawsLibrary]);
+
   // 원본이 아직 Cloud에 없으면(표시용만 올라간 경우) 크게 볼 때도 표시용 사진을 보여준다.
   const cloudVariant =
     variant === 'original' && moment.original_uploaded
@@ -173,6 +185,60 @@ function MomentImage({ moment, variant = 'display', style, contentFit = 'cover',
       }}
     />
   );
+}
+
+// 지금 사진첩 원본으로 그리고 있는 사진. 사진첩이 바뀌거나 앱으로 돌아오면 한 번에 모아 확인한다.
+// 사진마다 구독하거나 따로 묻지 않는다 (목록에 그린 사진이 수백 장일 수 있다).
+// 한 번에 확인할 수 있는 iOS만 한다. Android는 사진마다 파일을 열어야 해서 앱으로 돌아올 때마다 하기엔 무겁다.
+// 그 경우와 이 기능이 없는 이전 네이티브 빌드는 지금처럼 다시 그리다 실패할 때(onError) 확인한다.
+const CAN_RECHECK_LIBRARY = Platform.OS === 'ios';
+type DrawnPhoto = { db: SQLiteDatabase; moment: PhotoMoment };
+const drawnPhotos = new Set<DrawnPhoto>();
+let stopWatchingLibrary: (() => void) | null = null;
+let rechecking = false;
+let recheckAgain = false;
+
+function watchDrawnPhoto(photo: DrawnPhoto) {
+  drawnPhotos.add(photo);
+  stopWatchingLibrary ??= subscribeLibraryChanges(recheckDrawnPhotos);
+  return () => {
+    drawnPhotos.delete(photo);
+    if (drawnPhotos.size === 0) {
+      stopWatchingLibrary?.();
+      stopWatchingLibrary = null;
+    }
+  };
+}
+
+/** 그리고 있는 사진 중 사진첩에서 지워진 것을 '지워진 사진'으로 표시한다. 확인 중에 다시 불리면 끝난 뒤 한 번 더 본다. */
+async function recheckDrawnPhotos() {
+  if (rechecking) {
+    recheckAgain = true;
+    return;
+  }
+  rechecking = true;
+  try {
+    do {
+      recheckAgain = false;
+      const photos = [...drawnPhotos].filter(({ moment }) => moment.source_asset_id && !moment.source_missing);
+      const ids = [...new Set(photos.map(({ moment }) => moment.source_asset_id!))];
+      const existing = ids.length > 0 ? await existingIds(ids) : null;
+      // 이전 네이티브 빌드면 확인하지 않는다. 일부 사진만 허용한 상태면 찾지 못해도 지워졌다고 볼 수 없다 (refreshSource와 같다).
+      if (!existing || existing.length === ids.length || (await hasLimitedPhotoAccess())) continue;
+      const found = new Set(existing);
+      // 같은 기록을 여러 곳에 그려도(목록과 카드) 한 번만 쓴다.
+      const marked = new Set<string>();
+      for (const { db, moment } of photos) {
+        if (found.has(moment.source_asset_id!) || marked.has(moment.id)) continue;
+        marked.add(moment.id);
+        await setMomentSource(db, moment.id, { missing: true });
+      }
+    } while (recheckAgain);
+  } catch {
+    // 다음 변경이나 복귀 때 다시 확인한다. 그리기에 실패하면 onError에서도 확인한다.
+  } finally {
+    rechecking = false;
+  }
 }
 
 /**
