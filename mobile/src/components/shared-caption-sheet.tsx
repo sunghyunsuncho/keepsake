@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 
-import { useAndroidKeyboardHeight, useSheetBottomInset } from '@/components/album-name-sheet';
+import { useSheetBottomInset } from '@/components/album-name-sheet';
+import { useAndroidKeyboardHeight } from '@/hooks/use-keyboard-inset';
 import { Button } from '@/components/button';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';

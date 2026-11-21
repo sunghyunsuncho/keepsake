@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActionSheetHost, showActionSheet } from '@/components/action-sheet';
-import { useAndroidKeyboardHeight } from '@/components/album-name-sheet';
+import { useAndroidKeyboardHeight } from '@/hooks/use-keyboard-inset';
 import { chooseReportReason, confirmBlock, type ReportTarget } from '@/components/report-block';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';

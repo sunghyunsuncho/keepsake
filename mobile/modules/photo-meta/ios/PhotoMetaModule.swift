@@ -4,6 +4,7 @@ import CryptoKit
 import ExpoModulesCore
 import ImageIO
 import Photos
+import UIKit
 import UniformTypeIdentifiers
 
 // 사진에 들어 있는 좌표·촬영 시간대를 읽는다.
@@ -38,6 +39,19 @@ public class PhotoMetaModule: Module {
       }
       return result
     }
+
+    // 앱 창이 화면의 어디에 있는지 (화면 좌표, pt). 키보드 위치(UIKeyboardFrameEndUserInfoKey)는 화면 좌표라,
+    // iPadOS 창 모드·Stage Manager처럼 창이 화면 가운데에 있을 때 키보드에 가린 높이를 JS에서 구하려면 필요하다.
+    // RN ScrollView의 automaticallyAdjustKeyboardInsets는 창 좌표와 화면 좌표를 그대로 비교해 이때 틀린다.
+    AsyncFunction("windowFrame") { () -> [String: Double]? in
+      let window = UIApplication.shared.connectedScenes
+        .compactMap { $0 as? UIWindowScene }
+        .flatMap { $0.windows }
+        .first { $0.isKeyWindow }
+      guard let window, let screen = window.windowScene?.screen else { return nil }
+      let frame = window.convert(window.bounds, to: screen.coordinateSpace)
+      return ["x": frame.origin.x, "y": frame.origin.y, "width": frame.width, "height": frame.height]
+    }.runOnQueue(.main)
 
     // 주어진 사진 중 즐겨찾기로 표시된 것의 id. 정리 후보에서 즐겨찾기를 빼 정리 화면과 수를 맞춘다.
     AsyncFunction("favoriteIds") { (ids: [String]) -> [String] in

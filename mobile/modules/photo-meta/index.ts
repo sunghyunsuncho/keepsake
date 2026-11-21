@@ -41,7 +41,11 @@ type PhotoMetaNative = {
   md5File(uri: string): Promise<string>;
   transcodeVideo(inputUri: string, outputUri: string): Promise<void>;
   writeImageMetadata(uri: string, metadata: ImageMetadata): Promise<void>;
+  windowFrame?(): Promise<WindowFrame | null>;
 };
+
+/** 앱 창의 화면 좌표(pt). iOS만 있다. */
+export type WindowFrame = { x: number; y: number; width: number; height: number };
 
 const PhotoMeta = requireNativeModule<PhotoMetaNative>('PhotoMeta');
 
@@ -88,4 +92,13 @@ export function transcodeVideo(inputUri: string, outputUri: string) {
 /** 리사이즈한 JPEG에 촬영 일시·시간대·GPS를 EXIF로 다시 쓴다. */
 export function writeImageMetadata(fileUri: string, metadata: ImageMetadata) {
   return PhotoMeta.writeImageMetadata(fileUri, metadata);
+}
+
+/**
+ * 앱 창이 화면의 어디에 있는지 (iOS 전용). 함수가 없는 이전 네이티브 빌드(OTA)나 Android면 null.
+ * iPadOS 창 모드에서 키보드에 가린 높이를 구할 때 쓴다 (키보드 위치는 화면 좌표로 온다).
+ */
+export async function windowFrame(): Promise<WindowFrame | null> {
+  if (typeof PhotoMeta.windowFrame !== 'function') return null;
+  return PhotoMeta.windowFrame();
 }

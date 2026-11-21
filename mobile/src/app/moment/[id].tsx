@@ -27,6 +27,7 @@ import { momentQualityInfo, type PhotoQuality } from '@/db/albums';
 import { useDbQuery } from '@/db/changes';
 import { getMoment, updateMoment, type Moment, type MomentEdit } from '@/db/moments';
 import type { AppLanguage } from '@/db/settings';
+import { useKeyboardInset } from '@/hooks/use-keyboard-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { trackEvent } from '@/lib/activity';
 import { fillPlaceFromPhoto, removeMoment } from '@/lib/capture';
@@ -71,6 +72,22 @@ function MomentEditor({ moment }: { moment: Moment }) {
   const [viewing, setViewing] = useState(false);
   const [locating, setLocating] = useState(false);
   const offset = moment.taken_tz_offset;
+  // 키보드가 메모 입력란을 가리지 않게 키보드만큼 화면 아래를 비운다 (Android 15, iPadOS 창 모드).
+  // iOS 전체 화면은 ScrollView의 automaticallyAdjustKeyboardInsets가 맞추므로 0이다.
+  const keyboardInset = useKeyboardInset();
+  // 비운 뒤에도 메모 칸이 키보드 아래에 남지 않게, 메모를 쓰는 중이면 메모 칸 위쪽이 보이도록 스크롤한다.
+  const scroll = useRef<ScrollView>(null);
+  const fieldsY = useRef(0);
+  const memoY = useRef(0);
+  const [memoFocused, setMemoFocused] = useState(false);
+  useEffect(() => {
+    if (keyboardInset === 0 || !memoFocused) return;
+    const timer = setTimeout(
+      () => scroll.current?.scrollTo({ y: Math.max(fieldsY.current + memoY.current - Spacing.three, 0), animated: true }),
+      50,
+    );
+    return () => clearTimeout(timer);
+  }, [keyboardInset, memoFocused]);
 
   // 입력하는 동안 잠깐 멈추면 저장하고, 화면을 떠날 때 남은 변경을 마저 저장한다.
   const pending = useRef<MomentEdit>({});
@@ -159,9 +176,10 @@ function MomentEditor({ moment }: { moment: Moment }) {
   };
 
   return (
-    <ThemedView style={styles.flex}>
+    <ThemedView style={[styles.flex, { paddingBottom: keyboardInset }]}>
       <Stack.Screen options={{ title: formatFullDate(moment.taken_at, offset) }} />
       <ScrollView
+        ref={scroll}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets>
@@ -173,7 +191,7 @@ function MomentEditor({ moment }: { moment: Moment }) {
           />
         </Pressable>
 
-        <View style={styles.fields}>
+        <View style={styles.fields} onLayout={(e) => (fieldsY.current = e.nativeEvent.layout.y)}>
           <Pressable
             onPress={() => setEditingDate(true)}
             accessibilityRole="button"
@@ -225,6 +243,9 @@ function MomentEditor({ moment }: { moment: Moment }) {
               queue({ memo: text });
             }}
             placeholder={localizeText(language, '이 순간을 남기고 싶은 이유, 그때의 생각이나 기억을 적어 보세요.')}
+            onLayout={(e) => (memoY.current = e.nativeEvent.layout.y)}
+            onFocus={() => setMemoFocused(true)}
+            onBlur={() => setMemoFocused(false)}
             placeholderTextColor={theme.textSecondary}
             style={[styles.memo, { color: theme.text, backgroundColor: theme.backgroundElement }]}
             multiline
