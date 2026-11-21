@@ -1,0 +1,36 @@
+diff --git a/node_modules/@shopify/flash-list/dist/recyclerview/RecyclerView.js b/node_modules/@shopify/flash-list/dist/recyclerview/RecyclerView.js
+index 8bea626..9067bf7 100644
+--- a/node_modules/@shopify/flash-list/dist/recyclerview/RecyclerView.js
++++ b/node_modules/@shopify/flash-list/dist/recyclerview/RecyclerView.js
+@@ -70,10 +70,10 @@ var RecyclerViewComponent = function (props, ref) {
+             var outerViewLayout = (0, measureLayout_1.measureParentSize)(internalViewRef.current);
+             var firstChildViewLayout = (0, measureLayout_1.measureFirstChildLayout)(firstChildViewRef.current, internalViewRef.current);
+             containerViewSizeRef.current = outerViewLayout;
+-            // Calculate offset of first item
++            // firstChildViewLayout is already relative to the outer container (fixed upstream in 2.3.x).
+             var firstItemOffset = horizontal
+-                ? firstChildViewLayout.x - outerViewLayout.x
+-                : firstChildViewLayout.y - outerViewLayout.y;
++                ? firstChildViewLayout.x
++                : firstChildViewLayout.y;
+             // Update the RecyclerView manager with window dimensions
+             recyclerViewManager.updateLayoutParams({
+                 width: horizontal
+diff --git a/node_modules/@shopify/flash-list/src/recyclerview/RecyclerView.tsx b/node_modules/@shopify/flash-list/src/recyclerview/RecyclerView.tsx
+index 5447a5c..79132ee 100644
+--- a/node_modules/@shopify/flash-list/src/recyclerview/RecyclerView.tsx
++++ b/node_modules/@shopify/flash-list/src/recyclerview/RecyclerView.tsx
+@@ -156,10 +156,10 @@ const RecyclerViewComponent = <T,>(
+ 
+       containerViewSizeRef.current = outerViewLayout;
+ 
+-      // Calculate offset of first item
++      // firstChildViewLayout is already relative to the outer container (fixed upstream in 2.3.x).
+       const firstItemOffset = horizontal
+-        ? firstChildViewLayout.x - outerViewLayout.x
+-        : firstChildViewLayout.y - outerViewLayout.y;
++        ? firstChildViewLayout.x
++        : firstChildViewLayout.y;
+ 
+       // Update the RecyclerView manager with window dimensions
+       recyclerViewManager.updateLayoutParams(

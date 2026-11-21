@@ -403,6 +403,8 @@ function Inbox({
   }, [assets, missed]);
 
   // 화면에 보인 사진 중 가장 늦게 찍은 시각 = 여기까지 봤다.
+  // 보임 판정은 목록 위치에 의존한다. FlashList 2.0.2는 목록 위에 다른 내용이 있으면 그 높이만큼 아래 사진을
+  // 보인 것으로 쳐서, 보지 않은 사진이 정리 후보가 됐다 (patches/@shopify+flash-list+2.0.2.patch로 고침).
   const onViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken<Row>[] }) => {
       let latest = 0;
